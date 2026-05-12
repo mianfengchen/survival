@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>花园幸存者</title>
+    <link rel="stylesheet" href="./styles/app.css" />
+  </head>
+  <body>
+    <section class="app-view menu-view is-active" id="menuView">
+      <div class="menu-shell">
+        <article class="menu-hero panel-card">
+          <div class="hero-copy">
+            <p class="eyebrow">Sunny Survivor Framework</p>
+            <h1>花园幸存者</h1>
+            <p class="subtitle">菜单界面与游戏界面分开展示，进入战斗后切到全屏地图视图。</p>
+            <p class="hero-description">
+              当前版本已切成独立菜单页与全屏游戏页，战斗地图扩展到原来的 9 倍面积，角色可在更大的场景中持续向上下左右推进。
+            </p>
+            <div class="hero-actions">
+              <button id="startRunButton" class="primary-button">开始冒险</button>
+              <button id="openTalentButton" class="ghost-button">天赋成长</button>
+              <button id="openCodexButton" class="ghost-button">图鉴总览</button>
+            </div>
+          </div>
+
+          <div class="hero-side">
+            <div class="hero-meta">
+              <span>游戏币 <strong data-global-field="coins">0</strong></span>
+              <span>局数 <strong data-global-field="runs">0</strong></span>
+              <span>胜场 <strong data-global-field="wins">0</strong></span>
+            </div>
+            <div class="hero-stats" id="menuSummary"></div>
+          </div>
+        </article>
+
+        <div class="menu-grid">
+          <article class="panel-card">
+            <h2>玩法目标</h2>
+            <ul class="compact-list">
+              <li>单局时长 15 分钟，最终阶段刷新 Boss</li>
+              <li>怪物会从当前视野四周持续逼近</li>
+              <li>升级时从 3 项随机成长中选择 1 项</li>
+              <li>结算金币用于局外天赋成长</li>
+            </ul>
+          </article>
+
+          <article class="panel-card">
+            <h2>操作方式</h2>
+            <ul class="compact-list">
+              <li>W A S D 或方向键移动</li>
+              <li>Space 按当前移动方向闪现</li>
+              <li>Esc 暂停或继续</li>
+              <li>战斗与技能自动释放，专注走位即可</li>
+            </ul>
+          </article>
+
+          <article class="panel-card">
+            <div class="section-head">
+              <h2>困难等级</h2>
+              <span class="badge" id="difficultyBadge">Lv.1</span>
+            </div>
+            <div class="difficulty-controls">
+              <label for="difficultyInput">输入等级</label>
+              <input id="difficultyInput" class="difficulty-input" type="number" min="1" max="10" step="1" value="1" />
+            </div>
+            <p id="difficultySummary" class="card-note"></p>
+          </article>
+
+          <article class="panel-card">
+            <div class="section-head">
+              <h2>当前框架</h2>
+              <span class="badge">Playable</span>
+            </div>
+            <ul class="compact-list">
+              <li>独立主菜单、天赋页、图鉴页</li>
+              <li>全屏游戏场景与实时 HUD</li>
+              <li>局内成长、技能升级、专属成长</li>
+              <li>本地存档、怪物图鉴、技能图鉴</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+
+      <section class="screen-overlay" id="talentScreen">
+        <div class="overlay-card wide-card growth-card">
+          <div class="overlay-header">
+            <div>
+              <p class="eyebrow">Meta Progression</p>
+              <h2>局外成长</h2>
+            </div>
+            <button data-close-overlay class="ghost-button">返回</button>
+          </div>
+          <p class="overlay-copy">游戏币用于局外成长、技能解锁和专属工坊购买，购买后会在下一局及后续升级池中生效。</p>
+          <div class="growth-sections">
+            <section class="growth-section">
+              <div class="section-head">
+                <h3>天赋成长</h3>
+                <span class="badge">角色</span>
+              </div>
+              <div id="talentList" class="card-grid"></div>
+            </section>
+
+            <section class="growth-section">
+              <div class="section-head">
+                <h3>技能工坊</h3>
+                <span class="badge">解锁</span>
+              </div>
+              <div id="skillUnlockShop" class="card-grid"></div>
+            </section>
+
+            <section class="growth-section">
+              <div class="section-head">
+                <h3>专属工坊</h3>
+                <span class="badge">专属</span>
+              </div>
+              <div id="exclusiveUnlockShop" class="card-grid"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen-overlay" id="codexScreen">
+        <div class="overlay-card wide-card codex-modal-card">
+          <div class="overlay-header">
+            <div>
+              <p class="eyebrow">Collection</p>
+              <h2>图鉴总览</h2>
+            </div>
+            <button data-close-overlay class="ghost-button">返回</button>
+          </div>
+          <div class="codex-scroll">
+            <div class="codex-layout">
+              <div>
+                <h3>怪物图鉴</h3>
+                <div id="codexMonsters" class="card-column"></div>
+              </div>
+              <div>
+                <h3>技能与专属</h3>
+                <div id="codexSkills" class="card-column"></div>
+              </div>
+              <div>
+                <h3>成长项图鉴</h3>
+                <div id="codexBoosts" class="card-column"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="app-view game-view" id="gameView">
+      <canvas id="gameCanvas" width="1280" height="720"></canvas>
+
+      <div class="game-hud">
+        <div class="sr-only">
+          <strong id="sessionLabel">战斗准备</strong>
+          <span id="sessionHint">点击开始进入游戏界面</span>
+        </div>
+
+        <div class="hud-inline hud-inline-top">
+          <span id="hudTimerText">倒计时 15:00</span>
+          <span>游戏币 <strong data-global-field="coins">0</strong></span>
+        </div>
+
+        <div class="hud-inline hud-inline-bottom">
+          <span id="hudHealthText">生命 100 / 100</span>
+          <span id="hudLevelText">等级 Lv.1</span>
+        </div>
+      </div>
+
+      <section class="screen-overlay" id="pauseScreen">
+        <div class="overlay-card pause-card">
+          <div class="overlay-header">
+            <div>
+              <p class="eyebrow">Paused</p>
+              <h2>战斗暂停</h2>
+              <p>按 Esc 继续，或结束本局返回主菜单。</p>
+            </div>
+          </div>
+          <div class="hero-actions">
+            <button id="resumeRunButton" class="primary-button">继续战斗</button>
+            <button id="giveUpButton" class="ghost-button">放弃本局</button>
+          </div>
+          <div class="pause-layout">
+            <div>
+              <h3>详细属性</h3>
+              <dl id="hudStats" class="stats-grid pause-stats-grid">
+                <div><dt>状态</dt><dd data-field="status">待机</dd></div>
+                <div><dt>时间</dt><dd data-field="time">15:00</dd></div>
+                <div><dt>等级</dt><dd data-field="level">1</dd></div>
+                <div><dt>经验</dt><dd data-field="exp">0 / 18</dd></div>
+                <div><dt>生命</dt><dd data-field="health">100 / 100</dd></div>
+                <div><dt>攻击</dt><dd data-field="attack">1.00x</dd></div>
+                <div><dt>移速</dt><dd data-field="speed">220</dd></div>
+                <div><dt>暴击</dt><dd data-field="crit">5%</dd></div>
+                <div><dt>闪避</dt><dd data-field="dodge">5%</dd></div>
+                <div><dt>护甲</dt><dd data-field="armor">0</dd></div>
+                <div><dt>冷却缩减</dt><dd data-field="cooldown">0%</dd></div>
+                <div><dt>闪现</dt><dd data-field="blink">1 / 1</dd></div>
+                <div><dt>吸经验范围</dt><dd data-field="expPickupRange">96</dd></div>
+                <div><dt>击败</dt><dd data-field="kills">0</dd></div>
+              </dl>
+            </div>
+            <div>
+              <div class="section-head">
+                <h3>技能信息</h3>
+                <span class="badge">详情</span>
+              </div>
+              <div id="activeSkills" class="skill-stack"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen-overlay" id="levelScreen">
+        <div class="overlay-card compact-card">
+          <p class="eyebrow">Level Up</p>
+          <h2>选择一项成长</h2>
+          <p>角色升级后从三项随机成长中选择其一。</p>
+          <div id="levelChoices" class="choice-grid"></div>
+        </div>
+      </section>
+
+      <section class="screen-overlay" id="resultScreen">
+        <div class="overlay-card compact-card">
+          <p class="eyebrow">Result</p>
+          <h2 id="resultTitle">结算</h2>
+          <div id="resultSummary" class="result-stack"></div>
+          <div class="hero-actions">
+            <button id="restartRunButton" class="primary-button">再来一局</button>
+            <button id="backToMenuButton" class="ghost-button">返回主菜单</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="toastLayer" class="toast-layer"></div>
+    </section>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
