@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <defs>
+    <filter id="fairyShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#6c8f73" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <ellipse cx="80" cy="138" rx="28" ry="10" fill="#5f7d5f" fill-opacity="0.16"/>
+  <g filter="url(#fairyShadow)">
+    <ellipse cx="55" cy="78" rx="19" ry="31" fill="#c6efff" fill-opacity="0.86" stroke="#8ecfe2" stroke-width="3"/>
+    <ellipse cx="105" cy="78" rx="19" ry="31" fill="#c6efff" fill-opacity="0.86" stroke="#8ecfe2" stroke-width="3"/>
+    <ellipse cx="60" cy="90" rx="14" ry="21" fill="#f2fbff" fill-opacity="0.46"/>
+    <ellipse cx="100" cy="90" rx="14" ry="21" fill="#f2fbff" fill-opacity="0.46"/>
+  </g>
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M70 112 63 132" fill="none" stroke="#8ba57a" stroke-width="4"/>
+    <path d="M90 112 97 132" fill="none" stroke="#8ba57a" stroke-width="4"/>
+    <path d="M66 94c-7 3-12 8-16 14" fill="none" stroke="#9bb28b" stroke-width="4"/>
+    <path d="M94 94c7 3 12 8 16 14" fill="none" stroke="#9bb28b" stroke-width="4"/>
+    <path d="M80 72c-16 0-29 12-29 28v10c0 11 14 19 29 19s29-8 29-19v-10c0-16-13-28-29-28Z" fill="#86d48f" stroke="#87a371" stroke-width="4.2"/>
+    <path d="M80 79c-11 0-20 7-20 18v10c0 6 9 11 20 11s20-5 20-11V97c0-11-9-18-20-18Z" fill="#9ce0a1" fill-opacity="0.6"/>
+    <circle cx="80" cy="53" r="24" fill="#fff2df" stroke="#8f9d7d" stroke-width="4.2"/>
+    <path d="M62 48c4-14 11-22 18-22 7 0 14 8 18 22-7-3-13-4-19-2-6 2-12 3-17 2Z" fill="#f4c577" stroke="#a8a173" stroke-width="4"/>
+    <circle cx="71" cy="55" r="3.5" fill="#425741"/>
+    <circle cx="89" cy="55" r="3.5" fill="#425741"/>
+    <path d="M73 66c3 3 11 3 14 0" fill="none" stroke="#425741" stroke-width="3.2"/>
+    <circle cx="64" cy="16" r="5" fill="#ffe998" stroke="#9dac7c" stroke-width="2.6"/>
+    <circle cx="96" cy="16" r="5" fill="#ffe998" stroke="#9dac7c" stroke-width="2.6"/>
+    <path d="M70 32c-1-7-4-11-8-14" fill="none" stroke="#9dac7c" stroke-width="2.8"/>
+    <path d="M90 32c1-7 4-11 8-14" fill="none" stroke="#9dac7c" stroke-width="2.8"/>
+  </g>
+</svg>

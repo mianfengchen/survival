@@ -1,4 +1,5 @@
-import { TALENT_LIBRARY, createDefaultUnlockState, normalizeDifficultyLevel } from "./data.js";
+import { TALENT_LIBRARY, createDefaultUnlockState, normalizeDifficultyLevel, normalizeInitialSkillId } from "./data.js";
+import { createDefaultWorldState } from "./garden-data.js";
 
 const STORAGE_KEY = "sunny-survival-progress-v1";
 
@@ -8,7 +9,7 @@ function createTalentState() {
 
 export function createDefaultProgress() {
   return {
-    version: 2,
+    version: 3,
     meta: {
       totalCoins: 0,
       runs: 0,
@@ -18,6 +19,7 @@ export function createDefaultProgress() {
     },
     settings: {
       difficultyLevel: 1,
+      initialSkillId: "flyingSword",
     },
     talents: createTalentState(),
     unlocks: createDefaultUnlockState(),
@@ -25,6 +27,7 @@ export function createDefaultProgress() {
       monsters: [],
       skills: [],
     },
+    world: createDefaultWorldState(),
   };
 }
 
@@ -35,11 +38,6 @@ function mergeProgress(raw) {
   }
 
   const meta = { ...fallback.meta, ...(raw.meta || {}) };
-  const settings = {
-    ...fallback.settings,
-    ...(raw.settings || {}),
-    difficultyLevel: normalizeDifficultyLevel(raw.settings?.difficultyLevel ?? fallback.settings.difficultyLevel),
-  };
   const talents = { ...fallback.talents, ...(raw.talents || {}) };
   const defaultUnlocks = createDefaultUnlockState();
   const unlocks = {
@@ -47,18 +45,39 @@ function mergeProgress(raw) {
     exclusives: { ...defaultUnlocks.exclusives, ...(raw.unlocks?.exclusives || {}) },
     disabledExclusives: { ...defaultUnlocks.disabledExclusives, ...(raw.unlocks?.disabledExclusives || {}) },
   };
+  const settings = {
+    ...fallback.settings,
+    ...(raw.settings || {}),
+    difficultyLevel: normalizeDifficultyLevel(raw.settings?.difficultyLevel ?? fallback.settings.difficultyLevel),
+    initialSkillId: normalizeInitialSkillId(raw.settings?.initialSkillId ?? fallback.settings.initialSkillId, unlocks),
+  };
   const codex = {
     monsters: Array.isArray(raw.codex?.monsters) ? [...new Set(raw.codex.monsters)] : [],
     skills: Array.isArray(raw.codex?.skills) ? [...new Set(raw.codex.skills)] : [],
   };
+  const fallbackWorld = createDefaultWorldState();
+  const world = {
+    ...fallbackWorld,
+    ...(raw.world || {}),
+    liberatedRegions: Array.isArray(raw.world?.liberatedRegions)
+      ? [...new Set(raw.world.liberatedRegions)]
+      : fallbackWorld.liberatedRegions,
+    unlockedCharacters: Array.isArray(raw.world?.unlockedCharacters)
+      ? [...new Set(raw.world.unlockedCharacters)]
+      : fallbackWorld.unlockedCharacters,
+    unlockedLandscapes: Array.isArray(raw.world?.unlockedLandscapes)
+      ? [...new Set(raw.world.unlockedLandscapes)]
+      : fallbackWorld.unlockedLandscapes,
+  };
 
   return {
-    version: 2,
+    version: 3,
     meta,
     settings,
     talents,
     unlocks,
     codex,
+    world,
   };
 }
 
@@ -118,6 +137,7 @@ export function updateSettings(progress, partialSettings) {
     ...next.settings,
     ...partialSettings,
     difficultyLevel: normalizeDifficultyLevel(partialSettings?.difficultyLevel ?? next.settings.difficultyLevel),
+    initialSkillId: normalizeInitialSkillId(partialSettings?.initialSkillId ?? next.settings.initialSkillId, next.unlocks),
   };
   return next;
 }
@@ -142,5 +162,40 @@ export function purchaseExclusiveUnlock(progress, exclusiveId) {
 export function setExclusiveEnabled(progress, exclusiveId, enabled) {
   const next = mergeProgress(progress);
   next.unlocks.disabledExclusives[exclusiveId] = !enabled;
+  return next;
+}
+
+export function updateWorldState(progress, partialWorld) {
+  const next = mergeProgress(progress);
+  next.world = {
+    ...next.world,
+    ...partialWorld,
+    liberatedRegions: Array.isArray(partialWorld?.liberatedRegions)
+      ? [...new Set(partialWorld.liberatedRegions)]
+      : next.world.liberatedRegions,
+    unlockedCharacters: Array.isArray(partialWorld?.unlockedCharacters)
+      ? [...new Set(partialWorld.unlockedCharacters)]
+      : next.world.unlockedCharacters,
+    unlockedLandscapes: Array.isArray(partialWorld?.unlockedLandscapes)
+      ? [...new Set(partialWorld.unlockedLandscapes)]
+      : next.world.unlockedLandscapes,
+  };
+  return next;
+}
+
+export function unlockRegionReward(progress, regionId, reward) {
+  const next = mergeProgress(progress);
+  if (!next.world.liberatedRegions.includes(regionId)) {
+    next.world.liberatedRegions.push(regionId);
+  }
+
+  if (reward?.type === "character" && reward.targetId && !next.world.unlockedCharacters.includes(reward.targetId)) {
+    next.world.unlockedCharacters.push(reward.targetId);
+  }
+
+  if (reward?.type === "landscape" && reward.targetId && !next.world.unlockedLandscapes.includes(reward.targetId)) {
+    next.world.unlockedLandscapes.push(reward.targetId);
+  }
+
   return next;
 }

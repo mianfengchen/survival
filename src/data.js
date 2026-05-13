@@ -22,8 +22,9 @@ export function getDifficultyProfile(value) {
     monsterHealthMultiplier: Number((1 + bonus * 0.32).toFixed(2)),
     monsterDamageMultiplier: Number((1 + bonus * 0.18).toFixed(2)),
     monsterSpeedMultiplier: Number((1 + bonus * 0.06).toFixed(2)),
-    spawnRateMultiplier: Number((1 + bonus * 0.12).toFixed(2)),
-    coinMultiplier: Number((1 + bonus * 0.28).toFixed(2)),
+    spawnRateMultiplier: Number((1.08 + bonus * 0.12).toFixed(2)),
+    expMultiplier: Number((1 + bonus * 0.16).toFixed(2)),
+    coinMultiplier: Number((1 + bonus * 0.12).toFixed(2)),
     typeAdvanceSeconds: bonus * 80,
     eliteWeightMultiplier: Number((1 + bonus * 0.14).toFixed(2)),
     bossHealthMultiplier: Number((1 + bonus * 0.38).toFixed(2)),
@@ -36,7 +37,8 @@ export function getDifficultyProfile(value) {
 
 export function getDifficultySummary(value) {
   const profile = getDifficultyProfile(value);
-  return `怪物生命 x${profile.monsterHealthMultiplier}，伤害 x${profile.monsterDamageMultiplier}，刷新 x${profile.spawnRateMultiplier}，金币 x${profile.coinMultiplier}，高阶怪会提前 ${profile.typeAdvanceSeconds} 秒出现。`;
+  const boss = getBossDefinitionForDifficulty(profile.level);
+  return `怪物生命 x${profile.monsterHealthMultiplier}，伤害 x${profile.monsterDamageMultiplier}，刷新 x${profile.spawnRateMultiplier}，经验 x${profile.expMultiplier}，金币 x${profile.coinMultiplier}，本级 Boss：${boss?.name || "未知"}。`;
 }
 
 export const PLAYER_BASE = {
@@ -117,23 +119,252 @@ export const MONSTER_LIBRARY = [
     exp: 12,
   },
   {
-    id: "twilightMower",
-    name: "黄昏收割者",
-    description: "15 分钟出现的超巨型最终首领，拥有高压弹幕攻击，击败后立即胜利。",
-    color: "#e85f6a",
-    accent: "#97212f",
+    id: "budSentinel",
+    name: "萌芽守门人",
+    description: "Lv.1 的开场 Boss，会用扇形花瓣弹封锁正面路线。",
+    color: "#98d169",
+    accent: "#547e34",
+    detailColor: "#eff9c9",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
     health: 1000000,
-    speed: 72,
-    damage: 48,
-    radius: 118,
-    exp: 500,
+    speed: 62,
+    damage: 16,
+    radius: 56,
+    exp: 160,
     boss: true,
+    bossTier: 1,
+    shapeId: "budSentinel",
+    attackPattern: "petalFan",
+  },
+  {
+    id: "clockvineSerpent",
+    name: "藤钟长蛇",
+    description: "Lv.2 的长身 Boss，会持续甩出旋转藤种弹幕。",
+    color: "#83bc76",
+    accent: "#426646",
+    detailColor: "#e3f5d6",
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: 2187500,
+    speed: 68,
+    damage: 20,
+    radius: 62,
+    exp: 200,
+    boss: true,
+    bossTier: 2,
+    shapeId: "clockvineSerpent",
+    attackPattern: "spiralBloom",
+  },
+  {
+    id: "amberShellCrab",
+    name: "琥珀壳将",
+    description: "Lv.3 的甲壳 Boss，会交替释放十字与斜线碎壳。",
+    color: "#efb35f",
+    accent: "#8e5b26",
+    detailColor: "#ffe3a8",
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: 4687500,
+    speed: 70,
+    damage: 24,
+    radius: 70,
+    exp: 240,
+    boss: true,
+    bossTier: 3,
+    shapeId: "amberShellCrab",
+    attackPattern: "crossBurst",
+  },
+  {
+    id: "moonpetalMoth",
+    name: "月瓣蛾后",
+    description: "Lv.4 的飞翼 Boss，会撒出缓慢追踪的月鳞群。",
+    color: "#c9a3ef",
+    accent: "#7454a8",
+    detailColor: "#f3dcff",
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: 10000000,
+    speed: 74,
+    damage: 30,
+    radius: 76,
+    exp: 290,
+    boss: true,
+    bossTier: 4,
+    shapeId: "moonpetalMoth",
+    attackPattern: "mothSwarm",
+  },
+  {
+    id: "prismStag",
+    name: "棱镜鹿王",
+    description: "Lv.5 的角冠 Boss，会从两侧射出分镜棱枪。",
+    color: "#6dc6ff",
+    accent: "#2e6e9e",
+    detailColor: "#dff6ff",
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: 20312500,
+    speed: 78,
+    damage: 36,
+    radius: 86,
+    exp: 360,
+    boss: true,
+    bossTier: 5,
+    shapeId: "prismStag",
+    attackPattern: "prismLance",
+  },
+  {
+    id: "myceliumLord",
+    name: "沼孢菌主",
+    description: "Lv.6 的菌伞 Boss，会吐出会裂变的毒孢。",
+    color: "#a8c270",
+    accent: "#5f6f32",
+    detailColor: "#f0f5c9",
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: 37500000,
+    speed: 76,
+    damage: 42,
+    radius: 96,
+    exp: 450,
+    boss: true,
+    bossTier: 6,
+    shapeId: "myceliumLord",
+    attackPattern: "sporeBurst",
+  },
+  {
+    id: "tempestTulip",
+    name: "风暴郁金统领",
+    description: "Lv.7 的风暴 Boss，会放出双层反向风轮。",
+    color: "#ff9e7a",
+    accent: "#b45535",
+    detailColor: "#ffe1d4",
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: 68750000,
+    speed: 82,
+    damage: 48,
+    radius: 104,
+    exp: 560,
+    boss: true,
+    bossTier: 7,
+    shapeId: "tempestTulip",
+    attackPattern: "tempestWheel",
+  },
+  {
+    id: "eclipsePeony",
+    name: "蚀光牡丹",
+    description: "Lv.8 的暗蚀 Boss，会召下多段蚀月轰击。",
+    color: "#f06f9f",
+    accent: "#8f244d",
+    detailColor: "#ffd5e4",
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: 125000000,
+    speed: 86,
+    damage: 54,
+    radius: 110,
+    exp: 680,
+    boss: true,
+    bossTier: 8,
+    shapeId: "eclipsePeony",
+    attackPattern: "eclipseRain",
+  },
+  {
+    id: "voidLantern",
+    name: "虚灯古树",
+    description: "Lv.9 的古树 Boss，会织出大范围灯阵弹墙。",
+    color: "#8aa2ff",
+    accent: "#3a4c98",
+    detailColor: "#dfe5ff",
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: 218750000,
+    speed: 90,
+    damage: 60,
+    radius: 116,
+    exp: 820,
+    boss: true,
+    bossTier: 9,
+    shapeId: "voidLantern",
+    attackPattern: "lanternWall",
+  },
+  {
+    id: "twilightMower",
+    name: "黄昏收割者",
+    description: "Lv.10 的终局 Boss，拥有收割级复合弹幕与超巨体型。",
+    color: "#e85f6a",
+    accent: "#97212f",
+    detailColor: "#ffd5c5",
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: 312500000,
+    speed: 92,
+    damage: 66,
+    radius: 124,
+    exp: 1000,
+    boss: true,
+    bossTier: 10,
+    shapeId: "twilightMower",
+    attackPattern: "cataclysm",
   },
 ];
 
 export const SKILL_LIBRARY = [
+  {
+    id: "elfArrow",
+    name: "精灵箭术",
+    description: "凝聚风元素形成箭矢，朝最近敌人连射灵风箭，兼具稳定射程与中距离压制能力。",
+    color: "#8fdfff",
+    unlockCost: 0,
+    starterExclusiveId: "arrowPierce",
+    maxLevel: 5,
+    statsByLevel: [
+      { cooldown: 0.82, damage: 22, count: 1, speed: 520, pierce: 0, size: 9, range: 470 },
+      { cooldown: 0.72, damage: 30, count: 1, speed: 545, pierce: 0, size: 10, range: 500 },
+      { cooldown: 0.64, damage: 40, count: 2, speed: 570, pierce: 1, size: 10, range: 530 },
+      { cooldown: 0.56, damage: 53, count: 2, speed: 595, pierce: 1, size: 11, range: 560 },
+      { cooldown: 0.48, damage: 66, count: 3, speed: 620, pierce: 2, size: 12, range: 590 },
+    ],
+    exclusiveUpgrades: [
+      {
+        id: "arrowPierce",
+        name: "流风破甲",
+        description: "灵风箭额外获得穿透层数。",
+        maxLevel: 3,
+        unlockCost: 0,
+        startsUnlocked: true,
+      },
+      {
+        id: "arrowTracking",
+        name: "风眼锁定",
+        description: "箭矢会自动微调轨迹，优先命中不同目标。",
+        maxLevel: 1,
+        unlockCost: 120,
+      },
+      {
+        id: "arrowVolley",
+        name: "林隙齐射",
+        description: "每级额外发射 1 支灵风箭。",
+        maxLevel: 2,
+        unlockCost: 150,
+      },
+      {
+        id: "arrowTailwind",
+        name: "尾流加护",
+        description: "提升箭矢飞行速度与最大射程。",
+        maxLevel: 2,
+        unlockCost: 110,
+      },
+      {
+        id: "arrowBurst",
+        name: "花冠裂风",
+        description: "箭矢伤害显著提升，并带有更强的击退势能。",
+        maxLevel: 2,
+        unlockCost: 130,
+      },
+    ],
+  },
   {
     id: "flyingSword",
     name: "飞剑术",
@@ -464,6 +695,162 @@ export const SKILL_LIBRARY = [
       },
     ],
   },
+  {
+    id: "vineSnare",
+    name: "藤鞭绞猎",
+    description: "向附近怪物甩出带刺藤鞭，瞬间抽打并缠住目标。",
+    color: "#74c26a",
+    unlockCost: 340,
+    starterExclusiveId: "vineCount",
+    maxLevel: 5,
+    statsByLevel: [
+      { cooldown: 3.6, damage: 48, count: 2, range: 280, root: 0.9, bloomRadius: 52 },
+      { cooldown: 3.2, damage: 62, count: 2, range: 310, root: 1.02, bloomRadius: 56 },
+      { cooldown: 2.85, damage: 80, count: 3, range: 340, root: 1.14, bloomRadius: 60 },
+      { cooldown: 2.55, damage: 101, count: 3, range: 375, root: 1.28, bloomRadius: 64 },
+      { cooldown: 2.25, damage: 126, count: 4, range: 410, root: 1.42, bloomRadius: 70 },
+    ],
+    exclusiveUpgrades: [
+      {
+        id: "vineCount",
+        name: "繁缠分枝",
+        description: "每级额外增加 2 条藤鞭。",
+        maxLevel: 2,
+        unlockCost: 0,
+      },
+      {
+        id: "vineRoot",
+        name: "盘绕定身",
+        description: "延长缠绕时间，并额外提高抽打伤害。",
+        maxLevel: 2,
+        unlockCost: 120,
+      },
+      {
+        id: "vineBloom",
+        name: "荆花爆绽",
+        description: "藤鞭命中处会炸开花棘，对周围敌人造成额外伤害。",
+        maxLevel: 2,
+        unlockCost: 140,
+      },
+    ],
+  },
+  {
+    id: "meteorSeed",
+    name: "彗种坠雨",
+    description: "召来带尾焰的种星，从空中坠落并砸向敌群。",
+    color: "#ff9867",
+    unlockCost: 360,
+    starterExclusiveId: "meteorCount",
+    maxLevel: 5,
+    statsByLevel: [
+      { cooldown: 5.4, damage: 70, radius: 54, count: 1, fallTime: 0.82 },
+      { cooldown: 4.95, damage: 92, radius: 60, count: 1, fallTime: 0.74 },
+      { cooldown: 4.5, damage: 118, radius: 66, count: 2, fallTime: 0.66 },
+      { cooldown: 4.05, damage: 148, radius: 72, count: 2, fallTime: 0.58 },
+      { cooldown: 3.65, damage: 184, radius: 80, count: 3, fallTime: 0.5 },
+    ],
+    exclusiveUpgrades: [
+      {
+        id: "meteorCount",
+        name: "流星育种",
+        description: "每级额外追加 1 枚种星。",
+        maxLevel: 2,
+        unlockCost: 0,
+      },
+      {
+        id: "meteorScorch",
+        name: "焦土花坑",
+        description: "种星坠地后留下灼烧花坑。",
+        maxLevel: 2,
+        unlockCost: 120,
+      },
+      {
+        id: "meteorShard",
+        name: "碎芒迸射",
+        description: "种星撞击后会向外迸出碎芒破片。",
+        maxLevel: 2,
+        unlockCost: 140,
+      },
+    ],
+  },
+  {
+    id: "ribbonBlade",
+    name: "绫刃回潮",
+    description: "抛出回旋丝刃，飞出后折返角色并沿途反复切割。",
+    color: "#8f9fff",
+    unlockCost: 380,
+    starterExclusiveId: "ribbonCount",
+    maxLevel: 5,
+    statsByLevel: [
+      { cooldown: 2.95, damage: 32, count: 1, speed: 360, size: 10, range: 250, pierce: 2 },
+      { cooldown: 2.6, damage: 44, count: 1, speed: 385, size: 11, range: 270, pierce: 2 },
+      { cooldown: 2.28, damage: 58, count: 2, speed: 410, size: 12, range: 290, pierce: 2 },
+      { cooldown: 1.98, damage: 74, count: 2, speed: 435, size: 13, range: 315, pierce: 3 },
+      { cooldown: 1.72, damage: 92, count: 3, speed: 460, size: 14, range: 340, pierce: 3 },
+    ],
+    exclusiveUpgrades: [
+      {
+        id: "ribbonCount",
+        name: "绫轮增幅",
+        description: "每级额外增加 1 枚回旋丝刃。",
+        maxLevel: 2,
+        unlockCost: 0,
+      },
+      {
+        id: "ribbonReturn",
+        name: "回潮切返",
+        description: "返程速度、伤害与穿透能力都会增强。",
+        maxLevel: 2,
+        unlockCost: 120,
+      },
+      {
+        id: "ribbonFray",
+        name: "碎绫飞岚",
+        description: "丝刃命中时会裂出侧向碎绫。",
+        maxLevel: 2,
+        unlockCost: 140,
+      },
+    ],
+  },
+  {
+    id: "lotusBeacon",
+    name: "莲灯守望",
+    description: "在战场点亮莲灯，持续锁定附近敌人并射出灵辉。",
+    color: "#f4c86d",
+    unlockCost: 400,
+    starterExclusiveId: "lotusCount",
+    maxLevel: 5,
+    statsByLevel: [
+      { cooldown: 6.2, damage: 26, count: 1, duration: 6.2, interval: 0.95, range: 250 },
+      { cooldown: 5.6, damage: 34, count: 1, duration: 6.8, interval: 0.88, range: 280 },
+      { cooldown: 5.0, damage: 44, count: 2, duration: 7.4, interval: 0.8, range: 310 },
+      { cooldown: 4.45, damage: 56, count: 2, duration: 8.0, interval: 0.72, range: 340 },
+      { cooldown: 3.95, damage: 70, count: 2, duration: 8.8, interval: 0.64, range: 380 },
+    ],
+    exclusiveUpgrades: [
+      {
+        id: "lotusCount",
+        name: "双芯点灯",
+        description: "每级额外点亮 1 盏莲灯。",
+        maxLevel: 2,
+        unlockCost: 0,
+      },
+      {
+        id: "lotusChain",
+        name: "莲辉转经",
+        description: "莲灯射出的灵辉会继续跳向附近敌人。",
+        maxLevel: 2,
+        unlockCost: 120,
+      },
+      {
+        id: "lotusWard",
+        name: "心莲护祷",
+        description: "灵辉命中后减速敌人，并为角色回复少量生命。",
+        maxLevel: 2,
+        unlockCost: 140,
+      },
+    ],
+  },
 ];
 
 export const GENERAL_UPGRADES = [
@@ -566,6 +953,37 @@ export const GENERAL_UPGRADES = [
     apply: (player, session) => {
       session.spawnRateMultiplier *= 1.12;
       session.coinRewardMultiplier *= 1.1;
+    },
+  },
+  {
+    id: "minuteVacuum",
+    name: "时针虹吸",
+    description: "每过 60 秒，自动吸取地图上的全部经验点。",
+    maxLevel: 1,
+    apply: (player, session) => {
+      session.expVacuumEnabled = true;
+      session.expVacuumInterval = 60;
+      session.expVacuumTimer = 60;
+    },
+  },
+  {
+    id: "projectileOverload",
+    name: "弹幕扩编",
+    description: "投射物数量 +1，但怪物数量 +20%。",
+    maxLevel: 1,
+    apply: (player, session) => {
+      player.projectileCountBonus += 1;
+      session.spawnRateMultiplier *= 1.2;
+    },
+  },
+  {
+    id: "summonOverload",
+    name: "召群扩列",
+    description: "召唤物数量 +1，但怪物数量 +20%。",
+    maxLevel: 1,
+    apply: (player, session) => {
+      player.summonCountBonus += 1;
+      session.spawnRateMultiplier *= 1.2;
     },
   },
   {
@@ -700,6 +1118,22 @@ export function getSkillForExclusive(exclusiveId) {
 
 export function getMonsterDefinition(monsterId) {
   return MONSTER_LIBRARY.find((monster) => monster.id === monsterId);
+}
+
+export function getBossDefinitionForDifficulty(value) {
+  const level = normalizeDifficultyLevel(value);
+  return MONSTER_LIBRARY.find((monster) => monster.boss && monster.bossTier === level) || getMonsterDefinition("twilightMower");
+}
+
+export function normalizeInitialSkillId(value, unlocks) {
+  const fallback = "flyingSword";
+  const definition = getSkillDefinition(value);
+  if (!definition) {
+    return fallback;
+  }
+
+  const unlocked = unlocks ? Boolean(unlocks.skills?.[definition.id] || definition.startsUnlocked) : Boolean(definition.startsUnlocked);
+  return unlocked ? definition.id : fallback;
 }
 
 export function createDefaultUnlockState() {
