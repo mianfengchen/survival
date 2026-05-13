@@ -5,6 +5,41 @@ const SCREEN_BLEND = typeof PIXI.BLEND_MODES.SCREEN === "number" ? PIXI.BLEND_MO
 const DECORATION_STEP_X = 176;
 const DECORATION_STEP_Y = 148;
 const MAX_PARTICLES = 220;
+const MAX_RENDER_RESOLUTION = 1.5;
+const PLAYER_VISUAL_SCALE = 1.5;
+const NORMAL_ENEMY_VISUAL_SCALE = 2;
+const DEFAULT_VISUAL_PROFILE = Object.freeze({
+  canvasFilter: "none",
+  groundBaseColor: "#b9e08a",
+  groundPatchColor: "rgba(255,255,255,0.07)",
+  groundBorderColor: "rgba(111, 157, 78, 0.24)",
+  particleBudget: 28,
+  particleAlphaScale: 1,
+  particleScale: 1,
+  particleLayerAlpha: 1,
+  particleBlur: 2.2,
+  fieldGlowAlpha: 1,
+  fieldGlowBlur: 4,
+  effectLayerAlpha: 1,
+  motionRate: 1,
+  spawnRateScale: 1,
+});
+const EYE_COMFORT_VISUAL_PROFILE = Object.freeze({
+  canvasFilter: "brightness(0.88) saturate(0.82) contrast(0.94)",
+  groundBaseColor: "#96ae76",
+  groundPatchColor: "rgba(255, 249, 224, 0.035)",
+  groundBorderColor: "rgba(97, 123, 79, 0.18)",
+  particleBudget: 12,
+  particleAlphaScale: 0.58,
+  particleScale: 0.9,
+  particleLayerAlpha: 0.72,
+  particleBlur: 1.4,
+  fieldGlowAlpha: 0.72,
+  fieldGlowBlur: 2.6,
+  effectLayerAlpha: 0.76,
+  motionRate: 0.68,
+  spawnRateScale: 0.6,
+});
 
 const EXTERNAL_ASSET_DEFS = {
   playerFairy: { path: "./assets/sprites/fairy-scout.svg", baseRadius: 40 },
@@ -313,6 +348,126 @@ function paintBossBody(graphics, x, y, radius, enemy) {
   }
 }
 
+function paintRegionalKin(graphics, x, y, radius, enemy) {
+  switch (enemy.shapeId) {
+    case "budKin":
+      for (let index = 0; index < 4; index += 1) {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * index) / 4;
+        drawLeaf(graphics, x + Math.cos(angle) * radius * 0.18, y + Math.sin(angle) * radius * 0.12, radius * 0.62, radius * 0.22, angle, index % 2 === 0 ? enemy.detailColor : enemy.accent);
+      }
+      beginFill(graphics, enemy.color);
+      graphics.drawCircle(x, y + radius * 0.06, radius * 0.42);
+      graphics.endFill();
+      break;
+    case "serpentKin":
+      for (let index = 0; index < 3; index += 1) {
+        beginFill(graphics, index === 2 ? enemy.detailColor : enemy.color);
+        graphics.drawCircle(x + (index - 1) * radius * 0.28, y + (index - 1) * radius * 0.2, radius * (0.28 - index * 0.03));
+        graphics.endFill();
+      }
+      setLine(graphics, radius * 0.12, enemy.accent);
+      graphics.moveTo(x - radius * 0.56, y + radius * 0.34);
+      graphics.quadraticCurveTo(x - radius * 0.06, y + radius * 0.02, x + radius * 0.56, y - radius * 0.34);
+      break;
+    case "shellKin":
+      beginFill(graphics, enemy.color);
+      drawPolyline(
+        graphics,
+        Array.from({ length: 6 }, (_, index) => {
+          const angle = -Math.PI / 2 + (Math.PI * 2 * index) / 6;
+          return [x + Math.cos(angle) * radius * 0.62, y + Math.sin(angle) * radius * 0.52];
+        }),
+        true,
+      );
+      graphics.endFill();
+      beginFill(graphics, enemy.detailColor);
+      drawRotatedDiamond(graphics, x, y, radius * 0.54, radius * 0.74);
+      graphics.endFill();
+      setLine(graphics, radius * 0.07, enemy.accent);
+      for (const offset of [-0.5, -0.18, 0.18, 0.5]) {
+        graphics.moveTo(x + offset * radius, y + radius * 0.08);
+        graphics.lineTo(x + offset * radius * 1.18, y + radius * 0.4);
+      }
+      break;
+    case "mothKin":
+      beginFill(graphics, enemy.detailColor);
+      graphics.drawEllipse(x - radius * 0.34, y, radius * 0.32, radius * 0.48);
+      graphics.drawEllipse(x + radius * 0.34, y, radius * 0.32, radius * 0.48);
+      graphics.endFill();
+      beginFill(graphics, enemy.color);
+      graphics.drawEllipse(x, y + radius * 0.02, radius * 0.14, radius * 0.52);
+      graphics.endFill();
+      break;
+    case "prismKin":
+      beginFill(graphics, enemy.color);
+      drawRotatedDiamond(graphics, x, y + radius * 0.06, radius * 0.7, radius * 0.92);
+      graphics.endFill();
+      beginFill(graphics, enemy.detailColor);
+      drawRotatedDiamond(graphics, x, y + radius * 0.06, radius * 0.34, radius * 0.44);
+      graphics.endFill();
+      setLine(graphics, radius * 0.06, enemy.accent);
+      graphics.moveTo(x - radius * 0.12, y - radius * 0.12);
+      graphics.lineTo(x - radius * 0.34, y - radius * 0.5);
+      graphics.moveTo(x + radius * 0.12, y - radius * 0.12);
+      graphics.lineTo(x + radius * 0.34, y - radius * 0.5);
+      break;
+    case "sporeKin":
+      beginFill(graphics, enemy.color);
+      graphics.drawEllipse(x, y - radius * 0.08, radius * 0.62, radius * 0.42);
+      graphics.endFill();
+      beginFill(graphics, enemy.detailColor);
+      graphics.drawRoundedRect(x - radius * 0.18, y - radius * 0.04, radius * 0.36, radius * 0.62, radius * 0.08);
+      graphics.endFill();
+      beginFill(graphics, enemy.accent);
+      graphics.drawCircle(x - radius * 0.24, y - radius * 0.16, radius * 0.07);
+      graphics.drawCircle(x + radius * 0.06, y - radius * 0.2, radius * 0.06);
+      graphics.drawCircle(x + radius * 0.26, y - radius * 0.1, radius * 0.05);
+      graphics.endFill();
+      break;
+    case "tempestKin":
+      for (const offset of [-0.34, 0, 0.34]) {
+        drawLeaf(graphics, x + offset * radius * 0.72, y - radius * 0.04, radius * 0.62, radius * 0.18, -Math.PI / 2 + offset * 0.32, offset === 0 ? enemy.color : enemy.detailColor);
+      }
+      beginFill(graphics, enemy.accent);
+      graphics.drawCircle(x, y + radius * 0.16, radius * 0.18);
+      graphics.endFill();
+      break;
+    case "eclipseKin":
+      for (let index = 0; index < 6; index += 1) {
+        const angle = (Math.PI * 2 * index) / 6;
+        drawLeaf(graphics, x + Math.cos(angle) * radius * 0.1, y + Math.sin(angle) * radius * 0.1, radius * 0.58, radius * 0.14, angle, index % 2 === 0 ? enemy.color : enemy.detailColor);
+      }
+      beginFill(graphics, enemy.accent);
+      graphics.drawCircle(x, y, radius * 0.16);
+      graphics.endFill();
+      break;
+    case "lanternKin":
+      beginFill(graphics, enemy.accent);
+      graphics.drawRoundedRect(x - radius * 0.08, y - radius * 0.08, radius * 0.16, radius * 0.7, radius * 0.06);
+      graphics.endFill();
+      for (const offset of [-0.28, 0.28]) {
+        beginFill(graphics, offset < 0 ? enemy.color : enemy.detailColor);
+        drawRotatedDiamond(graphics, x + offset * radius, y - radius * 0.02, radius * 0.36, radius * 0.5);
+        graphics.endFill();
+      }
+      break;
+    case "twilightKin":
+      for (let index = 0; index < 3; index += 1) {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * index) / 3;
+        drawLeaf(graphics, x + Math.cos(angle) * radius * 0.12, y + Math.sin(angle) * radius * 0.12, radius * 0.64, radius * 0.2, angle, index === 0 ? enemy.detailColor : enemy.color);
+      }
+      beginFill(graphics, enemy.accent);
+      graphics.drawCircle(x, y, radius * 0.24);
+      graphics.endFill();
+      break;
+    default:
+      paintNormalEnemy(graphics, x, y, radius, enemy);
+      return;
+  }
+
+  paintFace(graphics, x, y + radius * 0.12, radius * 0.42, "rgba(42, 52, 39, 0.9)");
+}
+
 function paintSoftDisc(graphics, x, y, radius, color) {
   for (let index = 4; index >= 1; index -= 1) {
     const ratio = index / 4;
@@ -329,20 +484,25 @@ function getProgress(effect) {
 export class PixiRenderer {
   constructor({ canvas }) {
     this.canvas = canvas;
+    this.logicalWidth = Math.max(1, Math.round(canvas.width || 1280));
+    this.logicalHeight = Math.max(1, Math.round(canvas.height || 720));
     this.app = new PIXI.Application({
       view: canvas,
       antialias: true,
       backgroundAlpha: 0,
       autoDensity: true,
-      resolution: window.devicePixelRatio || 1,
-      width: canvas.width,
-      height: canvas.height,
+      resolution: Math.min(window.devicePixelRatio || 1, MAX_RENDER_RESOLUTION),
+      width: this.logicalWidth,
+      height: this.logicalHeight,
     });
     this.app.stop();
+    this.eyeComfortMode = false;
+    this.visualProfile = DEFAULT_VISUAL_PROFILE;
     this.syncViewStyle();
 
     this.textureCache = new Map();
     this.externalTextureCache = new Map();
+    this.preloadExternalTextures();
     this.pools = {
       decorations: [],
       fields: [],
@@ -426,13 +586,42 @@ export class PixiRenderer {
     for (const layer of drawOrder) {
       this.world.addChild(layer);
     }
+
+    this.applyVisualProfile();
+  }
+
+  preloadExternalTextures() {
+    for (const assetId of Object.keys(EXTERNAL_ASSET_DEFS)) {
+      this.getExternalTexture(assetId);
+    }
+  }
+
+  getViewportSize() {
+    return {
+      width: this.logicalWidth,
+      height: this.logicalHeight,
+    };
+  }
+
+  resize(width, height) {
+    const nextWidth = Math.max(1, Math.round(width));
+    const nextHeight = Math.max(1, Math.round(height));
+    if (this.logicalWidth === nextWidth && this.logicalHeight === nextHeight) {
+      this.syncViewStyle();
+      return;
+    }
+
+    this.logicalWidth = nextWidth;
+    this.logicalHeight = nextHeight;
+    this.app.renderer.resize(this.logicalWidth, this.logicalHeight);
+    this.syncViewStyle();
   }
 
   ensureSize() {
     const screenWidth = this.app.screen?.width ?? this.app.renderer.screen.width;
     const screenHeight = this.app.screen?.height ?? this.app.renderer.screen.height;
-    if (screenWidth !== this.canvas.width || screenHeight !== this.canvas.height) {
-      this.app.renderer.resize(this.canvas.width, this.canvas.height);
+    if (screenWidth !== this.logicalWidth || screenHeight !== this.logicalHeight) {
+      this.app.renderer.resize(this.logicalWidth, this.logicalHeight);
     }
     this.syncViewStyle();
   }
@@ -440,6 +629,45 @@ export class PixiRenderer {
   syncViewStyle() {
     this.canvas.style.width = "100%";
     this.canvas.style.height = "100%";
+    this.canvas.style.filter = this.visualProfile.canvasFilter;
+  }
+
+  applyVisualProfile() {
+    if (!this.layers || !this.spriteLayers) {
+      return;
+    }
+
+    this.layers.fieldGlow.filters = [new PIXI.BlurFilter(this.visualProfile.fieldGlowBlur)];
+    this.layers.fieldGlow.blendMode = PIXI.BLEND_MODES.ADD;
+    this.layers.fieldGlow.alpha = this.visualProfile.fieldGlowAlpha;
+    this.layers.pulses.alpha = this.visualProfile.effectLayerAlpha;
+    this.layers.strikes.alpha = this.visualProfile.effectLayerAlpha;
+    this.layers.skillEffects.alpha = this.visualProfile.effectLayerAlpha;
+    this.spriteLayers.bossEffects.alpha = this.visualProfile.effectLayerAlpha;
+    this.spriteLayers.particles.filters = [new PIXI.BlurFilter(this.visualProfile.particleBlur)];
+    this.spriteLayers.particles.blendMode = PIXI.BLEND_MODES.ADD;
+    this.spriteLayers.particles.alpha = this.visualProfile.particleLayerAlpha;
+  }
+
+  setEyeComfortMode(enabled) {
+    const nextEnabled = Boolean(enabled);
+    if (this.eyeComfortMode === nextEnabled) {
+      this.syncViewStyle();
+      return;
+    }
+
+    this.eyeComfortMode = nextEnabled;
+    this.visualProfile = nextEnabled ? EYE_COMFORT_VISUAL_PROFILE : DEFAULT_VISUAL_PROFILE;
+    this.applyVisualProfile();
+    this.syncViewStyle();
+  }
+
+  getMotionTime(rate = 1) {
+    return this.lastRenderTime * rate * this.visualProfile.motionRate;
+  }
+
+  getSpawnRate(rate) {
+    return rate * this.visualProfile.spawnRateScale;
   }
 
   resetFrameState() {
@@ -490,7 +718,7 @@ export class PixiRenderer {
     const now = performance.now();
     const delta = clamp((now - this.lastRenderTime) / 1000, 1 / 120, 0.05);
     this.lastRenderTime = now;
-    this.frameParticleBudget = 28;
+    this.frameParticleBudget = this.visualProfile.particleBudget;
 
     const camera = runtime.getCamera();
     this.world.position.set(-camera.x, -camera.y);
@@ -643,6 +871,12 @@ export class PixiRenderer {
       return this.getExternalTexture("bossBug");
     }
 
+    if (enemy.regionExclusive) {
+      return this.getCachedTexture(`region-kin-${enemy.typeId}`, 132, 32, (graphics, x, y, radius) => {
+        paintRegionalKin(graphics, x, y, radius, enemy);
+      });
+    }
+
     switch (enemy.typeId) {
       case "sproutSlime":
         return this.getExternalTexture("enemyBugRound");
@@ -656,6 +890,27 @@ export class PixiRenderer {
     }
   }
 
+  getBubbleProjectileTexture(shard = false) {
+    const key = shard ? "projectile-bubble-shard" : "projectile-bubble-burst";
+    const size = shard ? 88 : 108;
+    const baseRadius = shard ? 18 : 24;
+    return this.getCachedTexture(key, size, baseRadius, (graphics, x, y, radius) => {
+      beginFill(graphics, shard ? "rgba(184, 241, 255, 0.3)" : "rgba(170, 235, 255, 0.26)");
+      graphics.drawCircle(x, y, radius * 0.78);
+      graphics.endFill();
+      setLine(graphics, shard ? 3 : 4, "rgba(255,255,255,0.72)");
+      graphics.drawCircle(x, y, radius * 0.72);
+      setLine(graphics, 1.6, shard ? "rgba(126, 225, 255, 0.82)" : "rgba(136, 227, 255, 0.8)");
+      graphics.drawCircle(x, y, radius * 0.54);
+      beginFill(graphics, "rgba(255,255,255,0.42)");
+      graphics.drawCircle(x - radius * 0.22, y - radius * 0.24, radius * 0.16);
+      graphics.endFill();
+      beginFill(graphics, "rgba(255,255,255,0.18)");
+      graphics.drawEllipse(x + radius * 0.08, y + radius * 0.16, radius * 0.18, radius * 0.1);
+      graphics.endFill();
+    });
+  }
+
   getProjectileTexture(projectile) {
     switch (projectile.skillId) {
       case "elfArrow":
@@ -663,8 +918,9 @@ export class PixiRenderer {
       case "flyingSword":
         return this.getExternalTexture("projectileSword");
       case "bubbleBurst":
+        return this.getBubbleProjectileTexture(false);
       case "bubbleShard":
-        return this.getExternalTexture("projectileOrb");
+        return this.getBubbleProjectileTexture(true);
       case "thornVolley":
       case "thornShard":
         return this.getExternalTexture("projectileThorn");
@@ -1014,11 +1270,11 @@ export class PixiRenderer {
     particle.vy = config.vy || 0;
     particle.life = config.life || 0.4;
     particle.maxLife = particle.life;
-    particle.scale = config.scale || 0.4;
+    particle.scale = (config.scale || 0.4) * this.visualProfile.particleScale;
     particle.drift = config.drift || 0.92;
     particle.sprite.position.set(config.x, config.y);
     particle.sprite.tint = parseColor(config.color || "#ffffff").color;
-    particle.sprite.alpha = config.alpha || 0.4;
+    particle.sprite.alpha = (config.alpha || 0.4) * this.visualProfile.particleAlphaScale;
     particle.sprite.scale.set(particle.scale);
     particle.sprite.blendMode = config.blendMode || PIXI.BLEND_MODES.ADD;
   }
@@ -1039,18 +1295,18 @@ export class PixiRenderer {
       particle.x += particle.vx * delta;
       particle.y += particle.vy * delta;
       particle.sprite.position.set(particle.x, particle.y);
-      particle.sprite.alpha = (particle.life / particle.maxLife) * 0.6;
+      particle.sprite.alpha = (particle.life / particle.maxLife) * 0.6 * this.visualProfile.particleAlphaScale;
       particle.sprite.scale.set(particle.scale * (0.65 + (particle.life / particle.maxLife) * 0.85));
     }
   }
 
   drawArena(camera) {
     const graphics = this.layers.arena;
-    beginFill(graphics, "#b9e08a");
+    beginFill(graphics, this.visualProfile.groundBaseColor);
     graphics.drawRect(0, 0, ARENA.width, ARENA.height);
     graphics.endFill();
 
-    beginFill(graphics, "rgba(255,255,255,0.07)");
+    beginFill(graphics, this.visualProfile.groundPatchColor);
     for (let x = Math.floor(camera.x / 240) * 240; x <= camera.x + camera.width + 240; x += 240) {
       for (let y = Math.floor(camera.y / 220) * 220; y <= camera.y + camera.height + 220; y += 220) {
         graphics.drawEllipse(x + 80, y + 68, 64, 28);
@@ -1059,17 +1315,7 @@ export class PixiRenderer {
     }
     graphics.endFill();
 
-    setLine(graphics, 2, "rgba(255,255,255,0.18)");
-    for (let x = Math.floor(camera.x / 64) * 64; x <= camera.x + camera.width + 64; x += 64) {
-      graphics.moveTo(x, 0);
-      graphics.lineTo(x, ARENA.height);
-    }
-    for (let y = Math.floor(camera.y / 64) * 64; y <= camera.y + camera.height + 64; y += 64) {
-      graphics.moveTo(0, y);
-      graphics.lineTo(ARENA.width, y);
-    }
-
-    setLine(graphics, 8, "rgba(111, 157, 78, 0.24)");
+    setLine(graphics, 8, this.visualProfile.groundBorderColor);
     graphics.drawRect(0, 0, ARENA.width, ARENA.height);
   }
 
@@ -1117,29 +1363,30 @@ export class PixiRenderer {
   }
 
   drawPlayer(player, delta) {
-    const glowPulse = 1 + Math.sin(this.lastRenderTime * 0.006) * 0.04;
+    const glowPulse = 1 + Math.sin(this.getMotionTime(0.006)) * 0.04;
     const textureData = this.getPlayerTexture();
-    const mainScale = (player.radius / textureData.baseRadius) * 0.93;
+    const mainScale = (player.radius / textureData.baseRadius) * 0.93 * PLAYER_VISUAL_SCALE;
+    const visualRadius = textureData.baseRadius * mainScale;
     this.playerVisual.position.set(player.x, player.y);
     this.playerVisual.mainSprite.texture = textureData.texture;
     this.playerVisual.mainSprite.tint = 0xffffff;
     this.playerVisual.mainSprite.scale.set(mainScale);
     this.playerVisual.mainSprite.rotation = 0;
-    this.playerVisual.shadowSprite.scale.set((player.radius / 24) * 1.38, (player.radius / 24) * 0.74);
+    this.playerVisual.shadowSprite.scale.set((player.radius / 24) * 1.38 * PLAYER_VISUAL_SCALE, (player.radius / 24) * 0.74 * PLAYER_VISUAL_SCALE);
     this.playerVisual.shadowSprite.alpha = 0.16;
-    this.playerVisual.glowSprite.scale.set((player.radius / 24) * 1.24 * glowPulse);
-    this.playerVisual.glowSprite.alpha = player.invulnerableFor > 0 ? 0.34 : 0.22;
+    this.playerVisual.glowSprite.scale.set((player.radius / 24) * 1.24 * PLAYER_VISUAL_SCALE * glowPulse);
+    this.playerVisual.glowSprite.alpha = (player.invulnerableFor > 0 ? 0.34 : 0.22) * this.visualProfile.effectLayerAlpha;
 
     const graphics = this.layers.playerOverlay;
     if (player.invulnerableFor > 0) {
       setLine(graphics, 3, "rgba(255, 255, 255, 0.78)");
-      graphics.drawCircle(player.x, player.y, player.radius + 8 + Math.sin(this.lastRenderTime * 0.012) * 2);
+      graphics.drawCircle(player.x, player.y, visualRadius + 8 + Math.sin(this.getMotionTime(0.012)) * 2);
     }
 
-    if (Math.random() < delta * 3.5) {
+    if (Math.random() < delta * this.getSpawnRate(3.5)) {
       this.spawnParticle({
-        x: player.x + (Math.random() - 0.5) * player.radius * 0.6,
-        y: player.y - player.radius * 0.2,
+        x: player.x + (Math.random() - 0.5) * visualRadius * 0.7,
+        y: player.y - visualRadius * 0.24,
         vx: (Math.random() - 0.5) * 12,
         vy: -10 - Math.random() * 12,
         life: 0.4,
@@ -1157,21 +1404,30 @@ export class PixiRenderer {
       const visual = this.acquireFromPool("enemies", this.spriteLayers.enemies, () => this.createEnemyVisual());
       const textureData = this.getEnemyTexture(enemy);
       const scale = enemy.radius / textureData.baseRadius;
-      const mainScale = scale * (enemy.boss ? 0.98 : 1.33);
+      const mainScale = scale * (enemy.boss ? 0.98 : 1.33 * NORMAL_ENEMY_VISUAL_SCALE);
+      const visualRadius = textureData.baseRadius * mainScale;
       const glowTint = parseColor(enemy.boss ? enemy.detailColor || enemy.accent : enemy.accent).color;
-      const pulse = enemy.boss ? 1 + Math.sin(this.lastRenderTime * 0.008 + enemy.x * 0.01) * 0.06 : 1;
+      const pulse = enemy.boss
+        ? 1 + Math.sin(this.getMotionTime(0.008) + enemy.x * 0.01) * 0.06
+        : enemy.regionExclusive
+          ? 1 + Math.sin(this.getMotionTime(0.01) + enemy.specialPhase) * 0.08
+          : 1;
 
       visual.position.set(enemy.x, enemy.y);
       visual.mainSprite.texture = textureData.texture;
       visual.mainSprite.tint = mixColors(enemy.color, 0xffffff, enemy.boss ? 0.15 : 0.22);
-      visual.mainSprite.alpha = enemy.boss ? 0.98 : 0.96;
+      visual.mainSprite.alpha = enemy.boss ? 0.98 : enemy.regionExclusive ? 0.98 : 0.96;
       visual.mainSprite.scale.set(mainScale);
-      visual.mainSprite.rotation = enemy.boss && enemy.shapeId === "twilightMower" ? (enemy.attackPhase || 0) * 0.18 : 0;
+      visual.mainSprite.rotation = enemy.boss && enemy.shapeId === "twilightMower"
+        ? (enemy.attackPhase || 0) * 0.18
+        : enemy.regionExclusive && (enemy.shapeId === "serpentKin" || enemy.shapeId === "tempestKin" || enemy.shapeId === "twilightKin")
+          ? Math.sin(this.getMotionTime(0.002) + enemy.specialPhase) * 0.16
+          : 0;
       visual.shadowSprite.scale.set(mainScale * 1.4, mainScale * 0.82);
-      visual.shadowSprite.alpha = enemy.boss ? 0.28 : 0.18;
+      visual.shadowSprite.alpha = enemy.boss ? 0.28 : enemy.regionExclusive ? 0.22 : 0.18;
       visual.glowSprite.tint = glowTint;
-      visual.glowSprite.scale.set(mainScale * (enemy.boss ? 2.45 : 1.54) * pulse);
-      visual.glowSprite.alpha = enemy.boss ? 0.24 : 0.09;
+      visual.glowSprite.scale.set(mainScale * (enemy.boss ? 2.45 : enemy.regionExclusive ? 1.88 : 1.54) * pulse);
+      visual.glowSprite.alpha = (enemy.boss ? 0.24 : enemy.regionExclusive ? 0.18 : 0.09) * this.visualProfile.effectLayerAlpha;
 
       if (enemy.boss) {
         const bossEffect = this.acquireFromPool("bossEffects", this.spriteLayers.bossEffects, () => this.createBossEffectVisual());
@@ -1180,20 +1436,81 @@ export class PixiRenderer {
         bossEffect.mainSprite.texture = bossAuraTexture.texture;
         bossEffect.mainSprite.tint = mixColors(enemy.detailColor || enemy.accent, 0xffffff, 0.22);
         bossEffect.mainSprite.scale.set((enemy.radius / bossAuraTexture.baseRadius) * (2 + pulse * 0.08));
-        bossEffect.mainSprite.alpha = 0.28;
-        bossEffect.mainSprite.rotation = this.lastRenderTime * 0.0012 + enemy.attackPhase * 0.04;
+        bossEffect.mainSprite.alpha = 0.28 * this.visualProfile.effectLayerAlpha;
+        bossEffect.mainSprite.rotation = this.getMotionTime(0.0012) + enemy.attackPhase * 0.04;
         bossEffect.haloSprite.tint = parseColor(enemy.accent).color;
         bossEffect.haloSprite.scale.set((enemy.radius / 24) * 2.7);
-        bossEffect.haloSprite.alpha = 0.16;
+        bossEffect.haloSprite.alpha = 0.16 * this.visualProfile.effectLayerAlpha;
+      } else if (enemy.regionExclusive) {
+        setLine(barGraphics, 1.6, enemy.detailColor);
+        barGraphics.drawCircle(enemy.x, enemy.y, visualRadius * (0.62 + Math.sin(this.getMotionTime(0.006) + enemy.specialPhase) * 0.04));
+        if (Math.random() < delta * this.getSpawnRate(10)) {
+          const angle = Math.random() * Math.PI * 2;
+          const distance = visualRadius * (0.22 + Math.random() * 0.46);
+          let particleColor = enemy.detailColor;
+          let velocityX = Math.cos(angle) * 8;
+          let velocityY = Math.sin(angle) * 8 - 6;
+
+          if (enemy.effectId === "vineArc") {
+            particleColor = enemy.accent;
+            velocityX = Math.cos(angle) * 10;
+            velocityY = Math.sin(angle) * 6 - 4;
+          } else if (enemy.effectId === "amberChip") {
+            particleColor = "#ffdba3";
+            velocityX = Math.cos(angle) * 14;
+            velocityY = Math.sin(angle) * 14;
+          } else if (enemy.effectId === "mothDust") {
+            particleColor = "#f7e6ff";
+            velocityX = Math.cos(angle) * 5;
+            velocityY = Math.sin(angle) * 5 - 7;
+          } else if (enemy.effectId === "prismGlint") {
+            particleColor = "#e4fbff";
+            velocityX = Math.cos(angle) * 12;
+            velocityY = Math.sin(angle) * 10;
+          } else if (enemy.effectId === "sporeMist") {
+            particleColor = "#f2f8cb";
+            velocityX = Math.cos(angle) * 4;
+            velocityY = -8 - Math.random() * 6;
+          } else if (enemy.effectId === "windRibbon") {
+            particleColor = "#ffe6db";
+            velocityX = Math.cos(angle) * 16;
+            velocityY = Math.sin(angle) * 10;
+          } else if (enemy.effectId === "eclipseSpark") {
+            particleColor = "#ffd8e8";
+            velocityX = Math.cos(angle) * 10;
+            velocityY = Math.sin(angle) * 10 + 4;
+          } else if (enemy.effectId === "lanternWisp") {
+            particleColor = "#dfe8ff";
+            velocityX = Math.cos(angle) * 6;
+            velocityY = -10 - Math.random() * 4;
+          } else if (enemy.effectId === "twilightScythe") {
+            particleColor = "#ffd8d0";
+            velocityX = Math.cos(angle) * 14;
+            velocityY = Math.sin(angle) * 12;
+          }
+
+          this.spawnParticle({
+            x: enemy.x + Math.cos(angle) * distance,
+            y: enemy.y + Math.sin(angle) * distance,
+            vx: velocityX,
+            vy: velocityY,
+            life: 0.36,
+            scale: 0.22,
+            color: particleColor,
+            alpha: 0.32,
+            blendMode: SCREEN_BLEND,
+          });
+        }
       }
 
-      const width = enemy.radius * 2.28;
+      const width = Math.max(enemy.radius * 2.28, visualRadius * 1.5);
+      const healthBarY = enemy.y - visualRadius - 11;
       const ratio = clamp(enemy.health / enemy.maxHealth, 0, 1);
       beginFill(barGraphics, "rgba(37, 45, 31, 0.2)");
-      barGraphics.drawRoundedRect(enemy.x - width / 2, enemy.y - enemy.radius - 11, width, 5, 3);
+      barGraphics.drawRoundedRect(enemy.x - width / 2, healthBarY, width, 5, 3);
       barGraphics.endFill();
       beginFill(barGraphics, enemy.boss ? "#ef6677" : "#ffffff");
-      barGraphics.drawRoundedRect(enemy.x - width / 2, enemy.y - enemy.radius - 11, width * ratio, 5, 3);
+      barGraphics.drawRoundedRect(enemy.x - width / 2, healthBarY, width * ratio, 5, 3);
       barGraphics.endFill();
 
       if (enemy.boss && Math.random() < delta * 7) {
@@ -1217,6 +1534,7 @@ export class PixiRenderer {
   drawProjectiles(projectiles, delta) {
     const fallbackGraphics = this.layers.projectileFallbacks;
     for (const projectile of projectiles) {
+      const isBubble = projectile.skillId === "bubbleBurst" || projectile.skillId === "bubbleShard";
       const supported = [
         "elfArrow",
         "flyingSword",
@@ -1241,43 +1559,45 @@ export class PixiRenderer {
       const textureData = this.getProjectileTexture(projectile);
       const angle = Math.atan2(projectile.vy, projectile.vx);
       const scale = projectile.radius / textureData.baseRadius;
-      const mainScale = scale * (projectile.skillId === "flyingSword" ? 1.35 : 1.18);
+      const mainScale = scale * (projectile.skillId === "flyingSword" ? 1.35 : isBubble ? 1.26 : 1.18);
       const glowTint = parseColor(projectile.color).color;
 
       visual.position.set(projectile.x, projectile.y);
       visual.mainSprite.texture = textureData.texture;
       visual.mainSprite.tint = projectile.skillId === "flyingSword"
         ? (projectile.giant ? 0xffe3a2 : mixColors(projectile.color, 0xffffff, 0.28))
-        : mixColors(projectile.color, 0xffffff, projectile.skillId === "bubbleBurst" || projectile.skillId === "bubbleShard" ? 0.36 : 0.2);
+        : mixColors(projectile.color, 0xffffff, isBubble ? 0.2 : 0.2);
       visual.mainSprite.scale.set(mainScale * (projectile.giant ? 1.08 : 1));
-      visual.mainSprite.rotation = angle;
-      visual.glowSprite.tint = projectile.skillId === "bubbleBurst" || projectile.skillId === "bubbleShard" ? 0xe6fbff : glowTint;
-      visual.glowSprite.scale.set(mainScale * (projectile.skillId === "meteorShard" ? 1.75 : projectile.skillId === "flyingSword" ? 1.92 : 1.38));
-      visual.glowSprite.alpha = projectile.skillId === "bubbleBurst" || projectile.skillId === "bubbleShard"
-        ? 0.12
+      visual.mainSprite.alpha = isBubble ? 0.84 : 1;
+      visual.mainSprite.rotation = isBubble ? this.getMotionTime(0.0018) + projectile.x * 0.0006 : angle;
+      visual.glowSprite.tint = isBubble ? 0xe6fbff : glowTint;
+      visual.glowSprite.scale.set(mainScale * (projectile.skillId === "meteorShard" ? 1.75 : projectile.skillId === "flyingSword" ? 1.92 : isBubble ? 1.72 : 1.38));
+      visual.glowSprite.alpha = (isBubble
+        ? 0.18
         : projectile.skillId === "flyingSword"
           ? (projectile.giant ? 0.34 : 0.22)
           : projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard"
             ? 0.18
-            : 0.15;
-      visual.ringSprite.visible = Boolean(projectile.tracking);
-      if (projectile.tracking) {
+            : 0.15) * this.visualProfile.effectLayerAlpha;
+      visual.ringSprite.visible = Boolean(projectile.tracking) || isBubble;
+      if (projectile.tracking || isBubble) {
         visual.ringSprite.tint = 0xdff6ff;
-        visual.ringSprite.scale.set(scale * 1.8);
-        visual.ringSprite.rotation = angle + this.lastRenderTime * 0.002;
+        visual.ringSprite.scale.set(scale * (isBubble ? 1.46 : 1.8));
+        visual.ringSprite.alpha = 0.22 * this.visualProfile.effectLayerAlpha;
+        visual.ringSprite.rotation = isBubble ? -this.getMotionTime(0.0026) : angle + this.getMotionTime(0.002);
       }
 
-      if (Math.random() < delta * (projectile.skillId === "flyingSword" ? 22 : projectile.skillId === "meteorShard" ? 26 : 14)) {
+      if (Math.random() < delta * this.getSpawnRate(projectile.skillId === "flyingSword" ? 22 : projectile.skillId === "meteorShard" ? 26 : 14)) {
         this.spawnParticle({
           x: projectile.x - Math.cos(angle) * projectile.radius * 0.8,
           y: projectile.y - Math.sin(angle) * projectile.radius * 0.8,
-          vx: -Math.cos(angle) * 16 + (Math.random() - 0.5) * 8,
-          vy: -Math.sin(angle) * 16 + (Math.random() - 0.5) * 8,
-          life: projectile.skillId === "meteorShard" ? 0.42 : 0.34,
-          scale: projectile.skillId === "flyingSword" ? 0.36 : 0.28,
-          color: projectile.skillId === "meteorShard" ? "#ffba87" : projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard" ? "#f2ecff" : projectile.color,
+          vx: -Math.cos(angle) * (isBubble ? 11 : 16) + (Math.random() - 0.5) * 8,
+          vy: -Math.sin(angle) * (isBubble ? 11 : 16) + (Math.random() - 0.5) * 8,
+          life: projectile.skillId === "meteorShard" ? 0.42 : isBubble ? 0.28 : 0.34,
+          scale: projectile.skillId === "flyingSword" ? 0.36 : isBubble ? 0.22 : 0.28,
+          color: projectile.skillId === "meteorShard" ? "#ffba87" : projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard" ? "#f2ecff" : isBubble ? "#c8f7ff" : projectile.color,
           alpha: 0.42,
-          blendMode: projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard" ? SCREEN_BLEND : PIXI.BLEND_MODES.ADD,
+          blendMode: projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard" || isBubble ? SCREEN_BLEND : PIXI.BLEND_MODES.ADD,
         });
       }
     }
@@ -1299,9 +1619,9 @@ export class PixiRenderer {
         : angle;
       visual.glowSprite.tint = parseColor(projectile.color).color;
       visual.glowSprite.scale.set(mainScale * (projectile.kind === "lantern" ? 1.72 : 1.34));
-      visual.glowSprite.alpha = projectile.kind === "seed" ? 0.12 : 0.18;
+      visual.glowSprite.alpha = (projectile.kind === "seed" ? 0.12 : 0.18) * this.visualProfile.effectLayerAlpha;
 
-      if (Math.random() < delta * 8) {
+      if (Math.random() < delta * this.getSpawnRate(8)) {
         this.spawnParticle({
           x: projectile.x,
           y: projectile.y,
@@ -1336,7 +1656,7 @@ export class PixiRenderer {
         graphics.moveTo(pulse.x + Math.cos(angle) * inner, pulse.y + Math.sin(angle) * inner);
         graphics.lineTo(pulse.x + Math.cos(angle) * outer, pulse.y + Math.sin(angle) * outer);
       }
-      if (Math.random() < delta * 18) {
+      if (Math.random() < delta * this.getSpawnRate(18)) {
         const angle = Math.random() * Math.PI * 2;
         const radius = pulse.radius * (0.5 + Math.random() * 0.42);
         this.spawnParticle({
@@ -1424,6 +1744,125 @@ export class PixiRenderer {
           graphics.moveTo(effect.x, effect.y);
           graphics.lineTo(effect.x + Math.cos(angle) * effect.radius * (0.58 + progress * 0.36), effect.y + Math.sin(angle) * effect.radius * (0.58 + progress * 0.36));
         }
+      } else if (effect.kind === "bubblePop") {
+        const burstRadius = effect.radius * (0.28 + progress * 0.72);
+        setLine(graphics, 9 * (1 - progress * 0.45), "rgba(171, 235, 255, 0.12)");
+        graphics.drawCircle(effect.x, effect.y, burstRadius);
+        setLine(graphics, 3, effect.color);
+        graphics.drawCircle(effect.x, effect.y, burstRadius * 0.74);
+        beginFill(graphics, "rgba(255,255,255,0.16)");
+        graphics.drawCircle(effect.x, effect.y, burstRadius * 0.52);
+        graphics.endFill();
+        for (let index = 0; index < 5; index += 1) {
+          const angle = (Math.PI * 2 * index) / 5 + progress * 0.32;
+          graphics.moveTo(effect.x + Math.cos(angle) * burstRadius * 0.24, effect.y + Math.sin(angle) * burstRadius * 0.24);
+          graphics.lineTo(effect.x + Math.cos(angle) * burstRadius * 0.92, effect.y + Math.sin(angle) * burstRadius * 0.92);
+        }
+        if (Math.random() < delta * 30) {
+          const angle = Math.random() * Math.PI * 2;
+          const distance = burstRadius * (0.2 + Math.random() * 0.5);
+          this.spawnParticle({
+            x: effect.x + Math.cos(angle) * distance,
+            y: effect.y + Math.sin(angle) * distance,
+            vx: Math.cos(angle) * 16,
+            vy: Math.sin(angle) * 16,
+            life: 0.26,
+            scale: 0.2,
+            color: "#dcfbff",
+            alpha: 0.34,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "vacuumSiphon") {
+        const pullX = lerp(effect.x, effect.targetX, progress);
+        const pullY = lerp(effect.y, effect.targetY, progress);
+        const controlX = lerp(effect.x, effect.targetX, 0.45) + (effect.targetY - effect.y) * 0.08;
+        const controlY = lerp(effect.y, effect.targetY, 0.45) - (effect.targetX - effect.x) * 0.08;
+        setLine(graphics, effect.thickness * 2.2 * (1 - progress * 0.3), "rgba(255, 224, 118, 0.14)");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.quadraticCurveTo(controlX, controlY, pullX, pullY);
+        setLine(graphics, Math.max(1.5, effect.thickness * (1 - progress * 0.42)), effect.color);
+        graphics.moveTo(effect.x, effect.y);
+        graphics.quadraticCurveTo(controlX, controlY, pullX, pullY);
+        beginFill(graphics, effect.accent, 0.88 - progress * 0.3);
+        graphics.drawCircle(pullX, pullY, Math.max(3, effect.thickness * (1.18 - progress * 0.4)));
+        graphics.endFill();
+        if (Math.random() < delta * 26) {
+          const ratio = Math.random() * progress;
+          const px = lerp(effect.x, effect.targetX, ratio);
+          const py = lerp(effect.y, effect.targetY, ratio);
+          this.spawnParticle({
+            x: px,
+            y: py,
+            vx: (Math.random() - 0.5) * 12,
+            vy: -8 - Math.random() * 10,
+            life: 0.3,
+            scale: 0.24,
+            color: "#fff3b1",
+            alpha: 0.34,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "vacuumField") {
+        const radius = effect.radius * progress;
+        setLine(graphics, 18 * (1 - progress * 0.35), "rgba(255, 224, 116, 0.08)");
+        graphics.drawCircle(effect.x, effect.y, radius);
+        setLine(graphics, 4.6 * (1 - progress * 0.22), effect.color);
+        graphics.drawCircle(effect.x, effect.y, radius);
+        setLine(graphics, 2.2, effect.accent);
+        graphics.drawCircle(effect.x, effect.y, Math.max(0, radius - 16));
+        for (let index = 0; index < 12; index += 1) {
+          const angle = (Math.PI * 2 * index) / 12 + progress * 0.6;
+          const inner = Math.max(0, radius - 20);
+          const outer = radius + 12;
+          graphics.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner);
+          graphics.lineTo(effect.x + Math.cos(angle) * outer, effect.y + Math.sin(angle) * outer);
+        }
+        if (Math.random() < delta * 22) {
+          const angle = Math.random() * Math.PI * 2;
+          this.spawnParticle({
+            x: effect.x + Math.cos(angle) * radius,
+            y: effect.y + Math.sin(angle) * radius,
+            vx: Math.cos(angle) * 16,
+            vy: Math.sin(angle) * 16,
+            life: 0.32,
+            scale: 0.26,
+            color: "#ffe58c",
+            alpha: 0.32,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "vacuumBurst") {
+        setLine(graphics, 12, "rgba(255, 222, 111, 0.1)");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.28 + progress * 0.52));
+        setLine(graphics, 3.5, effect.color);
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.22 + progress * 0.42));
+        beginFill(graphics, effect.accent, 0.24 * (1 - progress));
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.16 + progress * 0.24));
+        graphics.endFill();
+        beginFill(graphics, effect.accent);
+        drawStar(graphics, effect.x, effect.y, effect.radius * (0.2 + progress * 0.12), effect.radius * 0.08, 8);
+        graphics.endFill();
+        for (let index = 0; index < 8; index += 1) {
+          const angle = (Math.PI * 2 * index) / 8 + progress * 0.55;
+          graphics.moveTo(effect.x, effect.y);
+          graphics.lineTo(effect.x + Math.cos(angle) * effect.radius * (0.24 + progress * 0.38), effect.y + Math.sin(angle) * effect.radius * (0.24 + progress * 0.38));
+        }
+        if (Math.random() < delta * 36) {
+          const angle = Math.random() * Math.PI * 2;
+          const distance = effect.radius * (0.12 + progress * 0.38);
+          this.spawnParticle({
+            x: effect.x + Math.cos(angle) * distance,
+            y: effect.y + Math.sin(angle) * distance,
+            vx: Math.cos(angle) * 20,
+            vy: Math.sin(angle) * 20,
+            life: 0.34,
+            scale: 0.26,
+            color: "#ffe27c",
+            alpha: 0.38,
+            blendMode: SCREEN_BLEND,
+          });
+        }
       }
     }
   }
@@ -1438,16 +1877,16 @@ export class PixiRenderer {
       visual.mainSprite.texture = textureData.texture;
       visual.mainSprite.tint = tint;
       visual.mainSprite.scale.set(scale * 2);
-      visual.mainSprite.rotation = field.sourceSkillId === "stormBloom" ? this.lastRenderTime * 0.0008 : field.sourceSkillId === "meteorSeed" ? -this.lastRenderTime * 0.0006 : 0;
+      visual.mainSprite.rotation = field.sourceSkillId === "stormBloom" ? this.getMotionTime(0.0008) : field.sourceSkillId === "meteorSeed" ? -this.getMotionTime(0.0006) : 0;
       visual.auraSprite.tint = parseColor(field.color).color;
       visual.auraSprite.scale.set(scale * (field.sourceSkillId === "mushroomMine" ? 4.3 : 4.8));
-      visual.auraSprite.alpha = field.sourceSkillId === "stormBloom" ? 0.18 : 0.14;
+      visual.auraSprite.alpha = (field.sourceSkillId === "stormBloom" ? 0.18 : 0.14) * this.visualProfile.effectLayerAlpha;
       visual.ringSprite.tint = parseColor(field.edgeColor || field.color).color;
       visual.ringSprite.scale.set(scale * (field.sourceSkillId === "stormBloom" ? 3.2 : 3.6));
-      visual.ringSprite.rotation = this.lastRenderTime * 0.001 + field.x * 0.0002;
-      visual.ringSprite.alpha = 0.18;
+      visual.ringSprite.rotation = this.getMotionTime(0.001) + field.x * 0.0002;
+      visual.ringSprite.alpha = 0.18 * this.visualProfile.effectLayerAlpha;
 
-      if (Math.random() < delta * 8) {
+      if (Math.random() < delta * this.getSpawnRate(8)) {
         const angle = Math.random() * Math.PI * 2;
         this.spawnParticle({
           x: field.x + Math.cos(angle) * field.radius * (0.28 + Math.random() * 0.52),
@@ -1554,12 +1993,12 @@ export class PixiRenderer {
       visual.mainSprite.scale.set(scale * 1.08);
       visual.mainSprite.rotation = beacon.pulse * 0.04;
       visual.haloSprite.scale.set(scale * (2.2 + flash * 0.22));
-      visual.haloSprite.alpha = 0.18 + flash * 0.16;
+      visual.haloSprite.alpha = (0.18 + flash * 0.16) * this.visualProfile.effectLayerAlpha;
       visual.ringSprite.scale.set(scale * (1.6 + flash * 0.22));
-      visual.ringSprite.alpha = 0.22 + flash * 0.14;
+      visual.ringSprite.alpha = (0.22 + flash * 0.14) * this.visualProfile.effectLayerAlpha;
       visual.ringSprite.rotation = beacon.pulse * 0.05;
 
-      if (Math.random() < delta * 14) {
+      if (Math.random() < delta * this.getSpawnRate(14)) {
         const angle = Math.random() * Math.PI * 2;
         this.spawnParticle({
           x: beacon.x + Math.cos(angle) * beacon.radius * 0.5,
@@ -1582,32 +2021,36 @@ export class PixiRenderer {
       const dx = pickup.x - player.x;
       const dy = pickup.y - player.y;
       const tailAngle = Math.atan2(dy, dx);
-      const tailLength = Math.min(28, (pickup.pullSpeed || 0) * 0.034);
+      const tailLength = pickup.vacuuming
+        ? Math.min(72, 12 + (pickup.pullSpeed || 0) * 0.042)
+        : Math.min(28, (pickup.pullSpeed || 0) * 0.034);
       const visual = this.acquireFromPool("pickups", this.spriteLayers.pickups, () => this.createPickupVisual());
       const scale = pickup.radius / textureData.baseRadius;
 
       visual.position.set(pickup.x, pickup.y);
       visual.mainSprite.texture = textureData.texture;
-      visual.mainSprite.scale.set(scale * (1 + Math.sin(this.lastRenderTime * 0.01 + pickup.x * 0.02) * 0.05));
-      visual.mainSprite.rotation = this.lastRenderTime * 0.0018;
-      visual.glowSprite.scale.set(scale * (1.8 + tailLength * 0.02));
-      visual.glowSprite.alpha = 0.16 + tailLength * 0.01;
+      visual.mainSprite.tint = pickup.vacuuming ? 0xfff2aa : 0xffffff;
+      visual.mainSprite.scale.set(scale * (pickup.vacuuming ? 1.18 : 1) * (1 + Math.sin(this.getMotionTime(0.01) + pickup.x * 0.02) * 0.05));
+      visual.mainSprite.rotation = this.getMotionTime(0.0018);
+      visual.glowSprite.tint = pickup.vacuuming ? 0xffd75b : 0xffffff;
+      visual.glowSprite.scale.set(scale * (pickup.vacuuming ? 2.4 + tailLength * 0.026 : 1.8 + tailLength * 0.02));
+      visual.glowSprite.alpha = (pickup.vacuuming ? 0.28 + tailLength * 0.004 : 0.16 + tailLength * 0.01) * this.visualProfile.effectLayerAlpha;
 
       if (tailLength > 0) {
         this.spawnParticle({
           x: pickup.x + Math.cos(tailAngle) * pickup.radius * 0.4,
           y: pickup.y + Math.sin(tailAngle) * pickup.radius * 0.4,
-          vx: Math.cos(tailAngle) * 14,
-          vy: Math.sin(tailAngle) * 14,
+          vx: Math.cos(tailAngle) * (pickup.vacuuming ? 22 : 14),
+          vy: Math.sin(tailAngle) * (pickup.vacuuming ? 22 : 14),
           life: 0.24,
-          scale: 0.2,
-          color: "#fff2a2",
-          alpha: 0.28,
+          scale: pickup.vacuuming ? 0.24 : 0.2,
+          color: pickup.vacuuming ? "#ffe27b" : "#fff2a2",
+          alpha: pickup.vacuuming ? 0.36 : 0.28,
           blendMode: SCREEN_BLEND,
         });
       }
 
-      if (Math.random() < delta * 7) {
+      if (Math.random() < delta * this.getSpawnRate(pickup.vacuuming ? 16 : 7)) {
         this.spawnParticle({
           x: pickup.x + (Math.random() - 0.5) * pickup.radius,
           y: pickup.y + (Math.random() - 0.5) * pickup.radius,
@@ -1615,8 +2058,8 @@ export class PixiRenderer {
           vy: -6 - Math.random() * 10,
           life: 0.3,
           scale: 0.18,
-          color: "#fffbe6",
-          alpha: 0.3,
+          color: pickup.vacuuming ? "#fff0aa" : "#fffbe6",
+          alpha: pickup.vacuuming ? 0.36 : 0.3,
           blendMode: SCREEN_BLEND,
         });
       }
@@ -1630,7 +2073,7 @@ export class PixiRenderer {
     }
     const definition = getSkillDefinition("petalOrbit");
     const stats = definition.statsByLevel[state.level - 1];
-    const count = stats.count + (state.exclusives.petalCount || 0);
+    const count = stats.count + (state.exclusives.petalCount || 0) + runtime.player.summonCountBonus;
     const sizeScale = 1 + (state.exclusives.petalBloom || 0) * 0.2;
     const radius = stats.orbitRadius * runtime.player.rangeMultiplier * sizeScale;
     const petalRadius = stats.size * runtime.player.projectileSizeMultiplier * sizeScale;

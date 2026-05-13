@@ -15,6 +15,7 @@ import {
   normalizeInitialSkillId,
   normalizeDifficultyLevel,
 } from "./data.js";
+import { getRegionDefinition } from "./garden-data.js";
 import { PixiRenderer } from "./pixi-renderer.js";
 
 function clamp(value, min, max) {
@@ -71,6 +72,8 @@ function scaleProfile(baseProfile, scales = {}) {
 const SWORD_GLOW_COLORS = ["#ffe58f", "#8fe9ff", "#ffb4f6", "#b7ff84", "#ffd2a8", "#d7b7ff"];
 const PROJECTILE_COUNT_SKILLS = new Set(["elfArrow", "flyingSword", "bubbleBurst", "thornVolley", "meteorSeed", "ribbonBlade"]);
 const SUMMON_COUNT_SKILLS = new Set(["petalOrbit", "dewGarden", "mushroomMine", "lotusBeacon"]);
+const PROJECTILE_GENERAL_UPGRADES = new Set(["projectileSpeed", "projectileSize", "projectileOverload"]);
+const SUMMON_GENERAL_UPGRADES = new Set(["summonOverload"]);
 
 function pickSwordGlowColor(currentColor) {
   const options = SWORD_GLOW_COLORS.filter((color) => color !== currentColor);
@@ -222,10 +225,24 @@ export class GameRuntime {
     this.keysBound = true;
   }
 
+  resizeViewport(width, height) {
+    this.renderer.resize(width, height);
+  }
+
+  setEyeComfortMode(enabled) {
+    this.renderer.setEyeComfortMode(enabled);
+    if (this.state === "menu") {
+      this.renderIdleFrame();
+      return;
+    }
+    this.render();
+  }
+
   startRun(progress, options = {}) {
     const difficultyLevel = normalizeDifficultyLevel(options.difficultyLevel ?? progress?.settings?.difficultyLevel ?? 1);
     const difficultyProfile = scaleProfile(getDifficultyProfile(difficultyLevel), options.profileScales);
     const bossDefinition = options.bossId ? getMonsterDefinition(options.bossId) || getBossDefinitionForDifficulty(difficultyLevel) : getBossDefinitionForDifficulty(difficultyLevel);
+    const regionDefinition = options.regionId ? getRegionDefinition(options.regionId) : null;
     const defaultUnlocks = createDefaultUnlockState();
     this.metaUnlocks = {
       skills: { ...defaultUnlocks.skills, ...(progress?.unlocks?.skills || {}) },
@@ -271,12 +288,14 @@ export class GameRuntime {
       mode: options.mode || "survival",
       selectedCharacterId: options.characterId || null,
       regionId: options.regionId || null,
+      regionMonsterId: regionDefinition?.specialMonsterId || null,
       allowedSkillIds: unlockedSkillIds,
       roundDurationSeconds: options.roundDurationSeconds || ROUND_DURATION_SECONDS,
       difficultyLevel,
       difficultyProfile,
       bossId: bossDefinition.id,
       startingSkillId,
+      upgradesExhaustedNotified: false,
       discoveries: {
         monsters: new Set(),
         skills: new Set(),
@@ -390,6 +409,11 @@ export class GameRuntime {
 
     this.applyUpgradeChoice(picked);
     this.pendingChoices = [];
+    if (this.tryStartLevelUp()) {
+      this.lastTimestamp = 0;
+      return;
+    }
+
     this.state = "running";
     this.callbacks.onOverlayChange?.(null);
     this.callbacks.onSessionLabel?.("战斗进行中", "升级完成，继续推进局内成长");
@@ -453,7 +477,7 @@ export class GameRuntime {
 
     for (const general of GENERAL_UPGRADES) {
       const level = this.generalLevels[general.id] || 0;
-      if (level < general.maxLevel) {
+      if (level < general.maxLevel && this.isGeneralUpgradeAvailable(general.id)) {
         choices.push({
           key: `general:${general.id}`,
           type: "general",
@@ -528,6 +552,21 @@ export class GameRuntime {
     }
 
     return pickRandom(choices, 3);
+  }
+
+  getAvailableMonsters(elapsed, profile) {
+    return MONSTER_LIBRARY.filter((monster) => {
+      const availableElapsed = monster.regionExclusive ? elapsed : elapsed + profile.typeAdvanceSeconds;
+      if (monster.boss || monster.minTime > availableElapsed) {
+        return false;
+      }
+
+      if (monster.regionExclusive) {
+        return monster.id === this.session?.regionMonsterId;
+      }
+
+      return true;
+    });
   }
 
   loop(timestamp) {
@@ -643,10 +682,7 @@ export class GameRuntime {
   }
 
   getViewport() {
-    return {
-      width: this.canvas.width || 1280,
-      height: this.canvas.height || 720,
-    };
+    return this.renderer.getViewportSize();
   }
 
   getCamera() {
@@ -700,7 +736,10 @@ export class GameRuntime {
     const spawnCount = elapsed > 540 ? 4 : elapsed > 300 ? 3 : elapsed > 120 ? 2 : 1;
     const profile = this.session.difficultyProfile;
     for (let index = 0; index < spawnCount; index += 1) {
-      const eligible = MONSTER_LIBRARY.filter((monster) => !monster.boss && monster.minTime <= elapsed + profile.typeAdvanceSeconds);
+      const eligible = this.getAvailableMonsters(elapsed, profile);
+      if (eligible.length === 0) {
+        continue;
+      }
       const totalWeight = eligible.reduce((sum, monster) => {
         const weight = monster.weight * (monster.minTime > elapsed ? profile.eliteWeightMultiplier : 1);
         return sum + weight;
@@ -746,6 +785,9 @@ export class GameRuntime {
       boss: Boolean(definition.boss),
       bossTier: definition.bossTier || 0,
       shapeId: definition.shapeId || null,
+      familyId: definition.familyId || null,
+      effectId: definition.effectId || null,
+      regionExclusive: Boolean(definition.regionExclusive),
       attackPattern: definition.attackPattern || "petalFan",
       contactCooldown: 0,
       burnTimer: 0,
@@ -754,6 +796,7 @@ export class GameRuntime {
       hitCooldowns: {},
       attackClock: definition.boss ? Math.max(0.55, 2.1 - (definition.bossTier || 1) * 0.08) : 0,
       attackPhase: 0,
+      specialPhase: Math.random() * Math.PI * 2,
     };
   }
 
@@ -776,6 +819,41 @@ export class GameRuntime {
 
   getSummonCountBonus(skillId) {
     return SUMMON_COUNT_SKILLS.has(skillId) ? this.player.summonCountBonus : 0;
+  }
+
+  hasOwnedSkillFromSet(skillSet) {
+    return Object.keys(this.skillStates).some((skillId) => this.skillStates[skillId] && skillSet.has(skillId));
+  }
+
+  isGeneralUpgradeAvailable(generalId) {
+    if (PROJECTILE_GENERAL_UPGRADES.has(generalId)) {
+      return this.hasOwnedSkillFromSet(PROJECTILE_COUNT_SKILLS);
+    }
+
+    if (SUMMON_GENERAL_UPGRADES.has(generalId)) {
+      return this.hasOwnedSkillFromSet(SUMMON_COUNT_SKILLS);
+    }
+
+    return true;
+  }
+
+  getSpreadAngle(index, totalCount, step) {
+    return totalCount === 1 ? 0 : (-step * (totalCount - 1)) / 2 + index * step;
+  }
+
+  getProjectileAim(primaryTarget, index, totalCount, spreadStep, assignedTargets = []) {
+    const assignedTarget = assignedTargets[index] || null;
+    const target = assignedTarget || primaryTarget;
+    if (!target) {
+      return null;
+    }
+
+    return {
+      target,
+      direction: assignedTarget
+        ? this.getDirectionVector(assignedTarget.x - this.player.x, assignedTarget.y - this.player.y)
+        : this.getDirectionToTarget(primaryTarget, this.getSpreadAngle(index, totalCount, spreadStep)),
+    };
   }
 
   updateSkillCooldowns(delta) {
@@ -818,18 +896,21 @@ export class GameRuntime {
     const burstLevel = arrowMode ? state.exclusives.arrowBurst || 0 : 0;
     const totalCount = stats.count + this.getProjectileCountBonus(skillId) + extraVolley;
     const target = this.findNearestEnemy(this.player.x, this.player.y);
-    const assignedTargets = tracking ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    const assignedTargets = !arrowMode && totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    const trackingTargets = tracking && totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
     if (!target) {
       return;
     }
 
     for (let index = 0; index < totalCount; index += 1) {
       const giant = giantLevel > 0 && Math.random() < 0.08 * giantLevel;
-      const assignedTarget = assignedTargets.length > 0 ? assignedTargets[Math.min(index, assignedTargets.length - 1)] : target;
-      const angleOffset = tracking && assignedTargets.length > 1 ? 0 : totalCount === 1 ? 0 : (-0.08 * (totalCount - 1)) / 2 + index * 0.08;
-      const direction = assignedTarget
-        ? this.getDirectionVector(assignedTarget.x - this.player.x, assignedTarget.y - this.player.y)
-        : this.getDirectionToTarget(target, angleOffset);
+      const aim = this.getProjectileAim(target, index, totalCount, arrowMode ? 0.12 : 0.08, assignedTargets);
+      if (!aim) {
+        continue;
+      }
+
+      const { direction, target: assignedTarget } = aim;
+      const homingTarget = trackingTargets[index] || assignedTarget || target;
       const speedMultiplier = arrowMode ? 1 + tailwindLevel * 0.12 : giant ? 0.84 : 1;
       const damageMultiplier = arrowMode ? 1 + burstLevel * 0.24 : giant ? 8.5 : 1;
       const speed = stats.speed * this.player.projectileSpeedMultiplier * speedMultiplier;
@@ -851,7 +932,7 @@ export class GameRuntime {
         maxDistance: giant ? Number.POSITIVE_INFINITY : range,
         distanceTravelled: 0,
         tracking: tracking && !giant,
-        trackingTargetId: tracking && assignedTarget ? assignedTarget.id : null,
+        trackingTargetId: tracking && homingTarget ? homingTarget.id : null,
         color: giant ? "#ffcb61" : definitionColor(skillId),
         giant,
         glowColor: arrowMode ? "rgba(143, 223, 255, 0.76)" : state.exclusives.swordGlow > 0 ? state.glowColor || "#ffe58f" : null,
@@ -889,10 +970,15 @@ export class GameRuntime {
     }
 
     const totalCount = stats.count + this.getProjectileCountBonus("bubbleBurst");
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
 
     for (let index = 0; index < totalCount; index += 1) {
-      const offset = totalCount === 1 ? 0 : (-0.15 * (totalCount - 1)) / 2 + index * 0.15;
-      const direction = this.getDirectionToTarget(target, offset);
+      const aim = this.getProjectileAim(target, index, totalCount, 0.15, assignedTargets);
+      if (!aim) {
+        continue;
+      }
+
+      const { direction } = aim;
       const giantLevel = state.exclusives.bubbleGiant || 0;
       this.projectiles.push({
         id: crypto.randomUUID(),
@@ -926,7 +1012,7 @@ export class GameRuntime {
     const burstLevel = state.exclusives.thornBurst || 0;
 
     for (let index = 0; index < totalCount; index += 1) {
-      const angleOffset = totalCount === 1 ? 0 : (-stats.spread * (totalCount - 1)) / 2 + index * stats.spread;
+      const angleOffset = this.getSpreadAngle(index, totalCount, stats.spread);
       const direction = this.getDirectionToTarget(target, angleOffset);
       const speed = stats.speed * this.player.projectileSpeedMultiplier;
       this.projectiles.push({
@@ -957,12 +1043,19 @@ export class GameRuntime {
     const chillLevel = state.exclusives.dewChill || 0;
     const mendLevel = state.exclusives.dewMend || 0;
     const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
+    const hasAnchors = anchors.length > 0;
 
     for (let index = 0; index < totalCount; index += 1) {
       const anchorCount = Math.max(1, anchors.length);
       const anchor = anchors[index % anchorCount] || this.player;
       const ringAngle = (Math.PI * 2 * index) / Math.max(1, totalCount);
-      const ringDistance = anchors.length > 0 && totalCount > anchors.length ? 30 + 14 * Math.floor(index / anchorCount) : 0;
+      const ringDistance = hasAnchors
+        ? totalCount > anchors.length
+          ? 30 + 14 * Math.floor(index / anchorCount)
+          : 0
+        : totalCount > 1
+          ? 42
+          : 0;
       this.spawnField({
         sourceSkillId: "dewGarden",
         x: anchor.x + Math.cos(ringAngle) * ringDistance,
@@ -1122,10 +1215,15 @@ export class GameRuntime {
     const totalCount = stats.count + (state.exclusives.ribbonCount || 0) + this.getProjectileCountBonus("ribbonBlade");
     const returnLevel = state.exclusives.ribbonReturn || 0;
     const frayLevel = state.exclusives.ribbonFray || 0;
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
 
     for (let index = 0; index < totalCount; index += 1) {
-      const angleOffset = totalCount === 1 ? 0 : (-0.22 * (totalCount - 1)) / 2 + index * 0.22;
-      const direction = this.getDirectionToTarget(target, angleOffset);
+      const aim = this.getProjectileAim(target, index, totalCount, 0.22, assignedTargets);
+      if (!aim) {
+        continue;
+      }
+
+      const { direction } = aim;
       const speed = stats.speed * this.player.projectileSpeedMultiplier;
       this.projectiles.push({
         id: crypto.randomUUID(),
@@ -1408,6 +1506,16 @@ export class GameRuntime {
   }
 
   explodeBubble(projectile) {
+    this.spawnSkillEffect({
+      kind: "bubblePop",
+      x: projectile.x,
+      y: projectile.y,
+      radius: projectile.splash * 0.58,
+      duration: 0.34,
+      color: "rgba(146, 231, 255, 0.92)",
+      accent: "rgba(255, 255, 255, 0.94)",
+    });
+
     for (const enemy of this.enemies) {
       const distance = circleDistance(projectile, enemy);
       if (distance <= projectile.splash + enemy.radius) {
@@ -1895,6 +2003,206 @@ export class GameRuntime {
     }
   }
 
+  spawnRegionalKinBurst(enemy) {
+    if (!enemy.regionExclusive || !enemy.familyId) {
+      return;
+    }
+
+    const baseDamage = Math.max(6, enemy.damage * 0.42);
+    const playerAngle = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
+
+    if (enemy.familyId === "bud") {
+      for (let index = 0; index < 5; index += 1) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: (Math.PI * 2 * index) / 5,
+          speed: 140,
+          radius: 6,
+          damage: baseDamage * 0.55,
+          life: 2.2,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: "petal",
+        });
+      }
+      return;
+    }
+
+    if (enemy.familyId === "serpent") {
+      for (const offset of [-0.24, 0, 0.24]) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: playerAngle + offset,
+          speed: 176,
+          radius: 6,
+          damage: baseDamage * 0.62,
+          life: 2.5,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: "seed",
+        });
+      }
+      return;
+    }
+
+    if (enemy.familyId === "shell") {
+      for (let index = 0; index < 4; index += 1) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: (Math.PI / 2) * index,
+          speed: 210,
+          radius: 7,
+          damage: baseDamage * 0.72,
+          life: 2.4,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: "shard",
+        });
+      }
+      return;
+    }
+
+    if (enemy.familyId === "moth") {
+      for (const offset of [-0.32, 0, 0.32]) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: playerAngle + offset,
+          speed: 156,
+          radius: 6,
+          damage: baseDamage * 0.54,
+          life: 2.9,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: "moth",
+          homingStrength: 0.04,
+        });
+      }
+      return;
+    }
+
+    if (enemy.familyId === "prism") {
+      for (const offset of [-0.14, 0.14]) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: playerAngle + offset,
+          speed: 246,
+          radius: 7,
+          damage: baseDamage * 0.82,
+          life: 2.1,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: "shard",
+        });
+      }
+      return;
+    }
+
+    if (enemy.familyId === "spore") {
+      for (let index = 0; index < 4; index += 1) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: (Math.PI * 2 * index) / 4 + Math.PI / 4,
+          speed: 122,
+          radius: 7,
+          damage: baseDamage * 0.6,
+          life: 2.4,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: "seed",
+          splitCount: 3,
+          splitDamageScale: 0.42,
+          splitSpeed: 158,
+          splitRadius: 4.5,
+          splitKind: "seed",
+        });
+      }
+      return;
+    }
+
+    if (enemy.familyId === "tempest") {
+      for (let index = 0; index < 6; index += 1) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: (Math.PI * 2 * index) / 6,
+          speed: 172,
+          radius: 6,
+          damage: baseDamage * 0.58,
+          life: 2.8,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: "seed",
+          angularVelocity: index % 2 === 0 ? 1.5 : -1.5,
+        });
+      }
+      return;
+    }
+
+    if (enemy.familyId === "eclipse") {
+      for (const offset of [-0.38, -0.12, 0.12, 0.38]) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: playerAngle + offset,
+          speed: 228,
+          radius: 6,
+          damage: baseDamage * 0.65,
+          life: 2.25,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: "shard",
+        });
+      }
+      return;
+    }
+
+    if (enemy.familyId === "lantern") {
+      for (const angle of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle,
+          speed: 186,
+          radius: 7,
+          damage: baseDamage * 0.62,
+          life: 2.9,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: "lantern",
+        });
+      }
+      return;
+    }
+
+    if (enemy.familyId === "twilight") {
+      for (let index = 0; index < 6; index += 1) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: (Math.PI * 2 * index) / 6,
+          speed: 206,
+          radius: 7,
+          damage: baseDamage * 0.74,
+          life: 2.6,
+          color: enemy.color,
+          accentColor: enemy.detailColor,
+          kind: index % 2 === 0 ? "petal" : "shard",
+          splitCount: index % 2 === 0 ? 0 : 2,
+          splitDamageScale: 0.36,
+          splitSpeed: 148,
+          splitRadius: 4.5,
+          splitKind: "seed",
+        });
+      }
+    }
+  }
+
   fireBossPetalFan(enemy, profile) {
     const direction = this.getDirectionVector(this.player.x - enemy.x, this.player.y - enemy.y);
     const baseAngle = Math.atan2(direction.y, direction.x);
@@ -2194,8 +2502,11 @@ export class GameRuntime {
       value: enemy.exp,
       radius: 7,
       pullSpeed: 0,
+      vacuuming: false,
       spin: Math.random() * Math.PI * 2,
     });
+
+    this.spawnRegionalKinBurst(enemy);
 
     if (enemy.boss) {
       this.finishRun(true, false);
@@ -2206,16 +2517,22 @@ export class GameRuntime {
     const remaining = [];
     for (const pickup of this.pickups) {
       const distance = circleDistance(pickup, this.player);
-      pickup.spin += delta * 3.8;
+      pickup.spin += delta * (pickup.vacuuming ? 9.6 : 3.8);
       if (distance < 22) {
         this.gainExp(pickup.value);
         continue;
       }
 
-      if (distance < this.player.expPickupRange) {
+      if (pickup.vacuuming || distance < this.player.expPickupRange) {
         const direction = this.getDirectionVector(this.player.x - pickup.x, this.player.y - pickup.y);
-        const attractionRatio = 1 - distance / Math.max(1, this.player.expPickupRange);
-        pickup.pullSpeed = Math.min(920, Math.max(140, pickup.pullSpeed) + delta * (520 + attractionRatio * 980));
+        if (pickup.vacuuming) {
+          const mapSpan = Math.max(1, Math.hypot(ARENA.width, ARENA.height));
+          const attractionRatio = 1 - Math.min(1, distance / mapSpan);
+          pickup.pullSpeed = Math.min(2650, Math.max(420, pickup.pullSpeed) + delta * (1900 + attractionRatio * 1800 + distance * 0.28));
+        } else {
+          const attractionRatio = 1 - distance / Math.max(1, this.player.expPickupRange);
+          pickup.pullSpeed = Math.min(920, Math.max(140, pickup.pullSpeed) + delta * (520 + attractionRatio * 980));
+        }
         pickup.x += direction.x * pickup.pullSpeed * delta;
         pickup.y += direction.y * pickup.pullSpeed * delta;
       } else {
@@ -2233,25 +2550,86 @@ export class GameRuntime {
     }
 
     const totalExp = this.pickups.reduce((sum, pickup) => sum + pickup.value, 0);
-    this.pickups = [];
+    for (const pickup of this.pickups) {
+      pickup.vacuuming = true;
+      pickup.pullSpeed = Math.max(pickup.pullSpeed, 420);
+    }
+    this.spawnVacuumSiphonEffects(this.pickups, totalExp);
     this.callbacks.onToast?.("时针虹吸");
-    this.gainExp(totalExp);
+  }
+
+  spawnVacuumSiphonEffects(pickups, totalExp) {
+    if (pickups.length === 0) {
+      return;
+    }
+
+    const farthestDistance = pickups.reduce((maxDistance, pickup) => Math.max(maxDistance, circleDistance(pickup, this.player)), 0);
+
+    this.spawnSkillEffect({
+      kind: "vacuumField",
+      x: this.player.x,
+      y: this.player.y,
+      radius: Math.max(farthestDistance + 80, Math.hypot(ARENA.width, ARENA.height) * 0.55),
+      duration: 0.66,
+      color: "rgba(255, 219, 92, 0.9)",
+      accent: "rgba(255, 246, 191, 0.9)",
+    });
+
+    this.spawnSkillEffect({
+      kind: "vacuumBurst",
+      x: this.player.x,
+      y: this.player.y,
+      radius: Math.min(220, 72 + Math.sqrt(totalExp) * 7),
+      duration: 0.54,
+      color: "rgba(255, 219, 92, 0.92)",
+      accent: "rgba(255, 248, 214, 0.9)",
+    });
+  }
+
+  advanceLevel() {
+    this.session.exp -= this.session.expRequired;
+    this.session.level += 1;
+    this.session.expRequired = Math.floor(18 + this.session.level * 10 + this.session.level * this.session.level * 1.15);
+  }
+
+  tryStartLevelUp() {
+    if (!this.session || this.session.exp < this.session.expRequired) {
+      return false;
+    }
+
+    this.advanceLevel();
+    this.pendingChoices = this.buildUpgradeChoices();
+    if (this.pendingChoices.length === 0) {
+      if (!this.session.upgradesExhaustedNotified) {
+        this.session.upgradesExhaustedNotified = true;
+        this.callbacks.onToast?.("成长已达上限");
+      }
+      if (this.session.exp >= this.session.expRequired) {
+        return this.tryStartLevelUp();
+      }
+      this.emitHud();
+      return false;
+    }
+
+    this.state = "levelup";
+    this.callbacks.onLevelChoices?.(this.pendingChoices);
+    this.callbacks.onOverlayChange?.("levelScreen");
+    this.callbacks.onSessionLabel?.("升级中", "从三项成长中选择其一");
+    this.emitHud();
+    return true;
   }
 
   gainExp(amount) {
-    this.session.exp += amount * this.player.expMultiplier;
-    while (this.session.exp >= this.session.expRequired) {
-      this.session.exp -= this.session.expRequired;
-      this.session.level += 1;
-      this.session.expRequired = Math.floor(18 + this.session.level * 10 + this.session.level * this.session.level * 1.15);
-      this.state = "levelup";
-      this.pendingChoices = this.buildUpgradeChoices();
-      this.callbacks.onLevelChoices?.(this.pendingChoices);
-      this.callbacks.onOverlayChange?.("levelScreen");
-      this.callbacks.onSessionLabel?.("升级中", "从三项成长中选择其一");
-      this.emitHud();
+    if (!this.session || amount <= 0) {
       return;
     }
+
+    this.session.exp += amount * this.player.expMultiplier;
+    if (this.tryStartLevelUp()) {
+      return;
+    }
+
+    this.emitHud();
   }
 
   damageEnemy(enemy, damage, source) {
@@ -2344,6 +2722,7 @@ export class GameRuntime {
       time: remainingTime,
       level: this.session.level,
       exp: `${Math.floor(this.session.exp)} / ${this.session.expRequired}`,
+      expRatio: this.session.expRequired > 0 ? this.session.exp / this.session.expRequired : 0,
       health: `${Math.ceil(this.player.health)} / ${this.player.maxHealth}`,
       attack: formatMultiplier(this.player.attackMultiplier),
       speed: `${Math.round(this.player.speed)}`,
@@ -3328,7 +3707,7 @@ export class GameRuntime {
 
     const definition = getSkillDefinition("petalOrbit");
     const stats = definition.statsByLevel[state.level - 1];
-    const count = stats.count + (state.exclusives.petalCount || 0);
+    const count = stats.count + (state.exclusives.petalCount || 0) + this.getSummonCountBonus("petalOrbit");
     const sizeScale = 1 + (state.exclusives.petalBloom || 0) * 0.2;
     const radius = stats.orbitRadius * this.player.rangeMultiplier * sizeScale;
     const petalRadius = stats.size * this.player.projectileSizeMultiplier * sizeScale;

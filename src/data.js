@@ -1,3 +1,5 @@
+import { REGION_SPECIAL_MONSTERS } from "./garden-data.js";
+
 export const ARENA = {
   width: 960 * 3,
   height: 540 * 3,
@@ -118,6 +120,7 @@ export const MONSTER_LIBRARY = [
     radius: 17,
     exp: 12,
   },
+  ...REGION_SPECIAL_MONSTERS,
   {
     id: "budSentinel",
     name: "萌芽守门人",
@@ -127,7 +130,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#eff9c9",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1000000,
+    health: 50000,
     speed: 62,
     damage: 16,
     radius: 56,
@@ -320,7 +323,7 @@ export const SKILL_LIBRARY = [
     starterExclusiveId: "arrowPierce",
     maxLevel: 5,
     statsByLevel: [
-      { cooldown: 0.82, damage: 22, count: 1, speed: 520, pierce: 0, size: 9, range: 470 },
+      { cooldown: 0.82, damage: 22, count: 1, speed: 520, pierce: 0, size: 9, range: 360 },
       { cooldown: 0.72, damage: 30, count: 1, speed: 545, pierce: 0, size: 10, range: 500 },
       { cooldown: 0.64, damage: 40, count: 2, speed: 570, pierce: 1, size: 10, range: 530 },
       { cooldown: 0.56, damage: 53, count: 2, speed: 595, pierce: 1, size: 11, range: 560 },
@@ -857,102 +860,102 @@ export const GENERAL_UPGRADES = [
   {
     id: "attackGrowth",
     name: "攻击成长",
-    description: "伤害提高 18%。",
-    maxLevel: 8,
+    description: "伤害提高 14%。",
+    maxLevel: 10,
     apply: (player, session) => {
-      player.attackMultiplier *= 1.18;
+      player.attackMultiplier *= 1.14;
     },
   },
   {
     id: "moveSpeed",
     name: "移速成长",
-    description: "移动速度提高 12%。",
-    maxLevel: 6,
+    description: "移动速度提高 10%。",
+    maxLevel: 8,
     apply: (player, session) => {
-      player.speed *= 1.12;
+      player.speed *= 1.1;
     },
   },
   {
     id: "attackRange",
     name: "攻击范围成长",
-    description: "攻击范围提高 14%。",
-    maxLevel: 5,
+    description: "攻击范围提高 11%。",
+    maxLevel: 7,
     apply: (player, session) => {
-      player.rangeMultiplier *= 1.14;
+      player.rangeMultiplier *= 1.11;
     },
   },
   {
     id: "cooldownReduction",
     name: "冷却缩减",
-    description: "技能冷却减少 8%。",
-    maxLevel: 6,
+    description: "技能冷却减少 6%。",
+    maxLevel: 8,
     apply: (player, session) => {
-      player.cooldownScale *= 0.92;
+      player.cooldownScale *= 0.94;
     },
   },
   {
     id: "expGrowth",
     name: "经验获取成长",
-    description: "经验收益提高 20%。",
-    maxLevel: 5,
+    description: "经验收益提高 16%。",
+    maxLevel: 7,
     apply: (player, session) => {
-      player.expMultiplier *= 1.2;
+      player.expMultiplier *= 1.16;
     },
   },
   {
     id: "expPickupRange",
     name: "吸取经验范围",
     description: "经验球会在更远距离被吸向角色。",
-    maxLevel: 6,
+    maxLevel: 8,
     apply: (player, session) => {
-      player.expPickupRange *= 1.28;
+      player.expPickupRange *= 1.22;
     },
   },
   {
     id: "projectileSpeed",
     name: "弹道速度成长",
-    description: "飞行类技能速度提高 16%。",
-    maxLevel: 5,
+    description: "飞行类技能速度提高 12%。",
+    maxLevel: 7,
     apply: (player, session) => {
-      player.projectileSpeedMultiplier *= 1.16;
+      player.projectileSpeedMultiplier *= 1.12;
     },
   },
   {
     id: "projectileSize",
     name: "抛射物体积成长",
-    description: "投射物体积提高 14%。",
-    maxLevel: 5,
+    description: "投射物体积提高 10%。",
+    maxLevel: 7,
     apply: (player, session) => {
-      player.projectileSizeMultiplier *= 1.14;
+      player.projectileSizeMultiplier *= 1.1;
     },
   },
   {
     id: "healthGrowth",
     name: "生命成长",
-    description: "生命上限 +22，并回复同等生命。",
-    maxLevel: 6,
+    description: "生命上限 +18，并回复同等生命。",
+    maxLevel: 8,
     apply: (player, session) => {
-      player.maxHealth += 22;
-      player.health = Math.min(player.maxHealth, player.health + 22);
+      player.maxHealth += 18;
+      player.health = Math.min(player.maxHealth, player.health + 18);
     },
   },
   {
     id: "armorGrowth",
     name: "护甲成长",
-    description: "护甲 +2。",
-    maxLevel: 5,
+    description: "护甲 +1。",
+    maxLevel: 8,
     apply: (player, session) => {
-      player.armor += 2;
+      player.armor += 1;
     },
   },
   {
     id: "monsterPressure",
     name: "怪物数量增加",
-    description: "刷新速度提高 12%，但本局金币奖励额外提高 10%。",
-    maxLevel: 4,
+    description: "刷新速度提高 10%，但本局金币奖励额外提高 8%。",
+    maxLevel: 6,
     apply: (player, session) => {
-      session.spawnRateMultiplier *= 1.12;
-      session.coinRewardMultiplier *= 1.1;
+      session.spawnRateMultiplier *= 1.1;
+      session.coinRewardMultiplier *= 1.08;
     },
   },
   {
@@ -969,55 +972,55 @@ export const GENERAL_UPGRADES = [
   {
     id: "projectileOverload",
     name: "弹幕扩编",
-    description: "投射物数量 +1，但怪物数量 +20%。",
-    maxLevel: 1,
+    description: "投射物数量 +1，但怪物数量 +16%。",
+    maxLevel: 3,
     apply: (player, session) => {
       player.projectileCountBonus += 1;
-      session.spawnRateMultiplier *= 1.2;
+      session.spawnRateMultiplier *= 1.16;
     },
   },
   {
     id: "summonOverload",
     name: "召群扩列",
-    description: "召唤物数量 +1，但怪物数量 +20%。",
-    maxLevel: 1,
+    description: "召唤物数量 +1，但怪物数量 +16%。",
+    maxLevel: 3,
     apply: (player, session) => {
       player.summonCountBonus += 1;
-      session.spawnRateMultiplier *= 1.2;
+      session.spawnRateMultiplier *= 1.16;
     },
   },
   {
     id: "critChance",
     name: "暴击几率成长",
-    description: "暴击率提高 8%。",
-    maxLevel: 5,
+    description: "暴击率提高 6%。",
+    maxLevel: 7,
     apply: (player, session) => {
-      player.critChance += 0.08;
+      player.critChance += 0.06;
     },
   },
   {
     id: "critDamage",
     name: "暴击伤害成长",
-    description: "暴击伤害倍率提高 0.25。",
-    maxLevel: 5,
+    description: "暴击伤害倍率提高 0.18。",
+    maxLevel: 7,
     apply: (player, session) => {
-      player.critDamage += 0.25;
+      player.critDamage += 0.18;
     },
   },
   {
     id: "dodgeGrowth",
     name: "闪避成长",
-    description: "闪避率提高 7%。",
-    maxLevel: 5,
+    description: "闪避率提高 5%。",
+    maxLevel: 7,
     apply: (player, session) => {
-      player.dodgeChance += 0.07;
+      player.dodgeChance += 0.05;
     },
   },
   {
     id: "blinkCharge",
     name: "闪现次数增加",
     description: "闪现上限 +1，并立即恢复 1 次。",
-    maxLevel: 3,
+    maxLevel: 4,
     apply: (player, session) => {
       player.blinkChargesMax += 1;
       player.blinkCharges = Math.min(player.blinkChargesMax, player.blinkCharges + 1);

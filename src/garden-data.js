@@ -257,6 +257,255 @@ const REGION_THEMES = [
   "潮汐花港",
 ];
 
+const REGION_THEME_PALETTES = [
+  { color: "#93df83", accent: "#4e8e47", detail: "#f1ffd6" },
+  { color: "#ffd46f", accent: "#c17a29", detail: "#fff4c7" },
+  { color: "#92d1a6", accent: "#4d7a63", detail: "#e6fff1" },
+  { color: "#9dd48a", accent: "#527b38", detail: "#ecffdd" },
+  { color: "#f3b168", accent: "#a55f22", detail: "#ffe9ca" },
+  { color: "#8eb9ff", accent: "#4868b1", detail: "#e3ecff" },
+  { color: "#88e3d8", accent: "#33857b", detail: "#defffb" },
+  { color: "#ff8eb8", accent: "#a64572", detail: "#ffe0ec" },
+  { color: "#b7f1ff", accent: "#518ea2", detail: "#effcff" },
+  { color: "#c7d879", accent: "#72832a", detail: "#f7ffd8" },
+  { color: "#f3d37f", accent: "#9e7422", detail: "#fff4cf" },
+  { color: "#7fd6ff", accent: "#32769b", detail: "#e8f8ff" },
+];
+
+const BOSS_KIN_FAMILIES = [
+  {
+    key: "bud",
+    kinTitle: "芽庭近卫",
+    bossName: "萌芽守门人",
+    description: "靠近时会抖落护芽光粉，留下柔亮花尘尾迹。",
+    shapeId: "budKin",
+    effectId: "pollenTrail",
+    color: "#9ad56e",
+    accent: "#4f863a",
+    detailColor: "#efffd0",
+    health: 44,
+    speed: 60,
+    damage: 9,
+    radius: 16,
+    exp: 6,
+    weight: 3.3,
+    minTime: 34,
+  },
+  {
+    key: "serpent",
+    kinTitle: "钟藤侍环",
+    bossName: "藤钟长蛇",
+    description: "身体节环会拖出藤辉弧线，死亡时甩出细藤子弹。",
+    shapeId: "serpentKin",
+    effectId: "vineArc",
+    color: "#7ebc77",
+    accent: "#3d6a49",
+    detailColor: "#ddf6d7",
+    health: 54,
+    speed: 66,
+    damage: 10,
+    radius: 17,
+    exp: 7,
+    weight: 3.1,
+    minTime: 58,
+  },
+  {
+    key: "shell",
+    kinTitle: "琥壳巡卫",
+    bossName: "琥珀壳将",
+    description: "外壳会闪出琥珀裂纹，倒下时崩出交叉壳片。",
+    shapeId: "shellKin",
+    effectId: "amberChip",
+    color: "#f1b36b",
+    accent: "#88531d",
+    detailColor: "#ffe5b8",
+    health: 76,
+    speed: 52,
+    damage: 14,
+    radius: 19,
+    exp: 9,
+    weight: 2.8,
+    minTime: 92,
+  },
+  {
+    key: "moth",
+    kinTitle: "月鳞翼侍",
+    bossName: "月瓣蛾后",
+    description: "翼面会持续抖落月鳞微光，死亡时散出追踪鳞片。",
+    shapeId: "mothKin",
+    effectId: "mothDust",
+    color: "#cfb0f5",
+    accent: "#6e54a8",
+    detailColor: "#f7e6ff",
+    health: 62,
+    speed: 80,
+    damage: 12,
+    radius: 16,
+    exp: 8,
+    weight: 2.9,
+    minTime: 118,
+  },
+  {
+    key: "prism",
+    kinTitle: "棱冠角侍",
+    bossName: "棱镜鹿王",
+    description: "棱面会折出冰亮碎光，破碎时朝玩家方向抛射镜棱。",
+    shapeId: "prismKin",
+    effectId: "prismGlint",
+    color: "#74caff",
+    accent: "#2d6993",
+    detailColor: "#def7ff",
+    health: 74,
+    speed: 72,
+    damage: 14,
+    radius: 18,
+    exp: 10,
+    weight: 2.7,
+    minTime: 146,
+  },
+  {
+    key: "spore",
+    kinTitle: "菌幕伞从",
+    bossName: "沼孢菌主",
+    description: "头冠会逸散孢雾，死亡时裂成会继续分生的毒孢。",
+    shapeId: "sporeKin",
+    effectId: "sporeMist",
+    color: "#acc579",
+    accent: "#5a6f2f",
+    detailColor: "#f2f8cb",
+    health: 88,
+    speed: 58,
+    damage: 15,
+    radius: 20,
+    exp: 11,
+    weight: 2.6,
+    minTime: 176,
+  },
+  {
+    key: "tempest",
+    kinTitle: "风裁花枪",
+    bossName: "风暴郁金统领",
+    description: "周身会卷起细窄风缎，倒下时放出旋压风轮。",
+    shapeId: "tempestKin",
+    effectId: "windRibbon",
+    color: "#ffab84",
+    accent: "#a94d2d",
+    detailColor: "#ffe6db",
+    health: 66,
+    speed: 86,
+    damage: 16,
+    radius: 17,
+    exp: 11,
+    weight: 2.8,
+    minTime: 208,
+  },
+  {
+    key: "eclipse",
+    kinTitle: "蚀瓣侍丛",
+    bossName: "蚀光牡丹",
+    description: "花瓣边缘带有暗蚀火屑，死亡时洒下斜坠蚀雨。",
+    shapeId: "eclipseKin",
+    effectId: "eclipseSpark",
+    color: "#ef7ca7",
+    accent: "#8c234d",
+    detailColor: "#ffdceb",
+    health: 82,
+    speed: 76,
+    damage: 18,
+    radius: 18,
+    exp: 12,
+    weight: 2.4,
+    minTime: 238,
+  },
+  {
+    key: "lantern",
+    kinTitle: "虚灯巡根",
+    bossName: "虚灯古树",
+    description: "灯叶会不断逸出幽蓝灵火，折断时会点亮四向灯阵。",
+    shapeId: "lanternKin",
+    effectId: "lanternWisp",
+    color: "#93a9ff",
+    accent: "#334996",
+    detailColor: "#e2e8ff",
+    health: 94,
+    speed: 62,
+    damage: 19,
+    radius: 21,
+    exp: 13,
+    weight: 2.3,
+    minTime: 270,
+  },
+  {
+    key: "twilight",
+    kinTitle: "暮割卫簇",
+    bossName: "黄昏收割者",
+    description: "镰瓣边缘会闪出暮红残影，倒下时引爆收割碎潮。",
+    shapeId: "twilightKin",
+    effectId: "twilightScythe",
+    color: "#f07a83",
+    accent: "#952632",
+    detailColor: "#ffd9d0",
+    health: 112,
+    speed: 84,
+    damage: 21,
+    radius: 20,
+    exp: 14,
+    weight: 2.1,
+    minTime: 300,
+  },
+];
+
+function parseHex(hex) {
+  return Number.parseInt(hex.replace("#", ""), 16);
+}
+
+function mixHex(left, right, amount = 0.5) {
+  const safeAmount = Math.max(0, Math.min(1, amount));
+  const leftColor = parseHex(left);
+  const rightColor = parseHex(right);
+  const leftRed = (leftColor >> 16) & 0xff;
+  const leftGreen = (leftColor >> 8) & 0xff;
+  const leftBlue = leftColor & 0xff;
+  const rightRed = (rightColor >> 16) & 0xff;
+  const rightGreen = (rightColor >> 8) & 0xff;
+  const rightBlue = rightColor & 0xff;
+  const red = Math.round(leftRed + (rightRed - leftRed) * safeAmount);
+  const green = Math.round(leftGreen + (rightGreen - leftGreen) * safeAmount);
+  const blue = Math.round(leftBlue + (rightBlue - leftBlue) * safeAmount);
+  return `#${[red, green, blue].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function createRegionalSpecialMonster(regionIndex) {
+  const family = BOSS_KIN_FAMILIES[regionIndex % BOSS_KIN_FAMILIES.length];
+  const theme = REGION_THEME_PALETTES[regionIndex % REGION_THEME_PALETTES.length];
+  const areaLabel = regionIndex === 0 ? "花心" : REGION_THEMES[regionIndex % REGION_THEMES.length];
+  const statScale = 1 + regionIndex * 0.038;
+  const speedBonus = (regionIndex % 6) * 2;
+  const damageBonus = regionIndex * 0.42;
+
+  return {
+    id: `region-kin-${regionIndex + 1}`,
+    name: `${areaLabel}${family.kinTitle}`,
+    description: `${areaLabel}中为${family.bossName}效命的亲族部队，${family.description}`,
+    color: mixHex(family.color, theme.color, 0.34),
+    accent: mixHex(family.accent, theme.accent, 0.38),
+    detailColor: mixHex(family.detailColor, theme.detail, 0.46),
+    minTime: 300,
+    weight: Number((family.weight + (regionIndex % 3) * 0.16).toFixed(2)),
+    health: Math.round(family.health * statScale),
+    speed: Math.round(family.speed + speedBonus + regionIndex * 0.25),
+    damage: Math.round(family.damage + damageBonus),
+    radius: family.radius + (regionIndex % 2),
+    exp: Math.round(family.exp + regionIndex * 0.55),
+    shapeId: family.shapeId,
+    effectId: family.effectId,
+    familyId: family.key,
+    regionExclusive: true,
+  };
+}
+
+export const REGION_SPECIAL_MONSTERS = Array.from({ length: REGION_COLUMNS * REGION_ROWS }, (_, index) => createRegionalSpecialMonster(index));
+
 function createRegionReward(regionIndex) {
   if (regionIndex === 0) {
     return {
@@ -304,6 +553,7 @@ function createRegion(regionIndex) {
   const row = Math.floor(regionIndex / REGION_COLUMNS);
   const reward = createRegionReward(regionIndex);
   const boss = getRegionBoss(regionIndex);
+  const specialMonster = REGION_SPECIAL_MONSTERS[regionIndex];
   return {
     id: `region-${regionIndex + 1}`,
     index: regionIndex,
@@ -317,6 +567,7 @@ function createRegion(regionIndex) {
     reward,
     bossId: boss.bossId,
     bossTier: boss.bossTier,
+    specialMonsterId: specialMonster.id,
     tutorialRegion: regionIndex === 0,
     durationSeconds: regionIndex === 0 ? 180 : 15 * 60,
     energyReward: regionIndex === 0 ? 24 : 40 + regionIndex * 3,

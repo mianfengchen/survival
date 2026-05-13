@@ -65,14 +65,27 @@
         </div>
       </div>
 
-      <section class="screen-overlay" id="storyScreen">
-        <div class="overlay-card compact-card story-card">
-          <p class="eyebrow" id="storyEyebrow">Prologue</p>
-          <h2 id="storyTitle">花园的最后一夜</h2>
-          <div id="storyBody" class="story-body"></div>
-          <div class="hero-actions">
-            <button id="storyPrimaryButton" class="primary-button">开始</button>
-            <button id="storySecondaryButton" class="ghost-button">返回</button>
+      <section class="screen-overlay story-screen" id="storyScreen" data-scene="default">
+        <div class="story-scene">
+          <div class="story-scene__atmosphere" aria-hidden="true">
+            <span class="story-scene__orb"></span>
+            <span class="story-scene__haze"></span>
+            <span class="story-scene__stars"></span>
+            <span class="story-scene__meteor story-scene__meteor--one"></span>
+            <span class="story-scene__meteor story-scene__meteor--two"></span>
+            <span class="story-scene__ridge story-scene__ridge--back"></span>
+            <span class="story-scene__ridge story-scene__ridge--front"></span>
+            <span class="story-scene__heart"></span>
+            <span class="story-scene__fairy"></span>
+          </div>
+          <div class="overlay-card compact-card story-card">
+            <p class="eyebrow" id="storyEyebrow">Prologue</p>
+            <h2 id="storyTitle">花园的最后一夜</h2>
+            <div id="storyBody" class="story-body"></div>
+            <div class="hero-actions">
+              <button id="storyPrimaryButton" class="primary-button">开始</button>
+              <button id="storySecondaryButton" class="ghost-button">返回</button>
+            </div>
           </div>
         </div>
       </section>
@@ -232,12 +245,23 @@
             <span id="hudTimerText">倒计时 15:00</span>
             <span>植物能量 <strong data-global-field="coins">0</strong></span>
           </div>
-          <button id="speedToggleButton" class="hud-speed-button" type="button">速度 1x</button>
+          <div class="hud-top-actions">
+            <button id="eyeComfortButton" class="hud-speed-button hud-eye-button" type="button">护眼 关</button>
+            <button id="speedToggleButton" class="hud-speed-button" type="button">速度 1x</button>
+          </div>
         </div>
 
-        <div class="hud-inline hud-inline-bottom">
-          <span id="hudHealthText">生命 100 / 100</span>
-          <span id="hudLevelText">等级 Lv.1</span>
+        <div class="hud-bottom-cluster">
+          <div class="hud-inline hud-inline-bottom">
+            <span id="hudHealthText">生命 100 / 100</span>
+          </div>
+          <div class="hud-exp-shell">
+            <span id="hudLevelText" class="hud-exp-level">LV 1</span>
+            <div class="hud-exp-bar">
+              <div id="hudExpFill" class="hud-exp-fill"></div>
+              <span id="hudExpText" class="hud-exp-text">0 / 18</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -286,12 +310,7 @@
       </section>
 
       <section class="screen-overlay" id="levelScreen">
-        <div class="overlay-card compact-card">
-          <p class="eyebrow">Level Up</p>
-          <h2>选择一项成长</h2>
-          <p>角色升级后从三项随机成长中选择其一。</p>
-          <div id="levelChoices" class="choice-grid"></div>
-        </div>
+        <div id="levelChoices" class="choice-grid level-choice-grid"></div>
       </section>
 
       <section class="screen-overlay" id="resultScreen">

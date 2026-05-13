@@ -29,6 +29,7 @@ import {
   saveProgress,
   setExclusiveEnabled,
   unlockRegionReward,
+  updateSettings,
   updateWorldState,
 } from "./storage.js";
 
@@ -72,6 +73,7 @@ const elements = {
   gameView: document.querySelector("#gameView"),
   canvas: document.querySelector("#gameCanvas"),
   overlays: Array.from(document.querySelectorAll(".screen-overlay")),
+  storyScreen: document.querySelector("#storyScreen"),
   openWarButton: document.querySelector("#openWarButton"),
   openLabButton: document.querySelector("#openLabButton"),
   openLibraryButton: document.querySelector("#openLibraryButton"),
@@ -113,6 +115,9 @@ const elements = {
   hudTimerText: document.querySelector("#hudTimerText"),
   hudHealthText: document.querySelector("#hudHealthText"),
   hudLevelText: document.querySelector("#hudLevelText"),
+  hudExpFill: document.querySelector("#hudExpFill"),
+  hudExpText: document.querySelector("#hudExpText"),
+  eyeComfortButton: document.querySelector("#eyeComfortButton"),
   speedToggleButton: document.querySelector("#speedToggleButton"),
   activeSkills: document.querySelector("#activeSkills"),
   levelChoices: document.querySelector("#levelChoices"),
@@ -155,6 +160,7 @@ const game = new GameRuntime({
     onToast: showToast,
   },
 });
+game.setEyeComfortMode(progress.settings?.eyeComfortMode ?? false);
 
 bindUi();
 resizeGameCanvas();
@@ -164,6 +170,7 @@ renderHud({
   time: "15:00",
   level: "1",
   exp: "0 / 18",
+  expRatio: 0,
   health: "100 / 100",
   attack: "1.00x",
   speed: "220",
@@ -179,6 +186,7 @@ renderHud({
 setActiveView("menu");
 showOverlay(null);
 renderSpeedButton(1);
+renderEyeComfortButton(progress.settings?.eyeComfortMode ?? false);
 
 if (!progress.world.tutorialCompleted) {
   openIntroStory();
@@ -243,6 +251,10 @@ function bindUi() {
 
   elements.speedToggleButton.addEventListener("click", () => {
     game.toggleGameSpeed();
+  });
+
+  elements.eyeComfortButton.addEventListener("click", () => {
+    setEyeComfortMode(!(progress.settings?.eyeComfortMode ?? false));
   });
 
   elements.giveUpButton.addEventListener("click", () => {
@@ -353,10 +365,24 @@ function renderSpeedButton(multiplier) {
   elements.speedToggleButton.dataset.mode = String(multiplier);
 }
 
+function renderEyeComfortButton(enabled) {
+  elements.eyeComfortButton.textContent = enabled ? "护眼 开" : "护眼 关";
+  elements.eyeComfortButton.dataset.active = enabled ? "true" : "false";
+}
+
+function setEyeComfortMode(enabled) {
+  progress = updateSettings(progress, { eyeComfortMode: enabled });
+  saveProgress(progress);
+  game.setEyeComfortMode(enabled);
+  renderEyeComfortButton(enabled);
+}
+
 function renderHud(snapshot) {
   elements.hudTimerText.textContent = snapshot.time === "Boss" ? "Boss 战" : `倒计时 ${snapshot.time}`;
   elements.hudHealthText.textContent = `生命 ${snapshot.health}`;
-  elements.hudLevelText.textContent = `等级 Lv.${snapshot.level}`;
+  elements.hudLevelText.textContent = `LV ${snapshot.level}`;
+  elements.hudExpText.textContent = snapshot.exp;
+  elements.hudExpFill.style.width = `${Math.max(0, Math.min(100, (snapshot.expRatio || 0) * 100))}%`;
 
   for (const [key, value] of Object.entries(snapshot)) {
     if (key === "skills") {
@@ -393,7 +419,7 @@ function renderLevelChoices(choices) {
   elements.levelChoices.innerHTML = choices
     .map(
       (choice) => `
-        <button class="choice-button" data-choice-key="${choice.key}">
+        <button class="choice-button" data-choice-key="${choice.key}" data-choice-variant="${getLevelChoiceVariant(choice)}">
           <strong>${choice.title}</strong>
           <span>${choice.description}</span>
           <small>${choice.detail}</small>
@@ -407,6 +433,24 @@ function renderLevelChoices(choices) {
       game.chooseUpgrade(button.dataset.choiceKey);
     });
   }
+}
+
+const SPECIAL_LEVEL_CHOICE_IDS = new Set(["monsterPressure", "minuteVacuum", "projectileOverload", "summonOverload"]);
+
+function getLevelChoiceVariant(choice) {
+  if (choice.type === "exclusive") {
+    return "exclusive";
+  }
+
+  if (choice.type === "skill-unlock" || choice.type === "skill-level") {
+    return "special";
+  }
+
+  if (choice.type === "general" && SPECIAL_LEVEL_CHOICE_IDS.has(choice.id)) {
+    return "special";
+  }
+
+  return "basic";
 }
 
 function renderPersistentPanels() {
@@ -529,6 +573,7 @@ function renderGardenMap() {
 
 function renderSelectedRegionSummary(region) {
   const boss = MONSTER_LIBRARY.find((monster) => monster.id === region.bossId);
+  const specialMonster = MONSTER_LIBRARY.find((monster) => monster.id === region.specialMonsterId);
   const canDeploy = canDeployToRegion(region);
   const statusText = isLiberated(region.id) ? "已解放，可重复部署" : isFrontier(region.id) ? "与已解放区域相邻，可发起新的解放战" : "尚未与解放区域相邻";
 
@@ -540,6 +585,10 @@ function renderSelectedRegionSummary(region) {
     <article class="map-summary-card">
       <strong>镇守目标</strong>
       <span class="card-note">${boss?.name || region.bossId} · Boss 阶位 ${region.bossTier}</span>
+    </article>
+    <article class="map-summary-card">
+      <strong>亲属部队</strong>
+      <span class="card-note">${specialMonster?.name || region.specialMonsterId}</span>
     </article>
     <article class="map-summary-card">
       <strong>区域奖励</strong>
@@ -561,9 +610,10 @@ function renderWarPrep() {
   const unlockedCharacters = getUnlockedCharacters();
   const selectedCharacter = getCharacterDefinition(selectedCharacterId) || unlockedCharacters[0];
   const boss = MONSTER_LIBRARY.find((monster) => monster.id === region.bossId);
+  const specialMonster = MONSTER_LIBRARY.find((monster) => monster.id === region.specialMonsterId);
 
   elements.prepRegionName.textContent = region.name;
-  elements.prepRegionMeta.textContent = `镇守 Boss：${boss?.name || region.bossId} · 战斗时长 ${Math.round(region.durationSeconds / 60)} 分钟 · ${getRewardMeta(region)}`;
+  elements.prepRegionMeta.textContent = `镇守 Boss：${boss?.name || region.bossId} · 亲属部队：${specialMonster?.name || region.specialMonsterId} · 战斗时长 ${Math.round(region.durationSeconds / 60)} 分钟 · ${getRewardMeta(region)}`;
   elements.prepRegionDescription.textContent = region.description;
   elements.prepSelectedDifficulty.textContent = selectedDifficulty.name;
   elements.prepSelectedCharacter.textContent = selectedCharacter?.name || "小精灵";
@@ -808,6 +858,8 @@ function openIntroStory() {
           "接下来是一场三分钟的新手保卫战。失败时花园会被攻陷，胜利后才会开启完整的花园战争主菜单。",
         ],
     primaryLabel: introSeen ? "继续首战" : "进入首场保卫战",
+    presentation: introSeen ? "card" : "cinematic",
+    sceneTheme: introSeen ? "defense" : "prologue",
     primaryAction: () => {
       progress = updateWorldState(progress, {
         introSeen: true,
@@ -826,8 +878,20 @@ function openIntroStory() {
   });
 }
 
-function openStoryScene({ eyebrow, title, paragraphs, primaryLabel, primaryAction, secondaryLabel, secondaryAction }) {
+function openStoryScene({
+  eyebrow,
+  title,
+  paragraphs,
+  primaryLabel,
+  primaryAction,
+  secondaryLabel,
+  secondaryAction,
+  presentation = "card",
+  sceneTheme = "default",
+}) {
   setActiveView("menu");
+  elements.storyScreen.classList.toggle("is-cinematic", presentation === "cinematic");
+  elements.storyScreen.dataset.scene = sceneTheme;
   elements.storyEyebrow.textContent = eyebrow;
   elements.storyTitle.textContent = title;
   elements.storyBody.innerHTML = paragraphs.map((text) => `<p>${text}</p>`).join("");
@@ -913,6 +977,8 @@ function handleRunEnd(result) {
           "精英害虫被击退后，花心重新亮起。你已经守住了第一片区域，主菜单的四大入口正式开放。",
           "从现在开始，新的区域必须从相邻区域逐步解放。你可以前往花园战争继续推进，也可以先去研究所和图书馆整理战力。",
         ],
+        presentation: "cinematic",
+        sceneTheme: "liberation",
         primaryLabel: "进入主菜单",
         primaryAction: () => {
           showOverlay(null);
@@ -956,6 +1022,8 @@ function handleRunEnd(result) {
         `镇守 ${region.name} 的 ${MONSTER_LIBRARY.find((monster) => monster.id === region.bossId)?.name || "Boss"} 已被击退。`,
         `${getRewardMeta(region)}。新的相邻区域现在已经对你开放。`,
       ],
+      presentation: "cinematic",
+      sceneTheme: "victory",
       primaryLabel: "继续查看战线",
       primaryAction: () => {
         renderGardenMap();
@@ -1030,7 +1098,6 @@ function showToast(message) {
 }
 
 function resizeGameCanvas() {
-  elements.canvas.width = Math.max(window.innerWidth, 960);
-  elements.canvas.height = Math.max(window.innerHeight, 540);
+  game.resizeViewport(Math.max(window.innerWidth, 960), Math.max(window.innerHeight, 540));
   game.renderIdleFrame();
 }

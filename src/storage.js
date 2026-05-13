@@ -20,6 +20,7 @@ export function createDefaultProgress() {
     settings: {
       difficultyLevel: 1,
       initialSkillId: "flyingSword",
+      eyeComfortMode: false,
     },
     talents: createTalentState(),
     unlocks: createDefaultUnlockState(),
@@ -50,6 +51,7 @@ function mergeProgress(raw) {
     ...(raw.settings || {}),
     difficultyLevel: normalizeDifficultyLevel(raw.settings?.difficultyLevel ?? fallback.settings.difficultyLevel),
     initialSkillId: normalizeInitialSkillId(raw.settings?.initialSkillId ?? fallback.settings.initialSkillId, unlocks),
+    eyeComfortMode: Boolean(raw.settings?.eyeComfortMode ?? fallback.settings.eyeComfortMode),
   };
   const codex = {
     monsters: Array.isArray(raw.codex?.monsters) ? [...new Set(raw.codex.monsters)] : [],
@@ -138,6 +140,7 @@ export function updateSettings(progress, partialSettings) {
     ...partialSettings,
     difficultyLevel: normalizeDifficultyLevel(partialSettings?.difficultyLevel ?? next.settings.difficultyLevel),
     initialSkillId: normalizeInitialSkillId(partialSettings?.initialSkillId ?? next.settings.initialSkillId, next.unlocks),
+    eyeComfortMode: Boolean(partialSettings?.eyeComfortMode ?? next.settings.eyeComfortMode),
   };
   return next;
 }
