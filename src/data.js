@@ -323,11 +323,11 @@ export const SKILL_LIBRARY = [
     starterExclusiveId: "arrowPierce",
     maxLevel: 5,
     statsByLevel: [
-      { cooldown: 0.82, damage: 28, count: 1, speed: 520, pierce: 0, size: 18, range: 360 },
-      { cooldown: 0.72, damage: 30, count: 1, speed: 545, pierce: 0, size: 18, range: 500 },
-      { cooldown: 0.64, damage: 40, count: 2, speed: 570, pierce: 1, size: 19, range: 530 },
-      { cooldown: 0.56, damage: 53, count: 2, speed: 595, pierce: 1, size: 20, range: 560 },
-      { cooldown: 0.48, damage: 66, count: 3, speed: 620, pierce: 2, size: 22, range: 590 },
+      { cooldown: 0.82, damage: 28, count: 1, speed: 520, pierce: 0, size: 9, range: 180 },
+      { cooldown: 0.72, damage: 30, count: 1, speed: 545, pierce: 0, size: 18, range: 250 },
+      { cooldown: 0.64, damage: 40, count: 2, speed: 570, pierce: 1, size: 19, range: 265 },
+      { cooldown: 0.56, damage: 53, count: 2, speed: 595, pierce: 1, size: 20, range: 280 },
+      { cooldown: 0.48, damage: 66, count: 3, speed: 620, pierce: 2, size: 22, range: 295 },
     ],
     exclusiveUpgrades: [
       {
