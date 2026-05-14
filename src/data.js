@@ -45,7 +45,7 @@ export function getDifficultySummary(value) {
 
 export const PLAYER_BASE = {
   maxHealth: 100,
-  speed: 64,
+  speed: 68,
   radius: 18,
   expPickupRange: 96,
   attackMultiplier: 1,
@@ -131,7 +131,7 @@ export const MONSTER_LIBRARY = [
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
     health: 50000,
-    speed: 62,
+    speed: 58,
     damage: 16,
     radius: 56,
     exp: 160,
