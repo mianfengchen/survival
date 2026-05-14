@@ -32,13 +32,16 @@ import {
   updateSettings,
   updateWorldState,
 } from "./storage.js";
+import { RENDERER_EXTERNAL_ASSET_PATHS } from "./pixi-renderer.js";
 
 const INITIAL_REGION_ID = GARDEN_REGIONS[0].id;
-const GAME_STAGE_ASPECT_RATIO = 16 / 9;
 const MIN_GAME_VIEWPORT_WIDTH = 640;
 const MIN_GAME_VIEWPORT_HEIGHT = 360;
 const TOUCH_JOYSTICK_MAX_OFFSET = 46;
 const MAP_TOUCH_TAP_THRESHOLD = 10;
+const STORY_TYPEWRITER_CHARACTER_DELAY = 32;
+const STORY_TYPEWRITER_SHORT_PAUSE = 120;
+const STORY_TYPEWRITER_LONG_PAUSE = 260;
 
 const STATUS_LABELS = {
   menu: "待机",
@@ -236,6 +239,9 @@ function getRegionTileLabel(region) {
 }
 
 const elements = {
+  bootScreen: document.querySelector("#bootScreen"),
+  bootStatus: document.querySelector("#bootStatus"),
+  bootProgressFill: document.querySelector("#bootProgressFill"),
   menuView: document.querySelector("#menuView"),
   gameView: document.querySelector("#gameView"),
   gameStage: document.querySelector("#gameStage"),
@@ -316,6 +322,11 @@ let selectedWarDifficultyId = progress.world?.selectedWarDifficultyId || "normal
 let activeRunConfig = null;
 let storyPrimaryHandler = null;
 let storySecondaryHandler = null;
+let storyTypewriterToken = 0;
+let storyTypewriterTimerId = 0;
+let storyTypewriterActive = false;
+let storyTypewriterParagraphs = [];
+let storyRevealPrimaryAfterTypewriter = false;
 let activeTouchJoystickPointerId = null;
 let activeMapTouchPointerId = null;
 let mapTouchStartX = 0;
@@ -355,35 +366,224 @@ game.setEyeComfortMode(progress.settings?.eyeComfortMode ?? false);
 bindUi();
 bindBattleTouchControls();
 bindMenuTouchFeedback();
-resizeGameCanvas();
-renderPersistentPanels();
-renderHud({
-  status: "menu",
-  time: "15:00",
-  level: "1",
-  exp: "0 / 18",
-  expRatio: 0,
-  health: "100 / 100",
-  attack: "1.00x",
-  speed: "220",
-  crit: "5%",
-  dodge: "5%",
-  armor: "0",
-  cooldown: "0%",
-  blink: "1 / 1",
-  expPickupRange: "96",
-  kills: "0",
-  skills: [],
-});
-setActiveView("menu");
-showOverlay(null);
-renderSpeedButton(1);
-renderEyeComfortButton(progress.settings?.eyeComfortMode ?? false);
+bootApp();
 
-if (!progress.world.tutorialCompleted) {
-  openIntroStory();
-} else {
-  updateSessionLabel("花园待命", "选择一个入口，继续推进花园解放战线。");
+function updateBootProgress(progressRatio, label) {
+  const clampedRatio = Math.max(0, Math.min(progressRatio, 1));
+  if (elements.bootProgressFill) {
+    elements.bootProgressFill.style.width = `${Math.round(clampedRatio * 100)}%`;
+  }
+  if (typeof label === "string") {
+    elements.bootStatus.textContent = label;
+  }
+}
+
+function preloadImageAsset(assetPath) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    const finish = () => {
+      image.onload = null;
+      image.onerror = null;
+      resolve();
+    };
+
+    image.decoding = "async";
+    image.onload = finish;
+    image.onerror = finish;
+    image.src = new URL(assetPath, window.location.href).href;
+
+    if (image.complete) {
+      finish();
+    }
+  });
+}
+
+async function preloadAppResources() {
+  const assetPaths = [...new Set(RENDERER_EXTERNAL_ASSET_PATHS)];
+  if (!assetPaths.length) {
+    updateBootProgress(1, "花园核心已唤醒");
+    return;
+  }
+
+  updateBootProgress(0.08, "正在收拢花园碎片...");
+  let completedCount = 0;
+
+  await Promise.all(
+    assetPaths.map(async (assetPath) => {
+      await preloadImageAsset(assetPath);
+      completedCount += 1;
+      const progressRatio = completedCount / assetPaths.length;
+      const statusText = completedCount === assetPaths.length ? "花园核心已唤醒" : "正在编织开场场景...";
+      updateBootProgress(progressRatio, statusText);
+    }),
+  );
+}
+
+async function bootApp() {
+  updateBootProgress(0.04, "正在唤醒花园核心...");
+  await preloadAppResources();
+
+  resizeGameCanvas();
+  renderPersistentPanels();
+  renderHud({
+    status: "menu",
+    time: "15:00",
+    level: "1",
+    exp: "0 / 18",
+    expRatio: 0,
+    health: "100 / 100",
+    attack: "1.00x",
+    speed: "220",
+    crit: "5%",
+    dodge: "5%",
+    armor: "0",
+    cooldown: "0%",
+    blink: "1 / 1",
+    expPickupRange: "96",
+    kills: "0",
+    skills: [],
+  });
+  renderSpeedButton(1);
+  renderEyeComfortButton(progress.settings?.eyeComfortMode ?? false);
+
+  if (!progress.world.tutorialCompleted) {
+    openIntroStory();
+  } else {
+    setActiveView("menu");
+    showOverlay(null);
+    updateSessionLabel("花园待命", "选择一个入口，继续推进花园解放战线。");
+  }
+
+  window.requestAnimationFrame(() => {
+    document.body.dataset.bootState = "ready";
+  });
+}
+
+function clearStoryTypewriterTimer() {
+  if (storyTypewriterTimerId) {
+    window.clearTimeout(storyTypewriterTimerId);
+    storyTypewriterTimerId = 0;
+  }
+}
+
+function renderStoryParagraphs(paragraphs) {
+  elements.storyBody.replaceChildren();
+  const paragraphEntries = [];
+
+  paragraphs.forEach((text) => {
+    const paragraphElement = document.createElement("p");
+    paragraphElement.className = "story-paragraph";
+
+    const textElement = document.createElement("span");
+    textElement.className = "story-typewriter";
+    paragraphElement.append(textElement);
+    elements.storyBody.append(paragraphElement);
+    paragraphEntries.push({ paragraphElement, textElement, fullText: text });
+  });
+
+  return paragraphEntries;
+}
+
+function finishStoryTypewriter(paragraphs = storyTypewriterParagraphs) {
+  clearStoryTypewriterTimer();
+  storyTypewriterToken += 1;
+  storyTypewriterActive = false;
+  elements.storyBody.dataset.typing = "false";
+  elements.storyScreen.dataset.typing = "false";
+
+  const paragraphEntries = renderStoryParagraphs(paragraphs);
+  for (const entry of paragraphEntries) {
+    entry.textElement.textContent = entry.fullText;
+  }
+
+  if (storyRevealPrimaryAfterTypewriter) {
+    elements.storyPrimaryButton.hidden = false;
+  }
+}
+
+function getStoryTypewriterDelay(character) {
+  if (/[。！？!?]/u.test(character)) {
+    return STORY_TYPEWRITER_LONG_PAUSE;
+  }
+  if (/[，、；：,;:]/u.test(character)) {
+    return STORY_TYPEWRITER_SHORT_PAUSE;
+  }
+  return STORY_TYPEWRITER_CHARACTER_DELAY;
+}
+
+function startStoryTypewriter(paragraphs) {
+  clearStoryTypewriterTimer();
+  storyTypewriterToken += 1;
+  storyTypewriterParagraphs = [...paragraphs];
+
+  if (!paragraphs.length) {
+    storyTypewriterActive = false;
+    elements.storyBody.dataset.typing = "false";
+    elements.storyScreen.dataset.typing = "false";
+    elements.storyBody.replaceChildren();
+    if (storyRevealPrimaryAfterTypewriter) {
+      elements.storyPrimaryButton.hidden = false;
+    }
+    return;
+  }
+
+  const activeToken = storyTypewriterToken;
+  const paragraphEntries = renderStoryParagraphs(paragraphs);
+  let paragraphIndex = 0;
+  let characterIndex = 0;
+
+  storyTypewriterActive = true;
+  elements.storyBody.dataset.typing = "true";
+  elements.storyScreen.dataset.typing = "true";
+
+  const step = () => {
+    if (activeToken !== storyTypewriterToken) {
+      return;
+    }
+
+    const activeParagraph = paragraphEntries[paragraphIndex];
+    if (!activeParagraph) {
+      storyTypewriterActive = false;
+      elements.storyBody.dataset.typing = "false";
+      elements.storyScreen.dataset.typing = "false";
+      storyTypewriterTimerId = 0;
+      if (storyRevealPrimaryAfterTypewriter) {
+        elements.storyPrimaryButton.hidden = false;
+      }
+      return;
+    }
+
+    activeParagraph.paragraphElement.classList.add("is-active");
+    characterIndex += 1;
+    activeParagraph.textElement.textContent = activeParagraph.fullText.slice(0, characterIndex);
+
+    if (characterIndex < activeParagraph.fullText.length) {
+      const lastCharacter = activeParagraph.fullText.charAt(characterIndex - 1);
+      storyTypewriterTimerId = window.setTimeout(step, getStoryTypewriterDelay(lastCharacter));
+      return;
+    }
+
+    activeParagraph.paragraphElement.classList.remove("is-active");
+    paragraphIndex += 1;
+    characterIndex = 0;
+
+    if (paragraphIndex < paragraphEntries.length) {
+      paragraphEntries[paragraphIndex].paragraphElement.classList.add("is-active");
+      storyTypewriterTimerId = window.setTimeout(step, STORY_TYPEWRITER_LONG_PAUSE);
+      return;
+    }
+
+    storyTypewriterActive = false;
+    elements.storyBody.dataset.typing = "false";
+    elements.storyScreen.dataset.typing = "false";
+    storyTypewriterTimerId = 0;
+
+    if (storyRevealPrimaryAfterTypewriter) {
+      elements.storyPrimaryButton.hidden = false;
+    }
+  };
+
+  step();
 }
 
 function bindUi() {
@@ -424,11 +624,21 @@ function bindUi() {
   });
 
   elements.storyPrimaryButton.addEventListener("click", () => {
+    if (storyTypewriterActive) {
+      finishStoryTypewriter();
+      return;
+    }
     storyPrimaryHandler?.();
   });
 
   elements.storySecondaryButton.addEventListener("click", () => {
     storySecondaryHandler?.();
+  });
+
+  elements.storyBody.addEventListener("click", () => {
+    if (storyTypewriterActive) {
+      finishStoryTypewriter();
+    }
   });
 
   for (const button of document.querySelectorAll("[data-close-overlay]")) {
@@ -1318,23 +1528,19 @@ function renderLibrary() {
 }
 
 function openIntroStory() {
-  const introSeen = progress.world.introSeen;
   openStoryScene({
-    eyebrow: introSeen ? "First Defense" : "Prologue",
-    title: introSeen ? "花园仍在等待第一场胜利" : "花园的最后一夜",
-    paragraphs: introSeen
-      ? [
-          "外星害虫已经撕开了最后一片护壁，花心区域随时会被吞没。",
-          "小精灵仍旧是第一位可出战的守园者。守住三分钟，击退精英害虫，主菜单才会完全开放。",
-        ]
-      : [
-          "平静的夜里，来自虫星的陨群穿过云层，把 36 片花园区域逐一污染。花朵、植物与益虫守卫先后失联，只剩最中心的花心还在发光。",
-          "濒临枯竭的花心唤醒了最后一只小精灵。它在风中第一次听见花园的语言，并以风元素凝成灵箭，准备顶住首轮虫潮。",
-          "接下来是一场三分钟的新手保卫战。失败时花园会被攻陷，胜利后才会开启完整的花园战争主菜单。",
-        ],
-    primaryLabel: introSeen ? "继续首战" : "进入首场保卫战",
-    presentation: introSeen ? "card" : "cinematic",
-    sceneTheme: introSeen ? "defense" : "prologue",
+    eyebrow: "Prologue",
+    title: "花园的最后一夜",
+    paragraphs: [
+      "平静的夜里，来自虫星的陨群穿过云层，把 36 片花园区域逐一污染。花朵、植物与益虫守卫先后失联，只剩最中心的花心还在发光。",
+      "濒临枯竭的花心唤醒了最后一只小精灵。它在风中第一次听见花园的语言，并以风元素凝成灵箭，准备顶住首轮虫潮。",
+      "接下来是一场三分钟的新手保卫战。失败时花园会被攻陷，胜利后才会开启完整的花园战争主菜单。",
+    ],
+    primaryLabel: "保卫花园",
+    presentation: "cinematic",
+    sceneTheme: "prologue",
+    typewriter: true,
+    revealPrimaryAfterTypewriter: true,
     primaryAction: () => {
       progress = updateWorldState(progress, {
         introSeen: true,
@@ -1363,19 +1569,33 @@ function openStoryScene({
   secondaryAction,
   presentation = "card",
   sceneTheme = "default",
+  typewriter = false,
+  revealPrimaryAfterTypewriter = false,
 }) {
   setActiveView("menu");
   elements.storyScreen.classList.toggle("is-cinematic", presentation === "cinematic");
   elements.storyScreen.dataset.scene = sceneTheme;
   elements.storyEyebrow.textContent = eyebrow;
   elements.storyTitle.textContent = title;
-  elements.storyBody.innerHTML = paragraphs.map((text) => `<p>${text}</p>`).join("");
+  storyTypewriterParagraphs = [...paragraphs];
+  storyRevealPrimaryAfterTypewriter = revealPrimaryAfterTypewriter;
+  clearStoryTypewriterTimer();
+  storyTypewriterActive = false;
+  elements.storyBody.dataset.typing = "false";
+  elements.storyScreen.dataset.typing = "false";
   elements.storyPrimaryButton.textContent = primaryLabel;
+  elements.storyPrimaryButton.hidden = revealPrimaryAfterTypewriter && typewriter;
   elements.storySecondaryButton.textContent = secondaryLabel || "返回";
   elements.storySecondaryButton.hidden = !secondaryLabel;
   storyPrimaryHandler = primaryAction || null;
   storySecondaryHandler = secondaryAction || null;
   showOverlay("storyScreen");
+
+  if (typewriter) {
+    startStoryTypewriter(paragraphs);
+  } else {
+    finishStoryTypewriter(paragraphs);
+  }
 }
 
 function buildRunConfig(regionId, characterId, difficultyId, tutorial = false) {
@@ -1584,17 +1804,9 @@ function getViewportBounds() {
 }
 
 function getGameStageSize(availableWidth, availableHeight) {
-  let stageWidth = availableWidth;
-  let stageHeight = Math.round(stageWidth / GAME_STAGE_ASPECT_RATIO);
-
-  if (stageHeight > availableHeight) {
-    stageHeight = availableHeight;
-    stageWidth = Math.round(stageHeight * GAME_STAGE_ASPECT_RATIO);
-  }
-
   return {
-    width: Math.max(1, stageWidth),
-    height: Math.max(1, stageHeight),
+    width: Math.max(1, Math.round(availableWidth)),
+    height: Math.max(1, Math.round(availableHeight)),
   };
 }
 

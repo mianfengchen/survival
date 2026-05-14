@@ -65,6 +65,8 @@ const EXTERNAL_ASSET_DEFS = {
   enemyBulletLantern: { path: "./assets/sprites/enemy-bullet-lantern.svg", baseRadius: 58 },
 };
 
+export const RENDERER_EXTERNAL_ASSET_PATHS = Object.freeze(Object.values(EXTERNAL_ASSET_DEFS).map((definition) => definition.path));
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }

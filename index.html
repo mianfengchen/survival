@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#274231" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>花园幸存者</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./favicon.ico" sizes="32x32" />
@@ -19,7 +20,17 @@
       }
     </script>
   </head>
-  <body>
+  <body data-boot-state="loading">
+    <section class="boot-screen" id="bootScreen" aria-live="polite">
+      <div class="boot-screen__panel">
+        <p class="eyebrow">Garden Core</p>
+        <h1>花园核心正在苏醒</h1>
+        <p class="boot-screen__status" id="bootStatus">正在收拢花园碎片...</p>
+        <div class="boot-screen__progress" aria-hidden="true">
+          <span class="boot-screen__progress-fill" id="bootProgressFill"></span>
+        </div>
+      </div>
+    </section>
     <section class="app-view menu-view is-active" id="menuView">
       <div class="menu-shell campaign-shell">
         <article class="menu-hero panel-card campaign-hero">

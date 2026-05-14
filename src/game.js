@@ -40,6 +40,36 @@ function pickRandom(items, count) {
   return picks;
 }
 
+function pickWeightedRandom(items, count, getWeight) {
+  const pool = [...items];
+  const picks = [];
+
+  while (pool.length > 0 && picks.length < count) {
+    const weights = pool.map((item) => Math.max(0, Number(getWeight(item)) || 0));
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+    if (totalWeight <= 0) {
+      picks.push(...pickRandom(pool, count - picks.length));
+      break;
+    }
+
+    let roll = Math.random() * totalWeight;
+    let selectedIndex = pool.length - 1;
+
+    for (let index = 0; index < pool.length; index += 1) {
+      roll -= weights[index];
+      if (roll <= 0) {
+        selectedIndex = index;
+        break;
+      }
+    }
+
+    picks.push(pool.splice(selectedIndex, 1)[0]);
+  }
+
+  return picks;
+}
+
 function magnitude(dx, dy) {
   return Math.hypot(dx, dy) || 1;
 }
@@ -90,6 +120,13 @@ const PROJECTILE_COUNT_SKILLS = new Set(["elfArrow", "flyingSword", "bubbleBurst
 const SUMMON_COUNT_SKILLS = new Set(["petalOrbit", "dewGarden", "mushroomMine", "lotusBeacon"]);
 const PROJECTILE_GENERAL_UPGRADES = new Set(["projectileSpeed", "projectileSize", "projectileOverload"]);
 const SUMMON_GENERAL_UPGRADES = new Set(["summonOverload"]);
+const UPGRADE_CHOICE_COUNT = 3;
+const UPGRADE_CHOICE_WEIGHTS = Object.freeze({
+  general: 1,
+  "skill-unlock": 3,
+  "skill-level": 6,
+  exclusive: 4,
+});
 
 function pickSwordGlowColor(currentColor) {
   const options = SWORD_GLOW_COLORS.filter((color) => color !== currentColor);
@@ -630,7 +667,31 @@ export class GameRuntime {
       }
     }
 
-    return pickRandom(choices, 3);
+    const guaranteedChoice = this.getGuaranteedUpgradeChoice(choices);
+    const weightedPool = guaranteedChoice
+      ? choices.filter((choice) => choice.key !== guaranteedChoice.key)
+      : choices;
+    const weightedChoices = pickWeightedRandom(weightedPool, UPGRADE_CHOICE_COUNT - (guaranteedChoice ? 1 : 0), (choice) => this.getUpgradeChoiceWeight(choice));
+
+    return guaranteedChoice ? [guaranteedChoice, ...weightedChoices] : weightedChoices;
+  }
+
+  getGuaranteedUpgradeChoice(choices) {
+    if (this.session?.mode !== "tutorial") {
+      return null;
+    }
+
+    const elfArrowState = this.skillStates.elfArrow;
+    const elfArrowDefinition = getSkillDefinition("elfArrow");
+    if (!elfArrowState || !elfArrowDefinition || elfArrowState.level >= elfArrowDefinition.maxLevel) {
+      return null;
+    }
+
+    return choices.find((choice) => choice.type === "skill-level" && choice.id === "elfArrow") || null;
+  }
+
+  getUpgradeChoiceWeight(choice) {
+    return UPGRADE_CHOICE_WEIGHTS[choice.type] || 1;
   }
 
   getAvailableMonsters(elapsed, profile) {
