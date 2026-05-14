@@ -476,7 +476,7 @@ function mixHex(left, right, amount = 0.5) {
 }
 
 function createRegionalSpecialMonster(regionIndex) {
-  const family = BOSS_KIN_FAMILIES[regionIndex % BOSS_KIN_FAMILIES.length];
+  const family = BOSS_KIN_FAMILIES[(regionIndex + 1) % BOSS_KIN_FAMILIES.length];
   const theme = REGION_THEME_PALETTES[regionIndex % REGION_THEME_PALETTES.length];
   const areaLabel = regionIndex === 0 ? "花心" : REGION_THEMES[regionIndex % REGION_THEMES.length];
   const statScale = 1 + regionIndex * 0.038;
@@ -534,7 +534,6 @@ function getRegionBoss(regionIndex) {
   return {
     bossTier,
     bossId: [
-      "budSentinel",
       "clockvineSerpent",
       "amberShellCrab",
       "moonpetalMoth",
@@ -544,6 +543,7 @@ function getRegionBoss(regionIndex) {
       "eclipsePeony",
       "voidLantern",
       "twilightMower",
+      "budSentinel",
     ][bossTier - 1],
   };
 }

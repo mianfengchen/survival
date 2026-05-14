@@ -2344,8 +2344,7 @@ export class GameRuntime {
     const baseAngle = Math.atan2(direction.y, direction.x);
     const count = 6 + Math.floor(profile.level / 2);
     const spread = Math.PI / 2.7;
-    const baseSpeed = enemy.bossTier === 1 ? 78 : 225;
-    const speed = baseSpeed * profile.bossBulletSpeedMultiplier;
+    const speed = 225 * profile.bossBulletSpeedMultiplier;
     for (let index = 0; index < count; index += 1) {
       const angle = baseAngle - spread / 2 + (spread * index) / Math.max(1, count - 1);
       this.spawnEnemyProjectile({

@@ -1670,6 +1670,8 @@ function handleRunEnd(result) {
         ],
         presentation: "cinematic",
         sceneTheme: "liberation",
+        typewriter: true,
+        revealPrimaryAfterTypewriter: true,
         primaryLabel: "进入主菜单",
         primaryAction: () => {
           showOverlay(null);

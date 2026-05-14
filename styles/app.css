@@ -1396,8 +1396,34 @@ h3 {
   z-index: 0;
 }
 
+.story-screen.is-cinematic[data-scene="liberation"] .story-scene {
+  align-items: stretch;
+  justify-items: stretch;
+  padding: 0;
+}
+
 .story-screen.is-cinematic[data-scene="liberation"] .story-card {
-  background: linear-gradient(180deg, rgba(9, 28, 33, 0.34), rgba(18, 60, 52, 0.72));
+  position: fixed;
+  top: calc(var(--safe-top) + 28px);
+  right: calc(var(--safe-right) + 28px);
+  left: auto;
+  display: grid;
+  align-content: start;
+  justify-items: end;
+  gap: 0;
+  width: min(560px, calc(100vw - var(--safe-left) - var(--safe-right) - 56px));
+  width: min(560px, calc(100dvw - var(--safe-left) - var(--safe-right) - 56px));
+  max-width: none;
+  max-height: calc(var(--app-height) - var(--safe-top) - var(--safe-bottom) - 56px);
+  padding: 96px 0 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  overflow: visible;
+  contain: layout paint;
+  z-index: 2;
 }
 
 .story-screen.is-cinematic[data-scene="victory"] .story-scene {
@@ -1425,6 +1451,17 @@ h3 {
   text-align: left;
 }
 
+.story-screen.is-cinematic[data-scene="liberation"] .story-card h2 {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  width: min(100%, 320px);
+  margin: 0;
+  font-size: clamp(1.55rem, 3vw, 2.4rem);
+  line-height: 1.12;
+  text-align: right;
+}
+
 .story-screen.is-cinematic .story-card .eyebrow {
   color: #ffd98a;
 }
@@ -1434,6 +1471,14 @@ h3 {
   top: 0;
   left: 0;
   margin: 0;
+}
+
+.story-screen.is-cinematic[data-scene="liberation"] .story-card .eyebrow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin: 0;
+  text-align: right;
 }
 
 .story-screen.is-cinematic .story-body p {
@@ -1452,23 +1497,53 @@ h3 {
   justify-self: start;
 }
 
+.story-screen.is-cinematic[data-scene="liberation"] .story-body {
+  width: 100%;
+  margin: 0;
+  gap: 12px;
+  text-align: right;
+  justify-self: end;
+}
+
 .story-screen.is-cinematic[data-scene="prologue"] .story-body p {
   color: rgba(236, 242, 247, 0.92);
   font-size: clamp(0.98rem, 1.7vw, 1.14rem);
   line-height: 1.72;
 }
 
+.story-screen.is-cinematic[data-scene="liberation"] .story-body p {
+  color: rgba(236, 242, 247, 0.92);
+  font-size: clamp(0.98rem, 1.7vw, 1.14rem);
+  line-height: 1.72;
+  text-align: right;
+}
+
 .story-screen.is-cinematic[data-scene="prologue"] .hero-actions {
   margin-top: 24px;
+}
+
+.story-screen.is-cinematic[data-scene="liberation"] .hero-actions {
+  width: 100%;
+  margin-top: 24px;
+  justify-content: flex-end;
 }
 
 .story-screen.is-cinematic[data-scene="prologue"] .storyPrimaryButton[hidden] {
   display: none;
 }
 
+.story-screen.is-cinematic[data-scene="liberation"] .storyPrimaryButton[hidden] {
+  display: none;
+}
+
 .story-screen.is-cinematic[data-scene="prologue"] .storyPrimaryButton {
   min-width: 172px;
   box-shadow: 0 16px 40px rgba(13, 31, 46, 0.28);
+}
+
+.story-screen.is-cinematic[data-scene="liberation"] .storyPrimaryButton {
+  min-width: 172px;
+  box-shadow: 0 16px 40px rgba(13, 46, 31, 0.28);
 }
 
 .story-screen.is-cinematic[data-scene="prologue"] .story-scene__fairy {
@@ -1880,12 +1955,29 @@ h3 {
     padding: 70px 0 0;
   }
 
+  .story-screen.is-cinematic[data-scene="liberation"] .story-card {
+    top: calc(var(--safe-top) + 14px);
+    right: calc(var(--safe-right) + 14px);
+    width: min(420px, calc(100vw - var(--safe-left) - var(--safe-right) - 28px));
+    width: min(420px, calc(100dvw - var(--safe-left) - var(--safe-right) - 28px));
+    max-width: none;
+    max-height: calc(var(--app-height) - var(--safe-top) - var(--safe-bottom) - 28px);
+    padding: 70px 0 0;
+  }
+
   .story-screen.is-cinematic .story-card h2 {
     font-size: clamp(1.52rem, 3.6vw, 2.4rem);
     line-height: 1.08;
   }
 
   .story-screen.is-cinematic[data-scene="prologue"] .story-card h2 {
+    top: 16px;
+    width: min(100%, 240px);
+    font-size: clamp(1.14rem, 2.5vw, 1.55rem);
+    line-height: 1.14;
+  }
+
+  .story-screen.is-cinematic[data-scene="liberation"] .story-card h2 {
     top: 16px;
     width: min(100%, 240px);
     font-size: clamp(1.14rem, 2.5vw, 1.55rem);
@@ -1903,6 +1995,12 @@ h3 {
     gap: 10px;
   }
 
+  .story-screen.is-cinematic[data-scene="liberation"] .story-body {
+    width: 100%;
+    margin-top: 0;
+    gap: 10px;
+  }
+
   .story-screen.is-cinematic .story-body p {
     font-size: 0.92rem;
     line-height: 1.5;
@@ -1913,11 +2011,27 @@ h3 {
     line-height: 1.48;
   }
 
+  .story-screen.is-cinematic[data-scene="liberation"] .story-body p {
+    font-size: 0.82rem;
+    line-height: 1.48;
+  }
+
   .story-screen.is-cinematic[data-scene="prologue"] .hero-actions {
     margin-top: 16px;
   }
 
+  .story-screen.is-cinematic[data-scene="liberation"] .hero-actions {
+    margin-top: 16px;
+    justify-content: flex-end;
+  }
+
   .story-screen.is-cinematic[data-scene="prologue"] .storyPrimaryButton {
+    min-height: 48px;
+    padding: 12px 20px;
+    font-size: 0.92rem;
+  }
+
+  .story-screen.is-cinematic[data-scene="liberation"] .storyPrimaryButton {
     min-height: 48px;
     padding: 12px 20px;
     font-size: 0.92rem;
