@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <defs>
+    <filter id="softShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#6f73a2" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <ellipse cx="80" cy="138" rx="28" ry="10" fill="#647757" fill-opacity="0.18"/>
+  <g filter="url(#softShadow)" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="57" cy="82" rx="18" ry="30" fill="#d8dbff" fill-opacity="0.86" stroke="#a5aee7" stroke-width="3.2"/>
+    <ellipse cx="103" cy="82" rx="18" ry="30" fill="#d8dbff" fill-opacity="0.86" stroke="#a5aee7" stroke-width="3.2"/>
+    <path d="M48 99c8 10 14 21 15 31" fill="none" stroke="#c5b4ff" stroke-width="4"/>
+    <path d="M112 99c-8 10-14 21-15 31" fill="none" stroke="#c5b4ff" stroke-width="4"/>
+    <path d="M80 76c-16 0-29 12-29 28v8c0 10 14 18 29 18s29-8 29-18v-8c0-16-13-28-29-28Z" fill="#b8bff9" stroke="#858ec5" stroke-width="4.2"/>
+    <circle cx="80" cy="55" r="23" fill="#fff2e3" stroke="#8d8c92" stroke-width="4.2"/>
+    <path d="M62 43c4-10 11-16 18-16 7 0 14 6 18 16-6 0-12 1-18 4-6-3-12-4-18-4Z" fill="#aeb6ff" stroke="#838fd7" stroke-width="3.8"/>
+    <circle cx="71" cy="56" r="3.5" fill="#4a4d63"/>
+    <circle cx="89" cy="56" r="3.5" fill="#4a4d63"/>
+    <path d="M73 67c3 3 11 3 14 0" fill="none" stroke="#4a4d63" stroke-width="3.2"/>
+    <path d="M70 113 64 132" fill="none" stroke="#7d8d67" stroke-width="4"/>
+    <path d="M90 113 96 132" fill="none" stroke="#7d8d67" stroke-width="4"/>
+  </g>
+</svg>

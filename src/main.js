@@ -38,6 +38,7 @@ const INITIAL_REGION_ID = GARDEN_REGIONS[0].id;
 const MIN_GAME_VIEWPORT_WIDTH = 640;
 const MIN_GAME_VIEWPORT_HEIGHT = 360;
 const TOUCH_JOYSTICK_MAX_OFFSET = 46;
+const TOUCH_JOYSTICK_DEADZONE = 20;
 const MAP_TOUCH_TAP_THRESHOLD = 10;
 const STORY_TYPEWRITER_CHARACTER_DELAY = 32;
 const STORY_TYPEWRITER_SHORT_PAUSE = 120;
@@ -743,11 +744,13 @@ function updateTouchJoystick(event) {
   const deltaY = event.clientY - centerY;
   const distance = Math.hypot(deltaX, deltaY);
   const limitedDistance = Math.min(TOUCH_JOYSTICK_MAX_OFFSET, distance);
+  const activeDistance = Math.max(0, limitedDistance - TOUCH_JOYSTICK_DEADZONE);
+  const activeRange = Math.max(1, TOUCH_JOYSTICK_MAX_OFFSET - TOUCH_JOYSTICK_DEADZONE);
   const directionX = distance > 0 ? deltaX / distance : 0;
   const directionY = distance > 0 ? deltaY / distance : 0;
-  const offsetX = directionX * limitedDistance;
-  const offsetY = directionY * limitedDistance;
-  const strength = TOUCH_JOYSTICK_MAX_OFFSET > 0 ? limitedDistance / TOUCH_JOYSTICK_MAX_OFFSET : 0;
+  const strength = TOUCH_JOYSTICK_MAX_OFFSET > 0 ? activeDistance / activeRange : 0;
+  const offsetX = directionX * strength * TOUCH_JOYSTICK_MAX_OFFSET;
+  const offsetY = directionY * strength * TOUCH_JOYSTICK_MAX_OFFSET;
 
   setTouchJoystickThumbPosition(offsetX, offsetY);
   game.setTouchMovement(directionX * strength, directionY * strength);
@@ -849,10 +852,7 @@ function getCharacterRuleDescription(character) {
   if (!character) {
     return "暂无可用角色。";
   }
-  if (character.battleRule === "allUnlockedSkills") {
-    return "小精灵可在战斗中解锁所有已获得角色的技能。";
-  }
-  return `${character.name} 只能使用自己的专属技能 ${getSkillDefinition(character.skillId)?.name || "未知技能"}。`;
+  return `${character.name} 初始携带 ${getSkillDefinition(character.skillId)?.name || "未知技能"}，战斗中可使用全部已解锁角色技能。`;
 }
 
 function getCharacterAllowedSkillIds(character) {
@@ -860,13 +860,9 @@ function getCharacterAllowedSkillIds(character) {
     return [];
   }
 
-  if (character.battleRule === "allUnlockedSkills") {
-    return getUnlockedCharacters()
-      .map((item) => item.skillId)
-      .filter((skillId, index, array) => array.indexOf(skillId) === index && getSkillDefinition(skillId));
-  }
-
-  return getSkillDefinition(character.skillId) ? [character.skillId] : [];
+  return getUnlockedCharacters()
+    .map((item) => item.skillId)
+    .filter((skillId, index, array) => array.indexOf(skillId) === index && getSkillDefinition(skillId));
 }
 
 function getRewardMeta(region) {
@@ -1326,7 +1322,7 @@ function renderWarPrep() {
       <button class="prep-option ${character.id === selectedCharacterId ? "is-selected" : ""}" data-character-id="${character.id}">
         <strong>${character.name}</strong>
         <span class="card-note">${character.description}</span>
-        <small>${skill?.name || "未知技能"} · ${character.battleRule === "allUnlockedSkills" ? "可切换全部已解锁角色技能" : "只能使用自身专属技能"}</small>
+        <small>${skill?.name || "未知技能"} · 初始技能，战斗中可使用全部已解锁角色技能</small>
       </button>
     `;
   }).join("");
@@ -1394,7 +1390,7 @@ function renderLab() {
             <p class="card-note">专属技能：${skill?.name || "未知技能"}</p>
           </div>
           <footer>
-            <span>${character.battleRule === "allUnlockedSkills" ? "全技能调度型角色" : "专属技能守园者"}</span>
+            <span>共享已解锁技能池</span>
           </footer>
         </article>
       `;

@@ -45,7 +45,7 @@ export function getDifficultySummary(value) {
 
 export const PLAYER_BASE = {
   maxHealth: 100,
-  speed: 220,
+  speed: 64,
   radius: 18,
   expPickupRange: 96,
   attackMultiplier: 1,

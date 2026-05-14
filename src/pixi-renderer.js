@@ -6,7 +6,7 @@ const DECORATION_STEP_X = 176;
 const DECORATION_STEP_Y = 148;
 const MAX_PARTICLES = 220;
 const MAX_RENDER_RESOLUTION = 1.5;
-const PLAYER_VISUAL_SCALE = 0.95;
+const PLAYER_VISUAL_SCALE = 0.76;
 const NORMAL_ENEMY_VISUAL_SCALE = 0.8;
 const BOSS_VISUAL_SCALE = 0.5;
 const DEFAULT_VISUAL_PROFILE = Object.freeze({
@@ -44,6 +44,17 @@ const EYE_COMFORT_VISUAL_PROFILE = Object.freeze({
 
 const EXTERNAL_ASSET_DEFS = {
   playerFairy: { path: "./assets/sprites/fairy-scout.svg", baseRadius: 40 },
+  playerSunblossom: { path: "./assets/sprites/player-sunblossom.svg", baseRadius: 40 },
+  playerFoambud: { path: "./assets/sprites/player-foambud.svg", baseRadius: 40 },
+  playerPetalwing: { path: "./assets/sprites/player-petalwing.svg", baseRadius: 40 },
+  playerThornwarden: { path: "./assets/sprites/player-thornwarden.svg", baseRadius: 40 },
+  playerDewcaller: { path: "./assets/sprites/player-dewcaller.svg", baseRadius: 40 },
+  playerStormbud: { path: "./assets/sprites/player-stormbud.svg", baseRadius: 40 },
+  playerMushglen: { path: "./assets/sprites/player-mushglen.svg", baseRadius: 40 },
+  playerVinewhisper: { path: "./assets/sprites/player-vinewhisper.svg", baseRadius: 40 },
+  playerCometseed: { path: "./assets/sprites/player-cometseed.svg", baseRadius: 40 },
+  playerRibbonmoth: { path: "./assets/sprites/player-ribbonmoth.svg", baseRadius: 40 },
+  playerLotuskeeper: { path: "./assets/sprites/player-lotuskeeper.svg", baseRadius: 40 },
   enemyBugRound: { path: "./assets/sprites/bug-minion.svg", baseRadius: 72 },
   enemyBugTall: { path: "./assets/sprites/bug-minion-tall.svg", baseRadius: 72 },
   enemyBugStout: { path: "./assets/sprites/bug-minion-stout.svg", baseRadius: 76 },
@@ -65,6 +76,21 @@ const EXTERNAL_ASSET_DEFS = {
   enemyBulletMoth: { path: "./assets/sprites/enemy-bullet-moth.svg", baseRadius: 52 },
   enemyBulletLantern: { path: "./assets/sprites/enemy-bullet-lantern.svg", baseRadius: 58 },
 };
+
+const PLAYER_CHARACTER_TEXTURES = Object.freeze({
+  spriteScout: "playerFairy",
+  sunblossom: "playerSunblossom",
+  foambud: "playerFoambud",
+  petalwing: "playerPetalwing",
+  thornwarden: "playerThornwarden",
+  dewcaller: "playerDewcaller",
+  stormbud: "playerStormbud",
+  mushglen: "playerMushglen",
+  vinewhisper: "playerVinewhisper",
+  cometseed: "playerCometseed",
+  ribbonmoth: "playerRibbonmoth",
+  lotuskeeper: "playerLotuskeeper",
+});
 
 export const RENDERER_EXTERNAL_ASSET_PATHS = Object.freeze(Object.values(EXTERNAL_ASSET_DEFS).map((definition) => definition.path));
 
@@ -748,7 +774,7 @@ export class PixiRenderer {
     this.drawEnemies(runtime.enemies || [], delta);
     this.drawSkillEffects(runtime.skillEffects || [], delta);
     this.drawEnemyProjectiles(runtime.enemyProjectiles || [], delta);
-    this.drawPlayer(runtime.player, delta);
+    this.drawPlayer(runtime.player, delta, runtime.session?.selectedCharacterId);
 
     this.finishFrame();
     this.app.renderer.render(this.app.stage);
@@ -797,8 +823,9 @@ export class PixiRenderer {
     });
   }
 
-  getPlayerTexture() {
-    return this.getExternalTexture("playerFairy");
+  getPlayerTexture(characterId = "spriteScout") {
+    const assetId = PLAYER_CHARACTER_TEXTURES[characterId] || "playerFairy";
+    return this.getExternalTexture(assetId);
   }
 
   getDecorationTexture(kind) {
@@ -1365,9 +1392,9 @@ export class PixiRenderer {
     }
   }
 
-  drawPlayer(player, delta) {
+  drawPlayer(player, delta, characterId = "spriteScout") {
     const glowPulse = 1 + Math.sin(this.getMotionTime(0.006)) * 0.04;
-    const textureData = this.getPlayerTexture();
+    const textureData = this.getPlayerTexture(characterId);
     const mainScale = (player.radius / textureData.baseRadius) * 0.93 * PLAYER_VISUAL_SCALE;
     const visualRadius = textureData.baseRadius * mainScale;
     this.playerVisual.position.set(player.x, player.y);
