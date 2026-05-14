@@ -6,8 +6,9 @@ const DECORATION_STEP_X = 176;
 const DECORATION_STEP_Y = 148;
 const MAX_PARTICLES = 220;
 const MAX_RENDER_RESOLUTION = 1.5;
-const PLAYER_VISUAL_SCALE = 0.5;
-const NORMAL_ENEMY_VISUAL_SCALE = 1;
+const PLAYER_VISUAL_SCALE = 0.95;
+const NORMAL_ENEMY_VISUAL_SCALE = 0.8;
+const BOSS_VISUAL_SCALE = 0.5;
 const DEFAULT_VISUAL_PROFILE = Object.freeze({
   canvasFilter: "none",
   groundBaseColor: "#b9e08a",
@@ -1406,7 +1407,7 @@ export class PixiRenderer {
       const visual = this.acquireFromPool("enemies", this.spriteLayers.enemies, () => this.createEnemyVisual());
       const textureData = this.getEnemyTexture(enemy);
       const scale = enemy.radius / textureData.baseRadius;
-      const mainScale = scale * (enemy.boss ? 0.98 : 1.33 * NORMAL_ENEMY_VISUAL_SCALE);
+      const mainScale = scale * (enemy.boss ? 0.98 * BOSS_VISUAL_SCALE : 1.33 * NORMAL_ENEMY_VISUAL_SCALE);
       const visualRadius = textureData.baseRadius * mainScale;
       const glowTint = parseColor(enemy.boss ? enemy.detailColor || enemy.accent : enemy.accent).color;
       const pulse = enemy.boss
@@ -1437,11 +1438,11 @@ export class PixiRenderer {
         bossEffect.position.set(enemy.x, enemy.y);
         bossEffect.mainSprite.texture = bossAuraTexture.texture;
         bossEffect.mainSprite.tint = mixColors(enemy.detailColor || enemy.accent, 0xffffff, 0.22);
-        bossEffect.mainSprite.scale.set((enemy.radius / bossAuraTexture.baseRadius) * (2 + pulse * 0.08));
+        bossEffect.mainSprite.scale.set((enemy.radius / bossAuraTexture.baseRadius) * (2 + pulse * 0.08) * BOSS_VISUAL_SCALE);
         bossEffect.mainSprite.alpha = 0.28 * this.visualProfile.effectLayerAlpha;
         bossEffect.mainSprite.rotation = this.getMotionTime(0.0012) + enemy.attackPhase * 0.04;
         bossEffect.haloSprite.tint = parseColor(enemy.accent).color;
-        bossEffect.haloSprite.scale.set((enemy.radius / 24) * 2.7);
+        bossEffect.haloSprite.scale.set((enemy.radius / 24) * 2.7 * BOSS_VISUAL_SCALE);
         bossEffect.haloSprite.alpha = 0.16 * this.visualProfile.effectLayerAlpha;
       } else if (enemy.regionExclusive) {
         setLine(barGraphics, 1.6, enemy.detailColor);

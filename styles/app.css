@@ -1360,7 +1360,7 @@ h3 {
 }
 
 .story-screen.is-cinematic[data-scene="prologue"] .story-card {
-  position: absolute;
+  position: fixed;
   top: calc(var(--safe-top) + 28px);
   left: calc(var(--safe-left) + 28px);
   display: grid;
@@ -1368,6 +1368,7 @@ h3 {
   justify-items: start;
   gap: 0;
   width: min(560px, calc(100vw - var(--safe-left) - var(--safe-right) - 56px));
+  width: min(560px, calc(100dvw - var(--safe-left) - var(--safe-right) - 56px));
   max-width: none;
   max-height: calc(var(--app-height) - var(--safe-top) - var(--safe-bottom) - 56px);
   padding: 96px 0 0;
@@ -1377,6 +1378,7 @@ h3 {
   box-shadow: none;
   backdrop-filter: none;
   overflow: visible;
+  contain: layout paint;
   z-index: 2;
 }
 
@@ -1772,6 +1774,7 @@ h3 {
     top: calc(var(--safe-top) + 14px);
     left: calc(var(--safe-left) + 14px);
     width: min(420px, calc(100vw - var(--safe-left) - var(--safe-right) - 28px));
+    width: min(420px, calc(100dvw - var(--safe-left) - var(--safe-right) - 28px));
     max-width: none;
     max-height: calc(var(--app-height) - var(--safe-top) - var(--safe-bottom) - 28px);
     padding: 70px 0 0;
@@ -2166,6 +2169,7 @@ h3 {
     top: calc(var(--safe-top) + 18px);
     left: calc(var(--safe-left) + 16px);
     width: calc(100vw - var(--safe-left) - var(--safe-right) - 32px);
+    width: calc(100dvw - var(--safe-left) - var(--safe-right) - 32px);
     max-height: calc(var(--app-height) - var(--safe-top) - var(--safe-bottom) - 36px);
     padding: 72px 0 0;
     border-radius: 0;
