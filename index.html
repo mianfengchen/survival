@@ -2,13 +2,19 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#274231" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>花园幸存者</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./favicon.ico" sizes="32x32" />
+    <link rel="icon" href="./assets/pwa/icon-192.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles/app.css" />
     <script type="importmap">
       {
         "imports": {
-          "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@7.4.3/dist/pixi.mjs"
+          "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js-legacy@7.4.3/dist/pixi-legacy.mjs"
         }
       }
     </script>
@@ -232,36 +238,60 @@
     </section>
 
     <section class="app-view game-view" id="gameView">
-      <canvas id="gameCanvas" width="1280" height="720"></canvas>
+      <div class="game-stage" id="gameStage">
+        <canvas id="gameCanvas" width="1280" height="720"></canvas>
 
-      <div class="game-hud">
-        <div class="sr-only">
-          <strong id="sessionLabel">战斗准备</strong>
-          <span id="sessionHint">点击开始进入游戏界面</span>
-        </div>
+        <div class="game-hud">
+          <div class="sr-only">
+            <strong id="sessionLabel">战斗准备</strong>
+            <span id="sessionHint">点击开始进入游戏界面</span>
+          </div>
 
-        <div class="hud-inline hud-inline-top">
-          <div class="hud-top-values">
-            <span id="hudTimerText">倒计时 15:00</span>
-            <span>植物能量 <strong data-global-field="coins">0</strong></span>
-          </div>
-          <div class="hud-top-actions">
-            <button id="eyeComfortButton" class="hud-speed-button hud-eye-button" type="button">护眼 关</button>
-            <button id="speedToggleButton" class="hud-speed-button" type="button">速度 1x</button>
-          </div>
-        </div>
-
-        <div class="hud-bottom-cluster">
-          <div class="hud-inline hud-inline-bottom">
-            <span id="hudHealthText">生命 100 / 100</span>
-          </div>
-          <div class="hud-exp-shell">
-            <span id="hudLevelText" class="hud-exp-level">LV 1</span>
-            <div class="hud-exp-bar">
-              <div id="hudExpFill" class="hud-exp-fill"></div>
-              <span id="hudExpText" class="hud-exp-text">0 / 18</span>
+          <div class="hud-inline hud-inline-top">
+            <div class="hud-top-values">
+              <span id="hudTimerText">倒计时 15:00</span>
+              <span>植物能量 <strong data-global-field="coins">0</strong></span>
+            </div>
+            <div class="hud-top-actions">
+              <button id="eyeComfortButton" class="hud-speed-button hud-eye-button" type="button">护眼 关</button>
+              <button id="speedToggleButton" class="hud-speed-button" type="button">速度 1x</button>
             </div>
           </div>
+
+          <div class="hud-bottom-cluster">
+            <div class="hud-inline hud-inline-bottom">
+              <span id="hudHealthText">生命 100 / 100</span>
+            </div>
+            <div class="hud-exp-shell">
+              <span id="hudLevelText" class="hud-exp-level">LV 1</span>
+              <div class="hud-exp-bar">
+                <div id="hudExpFill" class="hud-exp-fill"></div>
+                <span id="hudExpText" class="hud-exp-text">0 / 18</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="touch-controls" id="touchControls">
+          <div class="touch-controls__left">
+            <div class="touch-joystick" id="touchJoystick" aria-label="移动摇杆" role="application">
+              <div class="touch-joystick__base"></div>
+              <div class="touch-joystick__thumb" id="touchJoystickThumb"></div>
+            </div>
+          </div>
+
+          <div class="touch-controls__right">
+            <button id="touchBlinkButton" class="touch-action-button touch-action-button--blink" type="button">闪现</button>
+            <button id="touchPauseButton" class="touch-action-button touch-action-button--pause" type="button">暂停</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="orientation-guard" id="orientationGuard" aria-live="polite">
+        <div class="orientation-guard__card">
+          <p class="eyebrow">Landscape</p>
+          <h2>请横屏游玩</h2>
+          <p class="overlay-copy">安卓手机的第一阶段适配先锁定横屏体验。旋转设备后，战斗舞台会按 16:9 等比缩放，并自动避开安全区。</p>
         </div>
       </div>
 

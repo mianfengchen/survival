@@ -48,6 +48,22 @@ function circleDistance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function pointToSegmentDistance(pointX, pointY, startX, startY, endX, endY) {
+  const segmentX = endX - startX;
+  const segmentY = endY - startY;
+  const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+
+  if (segmentLengthSquared <= 0.000001) {
+    return Math.hypot(pointX - startX, pointY - startY);
+  }
+
+  const projection = ((pointX - startX) * segmentX + (pointY - startY) * segmentY) / segmentLengthSquared;
+  const clampedProjection = clamp(projection, 0, 1);
+  const closestX = startX + segmentX * clampedProjection;
+  const closestY = startY + segmentY * clampedProjection;
+  return Math.hypot(pointX - closestX, pointY - closestY);
+}
+
 function formatMultiplier(value) {
   return `${value.toFixed(2)}x`;
 }
@@ -163,6 +179,11 @@ export class GameRuntime {
       left: false,
       right: false,
     };
+    this.touchInput = {
+      x: 0,
+      y: 0,
+      active: false,
+    };
 
     this.player = createPlayer();
     this.generalLevels = Object.fromEntries(GENERAL_UPGRADES.map((item) => [item.id, 0]));
@@ -192,16 +213,61 @@ export class GameRuntime {
     this.renderIdleFrame();
   }
 
+  resetMovementInput() {
+    this.input.up = false;
+    this.input.down = false;
+    this.input.left = false;
+    this.input.right = false;
+    this.clearTouchMovement();
+  }
+
+  setMovementInput(key, pressed) {
+    if (key === "w" || key === "ArrowUp") this.input.up = pressed;
+    if (key === "s" || key === "ArrowDown") this.input.down = pressed;
+    if (key === "a" || key === "ArrowLeft") this.input.left = pressed;
+    if (key === "d" || key === "ArrowRight") this.input.right = pressed;
+  }
+
+  setTouchMovement(x, y) {
+    const nextX = clamp(x, -1, 1);
+    const nextY = clamp(y, -1, 1);
+    const active = Math.hypot(nextX, nextY) > 0.08;
+    this.touchInput.x = active ? nextX : 0;
+    this.touchInput.y = active ? nextY : 0;
+    this.touchInput.active = active;
+  }
+
+  clearTouchMovement() {
+    this.touchInput.x = 0;
+    this.touchInput.y = 0;
+    this.touchInput.active = false;
+  }
+
+  getMovementVector() {
+    let dx = 0;
+    let dy = 0;
+
+    if (this.input.up) dy -= 1;
+    if (this.input.down) dy += 1;
+    if (this.input.left) dx -= 1;
+    if (this.input.right) dx += 1;
+
+    dx += this.touchInput.x;
+    dy += this.touchInput.y;
+
+    return {
+      x: clamp(dx, -1, 1),
+      y: clamp(dy, -1, 1),
+    };
+  }
+
   bindKeys() {
     if (this.keysBound) {
       return;
     }
 
     window.addEventListener("keydown", (event) => {
-      if (event.key === "w" || event.key === "ArrowUp") this.input.up = true;
-      if (event.key === "s" || event.key === "ArrowDown") this.input.down = true;
-      if (event.key === "a" || event.key === "ArrowLeft") this.input.left = true;
-      if (event.key === "d" || event.key === "ArrowRight") this.input.right = true;
+      this.setMovementInput(event.key, true);
       if (event.code === "Space") {
         event.preventDefault();
         this.tryBlink();
@@ -216,11 +282,29 @@ export class GameRuntime {
     });
 
     window.addEventListener("keyup", (event) => {
-      if (event.key === "w" || event.key === "ArrowUp") this.input.up = false;
-      if (event.key === "s" || event.key === "ArrowDown") this.input.down = false;
-      if (event.key === "a" || event.key === "ArrowLeft") this.input.left = false;
-      if (event.key === "d" || event.key === "ArrowRight") this.input.right = false;
+      this.setMovementInput(event.key, false);
     });
+
+    window.addEventListener("blur", () => {
+      this.resetMovementInput();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") {
+        this.resetMovementInput();
+      }
+    });
+
+    window.addEventListener(
+      "contextmenu",
+      (event) => {
+        this.resetMovementInput();
+        if (event.target === this.canvas && this.state !== "menu") {
+          event.preventDefault();
+        }
+      },
+      true,
+    );
 
     this.keysBound = true;
   }
@@ -263,12 +347,7 @@ export class GameRuntime {
       ? preferredSkillId
       : normalizeInitialSkillId(unlockedSkillIds[0] || preferredSkillId, this.metaUnlocks);
     this.player = createPlayer();
-    this.input = {
-      up: false,
-      down: false,
-      left: false,
-      right: false,
-    };
+    this.resetMovementInput();
     this.generalLevels = Object.fromEntries(GENERAL_UPGRADES.map((item) => [item.id, 0]));
     this.skillStates = {};
     this.session = {
@@ -642,12 +721,9 @@ export class GameRuntime {
   }
 
   movePlayer(delta) {
-    let dx = 0;
-    let dy = 0;
-    if (this.input.up) dy -= 1;
-    if (this.input.down) dy += 1;
-    if (this.input.left) dx -= 1;
-    if (this.input.right) dx += 1;
+    const movement = this.getMovementVector();
+    const dx = movement.x;
+    const dy = movement.y;
     if (dx !== 0 || dy !== 0) {
       const length = magnitude(dx, dy);
       this.player.x += (dx / length) * this.player.speed * delta;
@@ -662,12 +738,9 @@ export class GameRuntime {
       return;
     }
 
-    let dx = 0;
-    let dy = 0;
-    if (this.input.up) dy -= 1;
-    if (this.input.down) dy += 1;
-    if (this.input.left) dx -= 1;
-    if (this.input.right) dx += 1;
+    const movement = this.getMovementVector();
+    let dx = movement.x;
+    let dy = movement.y;
     if (dx === 0 && dy === 0) {
       dy = -1;
     }
@@ -1422,6 +1495,8 @@ export class GameRuntime {
         projectile.speed = returnSpeed;
       }
 
+      const previousX = projectile.x;
+      const previousY = projectile.y;
       projectile.x += projectile.vx * delta;
       projectile.y += projectile.vy * delta;
       projectile.distanceTravelled += Math.hypot(projectile.vx * delta, projectile.vy * delta);
@@ -1444,7 +1519,7 @@ export class GameRuntime {
         if (removed) {
           break;
         }
-        if (circleDistance(projectile, enemy) > projectile.radius + enemy.radius) {
+        if (!this.projectileHitsEnemy(projectile, enemy, previousX, previousY, projectile.x, projectile.y)) {
           continue;
         }
 
@@ -2757,6 +2832,11 @@ export class GameRuntime {
 
   findEnemyById(enemyId) {
     return this.enemies.find((enemy) => enemy.id === enemyId) || null;
+  }
+
+  projectileHitsEnemy(projectile, enemy, startX, startY, endX, endY) {
+    const hitRadius = projectile.radius + enemy.radius;
+    return pointToSegmentDistance(enemy.x, enemy.y, startX, startY, endX, endY) <= hitRadius;
   }
 
   findNearestEnemies(x, y, count = 1) {

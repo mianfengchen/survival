@@ -7,7 +7,7 @@ const DECORATION_STEP_Y = 148;
 const MAX_PARTICLES = 220;
 const MAX_RENDER_RESOLUTION = 1.5;
 const PLAYER_VISUAL_SCALE = 1.5;
-const NORMAL_ENEMY_VISUAL_SCALE = 2;
+const NORMAL_ENEMY_VISUAL_SCALE = 1;
 const DEFAULT_VISUAL_PROFILE = Object.freeze({
   canvasFilter: "none",
   groundBaseColor: "#b9e08a",

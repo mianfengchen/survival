@@ -34,6 +34,11 @@ import {
 } from "./storage.js";
 
 const INITIAL_REGION_ID = GARDEN_REGIONS[0].id;
+const GAME_STAGE_ASPECT_RATIO = 16 / 9;
+const MIN_GAME_VIEWPORT_WIDTH = 640;
+const MIN_GAME_VIEWPORT_HEIGHT = 360;
+const TOUCH_JOYSTICK_MAX_OFFSET = 46;
+const MAP_TOUCH_TAP_THRESHOLD = 10;
 
 const STATUS_LABELS = {
   menu: "待机",
@@ -44,24 +49,186 @@ const STATUS_LABELS = {
 };
 
 const REGION_MAP_COLUMNS = 6;
-const REGION_TILE_WIDTH = 102;
-const REGION_TILE_HEIGHT = 118;
-const REGION_TILE_ROW_STEP = 88;
-const REGION_TILE_STAGGER_OFFSET = 51;
-const REGION_TILE_PADDING_X = 24;
-const REGION_TILE_PADDING_Y = 18;
+const REGION_MAP_ROWS = Math.ceil(GARDEN_REGIONS.length / REGION_MAP_COLUMNS);
+const REGION_MAP_VIEWBOX_WIDTH = 860;
+const REGION_MAP_VIEWBOX_HEIGHT = 700;
+const REGION_VERTEX_ROW_X_SWAY = [-24, 18, -14, 26, -18, 12, -22];
+const REGION_VERTEX_COLUMN_X_SWAY = [-30, 4, 22, -18, 14, -8, 26];
+const REGION_VERTEX_ROW_Y_SWAY = [-34, 10, -16, 16, -10, 14, 30];
+const REGION_VERTEX_COLUMN_Y_SWAY = [0, -18, 12, -10, 18, -14, 8];
 
-function getRegionMapLayout(index) {
+function getMapSway(values, index) {
+  return values[index % values.length];
+}
+
+function getRegionMapVertex(row, column) {
+  const xBase = 108 + column * 102 + getMapSway(REGION_VERTEX_ROW_X_SWAY, row) + getMapSway(REGION_VERTEX_COLUMN_X_SWAY, column);
+  const yBase = 96 + row * 80 + getMapSway(REGION_VERTEX_ROW_Y_SWAY, row) + getMapSway(REGION_VERTEX_COLUMN_Y_SWAY, column);
+  let x = xBase + ((((row + 1) * 17 + (column + 3) * 13) % 7) - 3) * 5;
+  let y = yBase + ((((row + 2) * 11 + (column + 1) * 19) % 7) - 3) * 4;
+
+  if (column === 0) {
+    x -= 42 + row * 4;
+  }
+
+  if (column === REGION_MAP_COLUMNS) {
+    x += 28 + (REGION_MAP_ROWS - row) * 5;
+  }
+
+  if (row === 0) {
+    y -= 30 + Math.abs(column - REGION_MAP_COLUMNS / 2) * 7;
+  }
+
+  if (row === REGION_MAP_ROWS) {
+    y += 34 + Math.abs(column - REGION_MAP_COLUMNS / 2) * 6;
+  }
+
+  if (row === 0 && column >= 4) {
+    y += 14;
+  }
+
+  if (row === REGION_MAP_ROWS && column <= 1) {
+    y -= 12;
+  }
+
+  if (column === 0 && row >= 4) {
+    x += 14;
+  }
+
+  if (column === REGION_MAP_COLUMNS && row <= 1) {
+    x -= 12;
+  }
+
+  return { x, y };
+}
+
+const REGION_MAP_VERTICES = Array.from({ length: REGION_MAP_ROWS + 1 }, (_, row) =>
+  Array.from({ length: REGION_MAP_COLUMNS + 1 }, (_, column) => getRegionMapVertex(row, column)),
+);
+
+function getHorizontalEdgePoint(row, column) {
+  const start = REGION_MAP_VERTICES[row][column];
+  const end = REGION_MAP_VERTICES[row][column + 1];
+  const bend = ((((row + 1) * 13) + ((column + 2) * 17)) % 5 - 2) * 5;
+  return {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2 + bend,
+  };
+}
+
+function getVerticalEdgePoint(row, column) {
+  const start = REGION_MAP_VERTICES[row][column];
+  const end = REGION_MAP_VERTICES[row + 1][column];
+  const bend = ((((row + 3) * 19) + ((column + 1) * 11)) % 5 - 2) * 5;
+  return {
+    x: (start.x + end.x) / 2 + bend,
+    y: (start.y + end.y) / 2,
+  };
+}
+
+function formatMapPoint(point) {
+  return `${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+}
+
+function buildCurvedPath(start, segments, close = true) {
+  let path = `M ${formatMapPoint(start)}`;
+
+  for (const [control, end] of segments) {
+    path += ` Q ${formatMapPoint(control)} ${formatMapPoint(end)}`;
+  }
+
+  if (close) {
+    path += " Z";
+  }
+
+  return path;
+}
+
+function getRegionCellGeometry(index) {
   const row = Math.floor(index / REGION_MAP_COLUMNS);
   const column = index % REGION_MAP_COLUMNS;
-  const x = REGION_TILE_PADDING_X + column * REGION_TILE_WIDTH + (row % 2) * REGION_TILE_STAGGER_OFFSET;
-  const y = REGION_TILE_PADDING_Y + row * REGION_TILE_ROW_STEP;
+  const topLeft = REGION_MAP_VERTICES[row][column];
+  const topRight = REGION_MAP_VERTICES[row][column + 1];
+  const bottomRight = REGION_MAP_VERTICES[row + 1][column + 1];
+  const bottomLeft = REGION_MAP_VERTICES[row + 1][column];
   return {
-    x,
-    y,
-    width: REGION_TILE_WIDTH,
-    height: REGION_TILE_HEIGHT,
+    path: buildCurvedPath(topLeft, [
+      [getHorizontalEdgePoint(row, column), topRight],
+      [getVerticalEdgePoint(row, column + 1), bottomRight],
+      [getHorizontalEdgePoint(row + 1, column), bottomLeft],
+      [getVerticalEdgePoint(row, column), topLeft],
+    ]),
+    labelX: (topLeft.x + topRight.x + bottomRight.x + bottomLeft.x) / 4,
+    labelY: (topLeft.y + topRight.y + bottomRight.y + bottomLeft.y) / 4 + 5,
   };
+}
+
+function getRegionMapOutlinePath() {
+  const start = REGION_MAP_VERTICES[0][0];
+  const segments = [];
+
+  for (let column = 0; column < REGION_MAP_COLUMNS; column += 1) {
+    segments.push([getHorizontalEdgePoint(0, column), REGION_MAP_VERTICES[0][column + 1]]);
+  }
+
+  for (let row = 0; row < REGION_MAP_ROWS; row += 1) {
+    segments.push([getVerticalEdgePoint(row, REGION_MAP_COLUMNS), REGION_MAP_VERTICES[row + 1][REGION_MAP_COLUMNS]]);
+  }
+
+  for (let column = REGION_MAP_COLUMNS - 1; column >= 0; column -= 1) {
+    segments.push([getHorizontalEdgePoint(REGION_MAP_ROWS, column), REGION_MAP_VERTICES[REGION_MAP_ROWS][column]]);
+  }
+
+  for (let row = REGION_MAP_ROWS - 1; row >= 0; row -= 1) {
+    segments.push([getVerticalEdgePoint(row, 0), REGION_MAP_VERTICES[row][0]]);
+  }
+
+  return buildCurvedPath(start, segments);
+}
+
+function getRegionBoundaryPaths() {
+  const paths = [];
+
+  for (let row = 1; row < REGION_MAP_ROWS; row += 1) {
+    for (let column = 0; column < REGION_MAP_COLUMNS; column += 1) {
+      const start = REGION_MAP_VERTICES[row][column];
+      const mid = getHorizontalEdgePoint(row, column);
+      const end = REGION_MAP_VERTICES[row][column + 1];
+      paths.push(buildCurvedPath(start, [[mid, end]], false));
+    }
+  }
+
+  for (let row = 0; row < REGION_MAP_ROWS; row += 1) {
+    for (let column = 1; column < REGION_MAP_COLUMNS; column += 1) {
+      const start = REGION_MAP_VERTICES[row][column];
+      const mid = getVerticalEdgePoint(row, column);
+      const end = REGION_MAP_VERTICES[row + 1][column];
+      paths.push(buildCurvedPath(start, [[mid, end]], false));
+    }
+  }
+
+  return paths;
+}
+
+function getRegionLabelLines(label) {
+  if (label.length <= 4) {
+    return [label];
+  }
+
+  const midpoint = Math.ceil(label.length / 2);
+  return [label.slice(0, midpoint), label.slice(midpoint)];
+}
+
+function renderRegionLabelText(label, x, y, className) {
+  const lines = getRegionLabelLines(label);
+  const startY = y - (lines.length - 1) * 10;
+  return `
+    <text class="${className}" x="${x.toFixed(1)}" y="${startY.toFixed(1)}">
+      ${lines
+        .map((line, index) => `<tspan x="${x.toFixed(1)}" dy="${index === 0 ? 0 : 18}">${line}</tspan>`)
+        .join("")}
+    </text>
+  `;
 }
 
 function getRegionTileLabel(region) {
@@ -71,6 +238,7 @@ function getRegionTileLabel(region) {
 const elements = {
   menuView: document.querySelector("#menuView"),
   gameView: document.querySelector("#gameView"),
+  gameStage: document.querySelector("#gameStage"),
   canvas: document.querySelector("#gameCanvas"),
   overlays: Array.from(document.querySelectorAll(".screen-overlay")),
   storyScreen: document.querySelector("#storyScreen"),
@@ -119,6 +287,11 @@ const elements = {
   hudExpText: document.querySelector("#hudExpText"),
   eyeComfortButton: document.querySelector("#eyeComfortButton"),
   speedToggleButton: document.querySelector("#speedToggleButton"),
+  touchControls: document.querySelector("#touchControls"),
+  touchJoystick: document.querySelector("#touchJoystick"),
+  touchJoystickThumb: document.querySelector("#touchJoystickThumb"),
+  touchBlinkButton: document.querySelector("#touchBlinkButton"),
+  touchPauseButton: document.querySelector("#touchPauseButton"),
   activeSkills: document.querySelector("#activeSkills"),
   levelChoices: document.querySelector("#levelChoices"),
   menuSummary: document.querySelector("#menuSummary"),
@@ -143,6 +316,23 @@ let selectedWarDifficultyId = progress.world?.selectedWarDifficultyId || "normal
 let activeRunConfig = null;
 let storyPrimaryHandler = null;
 let storySecondaryHandler = null;
+let activeTouchJoystickPointerId = null;
+let activeMapTouchPointerId = null;
+let mapTouchStartX = 0;
+let mapTouchStartY = 0;
+let mapTouchScrollLeft = 0;
+let mapTouchScrollTop = 0;
+let mapTouchMoved = false;
+let lastTouchRegionSelectionAt = 0;
+
+if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    const serviceWorkerUrl = new URL("../service-worker.js", import.meta.url);
+    navigator.serviceWorker.register(serviceWorkerUrl).catch((error) => {
+      console.warn("PWA service worker registration failed:", error);
+    });
+  });
+}
 
 syncCampaignSelections();
 
@@ -163,6 +353,8 @@ const game = new GameRuntime({
 game.setEyeComfortMode(progress.settings?.eyeComfortMode ?? false);
 
 bindUi();
+bindBattleTouchControls();
+bindMenuTouchFeedback();
 resizeGameCanvas();
 renderPersistentPanels();
 renderHud({
@@ -275,6 +467,139 @@ function bindUi() {
   });
 
   window.addEventListener("resize", resizeGameCanvas);
+  window.visualViewport?.addEventListener("resize", resizeGameCanvas);
+  window.visualViewport?.addEventListener("scroll", resizeGameCanvas);
+}
+
+function bindMenuTouchFeedback() {
+  const interactiveButtons = document.querySelectorAll(
+    ".primary-button, .ghost-button, .choice-button, .talent-button, .hud-speed-button"
+  );
+
+  const clearPressedState = (button) => {
+    button.dataset.touchPressed = "false";
+  };
+
+  for (const button of interactiveButtons) {
+    button.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch") {
+        return;
+      }
+      button.dataset.touchPressed = "true";
+    });
+
+    for (const eventName of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+      button.addEventListener(eventName, () => {
+        clearPressedState(button);
+      });
+    }
+  }
+}
+
+function renderTouchPauseButton() {
+  if (!elements.touchPauseButton) {
+    return;
+  }
+  const paused = game.state === "paused";
+  elements.touchPauseButton.textContent = paused ? "继续" : "暂停";
+  elements.touchPauseButton.dataset.mode = paused ? "resume" : "pause";
+}
+
+function setTouchJoystickThumbPosition(offsetX, offsetY) {
+  if (!elements.touchJoystickThumb) {
+    return;
+  }
+  elements.touchJoystickThumb.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+}
+
+function resetTouchJoystick() {
+  activeTouchJoystickPointerId = null;
+  game.clearTouchMovement();
+  setTouchJoystickThumbPosition(0, 0);
+  if (elements.touchJoystick) {
+    elements.touchJoystick.dataset.active = "false";
+  }
+}
+
+function updateTouchJoystick(event) {
+  if (!elements.touchJoystick) {
+    return;
+  }
+
+  const bounds = elements.touchJoystick.getBoundingClientRect();
+  const centerX = bounds.left + bounds.width / 2;
+  const centerY = bounds.top + bounds.height / 2;
+  const deltaX = event.clientX - centerX;
+  const deltaY = event.clientY - centerY;
+  const distance = Math.hypot(deltaX, deltaY);
+  const limitedDistance = Math.min(TOUCH_JOYSTICK_MAX_OFFSET, distance);
+  const directionX = distance > 0 ? deltaX / distance : 0;
+  const directionY = distance > 0 ? deltaY / distance : 0;
+  const offsetX = directionX * limitedDistance;
+  const offsetY = directionY * limitedDistance;
+  const strength = TOUCH_JOYSTICK_MAX_OFFSET > 0 ? limitedDistance / TOUCH_JOYSTICK_MAX_OFFSET : 0;
+
+  setTouchJoystickThumbPosition(offsetX, offsetY);
+  game.setTouchMovement(directionX * strength, directionY * strength);
+  elements.touchJoystick.dataset.active = strength > 0 ? "true" : "false";
+}
+
+function bindBattleTouchControls() {
+  if (!elements.touchJoystick || !elements.touchJoystickThumb || !elements.touchBlinkButton || !elements.touchPauseButton) {
+    return;
+  }
+
+  elements.touchJoystick.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || game.state !== "running") {
+      return;
+    }
+    event.preventDefault();
+    activeTouchJoystickPointerId = event.pointerId;
+    try {
+      elements.touchJoystick.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic pointer events used in tests do not always create capturable pointers.
+    }
+    updateTouchJoystick(event);
+  });
+
+  elements.touchJoystick.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== activeTouchJoystickPointerId) {
+      return;
+    }
+    event.preventDefault();
+    updateTouchJoystick(event);
+  });
+
+  for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    elements.touchJoystick.addEventListener(eventName, (event) => {
+      if (event.pointerId !== activeTouchJoystickPointerId) {
+        return;
+      }
+      resetTouchJoystick();
+    });
+  }
+
+  elements.touchBlinkButton.addEventListener("click", () => {
+    game.tryBlink();
+  });
+
+  elements.touchPauseButton.addEventListener("click", () => {
+    if (game.state === "running") {
+      game.pause();
+    } else if (game.state === "paused") {
+      game.resume();
+    }
+  });
+
+  window.addEventListener("blur", resetTouchJoystick);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") {
+      resetTouchJoystick();
+    }
+  });
+
+  renderTouchPauseButton();
 }
 
 function syncCampaignSelections() {
@@ -378,6 +703,7 @@ function setEyeComfortMode(enabled) {
 }
 
 function renderHud(snapshot) {
+  renderTouchPauseButton();
   elements.hudTimerText.textContent = snapshot.time === "Boss" ? "Boss 战" : `倒计时 ${snapshot.time}`;
   elements.hudHealthText.textContent = `生命 ${snapshot.health}`;
   elements.hudLevelText.textContent = `LV ${snapshot.level}`;
@@ -477,7 +803,7 @@ function renderPersistentPanels() {
   elements.characterBadge.textContent = String(unlockedCharacters.length);
   elements.prepDifficultyBadge.textContent = selectedDifficulty.name;
   elements.mainTagline.textContent = progress.world.tutorialCompleted
-    ? `花园仍有 ${GARDEN_REGIONS.length - liberatedCount} 片区域被害虫控制，你的下一次部署将从 ${selectedRegion.name} 开始。`
+    ? `花园仍有 ${GARDEN_REGIONS.length - liberatedCount} 片区域被害虫控制，你的下一次部署将从 ${getRegionTileLabel(selectedRegion)} 开始。`
     : "小精灵刚刚苏醒，必须先守住最后的花心。";
   elements.worldSummaryText.textContent = progress.world.tutorialCompleted
     ? `当前前线区域 ${frontierCount} 处，已解锁角色 ${unlockedCharacters.length} 名，已恢复景观 ${progress.world.unlockedLandscapes.length} 处。`
@@ -513,7 +839,7 @@ function renderPersistentPanels() {
     .join("");
 
   elements.prepSummary.innerHTML = [
-    ["目标区域", selectedRegion.name],
+    ["目标区域", getRegionTileLabel(selectedRegion)],
     ["出战角色", selectedCharacter?.name || "小精灵"],
     ["战役难度", selectedDifficulty.name],
     ["区域奖励", getRewardMeta(selectedRegion)],
@@ -535,36 +861,185 @@ function renderPersistentPanels() {
 
 function renderGardenMap() {
   const selectedRegion = getRegionDefinition(selectedRegionId) || GARDEN_REGIONS[0];
+  const continentOutline = getRegionMapOutlinePath();
+  const internalBoundaries = getRegionBoundaryPaths();
+  const regionNodes = GARDEN_REGIONS.map((region, index) => {
+    const geometry = getRegionCellGeometry(index);
+    const regionName = getRegionTileLabel(region);
+    const liberated = isLiberated(region.id);
+    const frontier = isFrontier(region.id);
+    const locked = !liberated && !frontier;
+    const stateClass = `${liberated ? "is-liberated" : frontier ? "is-frontier" : "is-locked"} ${selectedRegion.id === region.id ? "is-selected" : ""}`.trim();
+    return {
+      shape: `
+        <path
+          class="region-shape ${stateClass}"
+          data-region-id="${region.id}"
+          data-locked="${locked ? "true" : "false"}"
+          role="button"
+          tabindex="${locked ? "-1" : "0"}"
+          aria-label="${regionName}"
+          aria-disabled="${locked ? "true" : "false"}"
+          d="${geometry.path}"
+        ></path>
+      `,
+      fog: locked
+        ? `
+          <path class="region-fog region-fog--base" d="${geometry.path}" fill="url(#regionFogPattern)"></path>
+          <path class="region-fog region-fog--veil" d="${geometry.path}" fill="url(#regionFogGradient)" filter="url(#regionFogBlur)"></path>
+        `
+        : "",
+      label: renderRegionLabelText(regionName, geometry.labelX, geometry.labelY, `region-label ${stateClass}`.trim()),
+    };
+  });
 
   elements.regionGrid.innerHTML = `
     <div class="region-board">
-      ${GARDEN_REGIONS.map((region, index) => {
-        const layout = getRegionMapLayout(index);
-        const liberated = isLiberated(region.id);
-        const frontier = isFrontier(region.id);
-        const locked = !liberated && !frontier;
-        return `
-      <button
-        class="region-tile ${liberated ? "is-liberated" : frontier ? "is-frontier" : "is-locked"} ${selectedRegion.id === region.id ? "is-selected" : ""}"
-        data-region-id="${region.id}"
-        style="--tile-x:${layout.x}px; --tile-y:${layout.y}px; --tile-width:${layout.width}px; --tile-height:${layout.height}px;"
-        ${locked ? "disabled" : ""}
-      >
-        <span class="region-tile__terrain"></span>
-        <strong>${getRegionTileLabel(region)}</strong>
-      </button>
-    `;
-      }).join("")}
+      <svg class="region-map" viewBox="0 0 ${REGION_MAP_VIEWBOX_WIDTH} ${REGION_MAP_VIEWBOX_HEIGHT}" role="img" aria-label="花园大陆分区地图">
+        <defs>
+          <linearGradient id="regionFogGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f7faf7" stop-opacity="0.88"></stop>
+            <stop offset="52%" stop-color="#ebf0ec" stop-opacity="0.54"></stop>
+            <stop offset="100%" stop-color="#dde7df" stop-opacity="0.8"></stop>
+          </linearGradient>
+          <pattern id="regionFogPattern" width="180" height="160" patternUnits="userSpaceOnUse">
+            <rect width="180" height="160" fill="#eef3ef" fill-opacity="0.28"></rect>
+            <ellipse cx="52" cy="48" rx="40" ry="18" fill="#ffffff" fill-opacity="0.22"></ellipse>
+            <ellipse cx="124" cy="76" rx="54" ry="22" fill="#ffffff" fill-opacity="0.18"></ellipse>
+            <ellipse cx="96" cy="122" rx="48" ry="18" fill="#e4ece5" fill-opacity="0.24"></ellipse>
+          </pattern>
+          <filter id="regionFogBlur" x="-10%" y="-10%" width="120%" height="120%">
+            <feGaussianBlur stdDeviation="6"></feGaussianBlur>
+          </filter>
+        </defs>
+        <path class="region-continent-shadow" d="${continentOutline}"></path>
+        <path class="region-continent" d="${continentOutline}"></path>
+        <g class="region-shapes">
+          ${regionNodes.map((node) => node.shape).join("")}
+        </g>
+        <g class="region-fogs" aria-hidden="true">
+          ${regionNodes.map((node) => node.fog).join("")}
+        </g>
+        <g class="region-boundaries" aria-hidden="true">
+          ${internalBoundaries.map((path) => `<path class="region-boundary" d="${path}"></path>`).join("")}
+        </g>
+        <g class="region-labels" aria-hidden="true">
+          ${regionNodes.map((node) => node.label).join("")}
+        </g>
+      </svg>
     </div>
   `;
 
-  for (const button of elements.regionGrid.querySelectorAll("[data-region-id]")) {
-    button.addEventListener("click", () => {
-      persistWorldSelection({
-        selectedRegionId: button.dataset.regionId,
-        pendingRegionId: button.dataset.regionId,
+  const selectRegion = (regionId) => {
+    persistWorldSelection({
+      selectedRegionId: regionId,
+      pendingRegionId: regionId,
+    });
+    renderGardenMap();
+  };
+
+  const finishMapTouchInteraction = (pointerId, regionId = null) => {
+    if (pointerId !== activeMapTouchPointerId) {
+      return;
+    }
+
+    const shouldSelect = !mapTouchMoved && regionId;
+    activeMapTouchPointerId = null;
+    mapTouchMoved = false;
+    elements.regionGrid.dataset.dragging = "false";
+
+    if (shouldSelect) {
+      lastTouchRegionSelectionAt = Date.now();
+      selectRegion(regionId);
+    }
+  };
+
+  elements.regionGrid.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    activeMapTouchPointerId = event.pointerId;
+    mapTouchStartX = event.clientX;
+    mapTouchStartY = event.clientY;
+    mapTouchScrollLeft = elements.regionGrid.scrollLeft;
+    mapTouchScrollTop = elements.regionGrid.scrollTop;
+    mapTouchMoved = false;
+    elements.regionGrid.dataset.dragging = "false";
+
+    try {
+      elements.regionGrid.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic test events may not be capturable.
+    }
+  });
+
+  elements.regionGrid.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== activeMapTouchPointerId || event.pointerType !== "touch") {
+      return;
+    }
+
+    const deltaX = event.clientX - mapTouchStartX;
+    const deltaY = event.clientY - mapTouchStartY;
+    if (!mapTouchMoved && Math.hypot(deltaX, deltaY) >= MAP_TOUCH_TAP_THRESHOLD) {
+      mapTouchMoved = true;
+      elements.regionGrid.dataset.dragging = "true";
+    }
+
+    if (!mapTouchMoved) {
+      return;
+    }
+
+    event.preventDefault();
+    elements.regionGrid.scrollLeft = mapTouchScrollLeft - deltaX;
+    elements.regionGrid.scrollTop = mapTouchScrollTop - deltaY;
+  }, { passive: false });
+
+  for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    elements.regionGrid.addEventListener(eventName, (event) => {
+      finishMapTouchInteraction(event.pointerId);
+    });
+  }
+
+  for (const shape of elements.regionGrid.querySelectorAll(".region-shape[data-region-id]")) {
+    if (shape.dataset.locked === "true") {
+      continue;
+    }
+
+    shape.addEventListener("click", () => {
+      if (Date.now() - lastTouchRegionSelectionAt < 600) {
+        return;
+      }
+      selectRegion(shape.dataset.regionId);
+    });
+
+    shape.addEventListener("pointerup", (event) => {
+      if (event.pointerType !== "touch") {
+        return;
+      }
+      finishMapTouchInteraction(event.pointerId, shape.dataset.regionId);
+    });
+
+    shape.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch") {
+        return;
+      }
+      shape.dataset.touchPressed = "true";
+    });
+
+    for (const eventName of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+      shape.addEventListener(eventName, () => {
+        shape.dataset.touchPressed = "false";
       });
-      renderGardenMap();
+    }
+
+    shape.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+
+      event.preventDefault();
+      selectRegion(shape.dataset.regionId);
     });
   }
 
@@ -612,7 +1087,7 @@ function renderWarPrep() {
   const boss = MONSTER_LIBRARY.find((monster) => monster.id === region.bossId);
   const specialMonster = MONSTER_LIBRARY.find((monster) => monster.id === region.specialMonsterId);
 
-  elements.prepRegionName.textContent = region.name;
+  elements.prepRegionName.textContent = getRegionTileLabel(region);
   elements.prepRegionMeta.textContent = `镇守 Boss：${boss?.name || region.bossId} · 亲属部队：${specialMonster?.name || region.specialMonsterId} · 战斗时长 ${Math.round(region.durationSeconds / 60)} 分钟 · ${getRewardMeta(region)}`;
   elements.prepRegionDescription.textContent = region.description;
   elements.prepSelectedDifficulty.textContent = selectedDifficulty.name;
@@ -831,7 +1306,7 @@ function renderLibrary() {
 
   elements.libraryRegions.innerHTML = GARDEN_REGIONS.map((region) => {
     const known = isLiberated(region.id) || isFrontier(region.id);
-    return createCodexCard(region.name, known ? region.description : "该区域仍被迷雾遮蔽，需先从相邻区域推进。", getRewardMeta(region), !known);
+    return createCodexCard(getRegionTileLabel(region), known ? region.description : "该区域仍被迷雾遮蔽，需先从相邻区域推进。", getRewardMeta(region), !known);
   }).join("");
 
   elements.libraryLandscapes.innerHTML = LANDSCAPE_LIBRARY.map((landscape) => {
@@ -1017,9 +1492,9 @@ function handleRunEnd(result) {
     setActiveView("menu");
     openStoryScene({
       eyebrow: "Victory",
-      title: `${region.name} 已解放`,
+      title: `${getRegionTileLabel(region)} 已解放`,
       paragraphs: [
-        `镇守 ${region.name} 的 ${MONSTER_LIBRARY.find((monster) => monster.id === region.bossId)?.name || "Boss"} 已被击退。`,
+        `镇守 ${getRegionTileLabel(region)} 的 ${MONSTER_LIBRARY.find((monster) => monster.id === region.bossId)?.name || "Boss"} 已被击退。`,
         `${getRewardMeta(region)}。新的相邻区域现在已经对你开放。`,
       ],
       presentation: "cinematic",
@@ -1065,11 +1540,14 @@ function showOverlay(overlayId) {
   for (const overlay of elements.overlays) {
     overlay.classList.toggle("visible", Boolean(overlayId) && overlay.id === overlayId);
   }
+  renderTouchPauseButton();
 }
 
 function setActiveView(viewName) {
   elements.menuView.classList.toggle("is-active", viewName === "menu");
   elements.gameView.classList.toggle("is-active", viewName === "game");
+  renderTouchPauseButton();
+  resizeGameCanvas();
 }
 
 function updateSessionLabel(title, hint) {
@@ -1097,7 +1575,40 @@ function showToast(message) {
   window.setTimeout(() => node.remove(), 2200);
 }
 
+function getViewportBounds() {
+  const viewport = window.visualViewport;
+  return {
+    width: Math.max(1, Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth || MIN_GAME_VIEWPORT_WIDTH)),
+    height: Math.max(1, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || MIN_GAME_VIEWPORT_HEIGHT)),
+  };
+}
+
+function getGameStageSize(availableWidth, availableHeight) {
+  let stageWidth = availableWidth;
+  let stageHeight = Math.round(stageWidth / GAME_STAGE_ASPECT_RATIO);
+
+  if (stageHeight > availableHeight) {
+    stageHeight = availableHeight;
+    stageWidth = Math.round(stageHeight * GAME_STAGE_ASPECT_RATIO);
+  }
+
+  return {
+    width: Math.max(1, stageWidth),
+    height: Math.max(1, stageHeight),
+  };
+}
+
 function resizeGameCanvas() {
-  game.resizeViewport(Math.max(window.innerWidth, 960), Math.max(window.innerHeight, 540));
+  const viewIsActive = elements.gameView.classList.contains("is-active");
+  const viewport = getViewportBounds();
+  const availableWidth = viewIsActive ? Math.max(1, elements.gameView.clientWidth) : viewport.width;
+  const availableHeight = viewIsActive ? Math.max(1, elements.gameView.clientHeight) : viewport.height;
+  const stage = getGameStageSize(availableWidth, availableHeight);
+  const logicalWidth = Math.max(MIN_GAME_VIEWPORT_WIDTH, stage.width);
+  const logicalHeight = Math.max(MIN_GAME_VIEWPORT_HEIGHT, stage.height);
+
+  elements.gameStage.style.width = `${stage.width}px`;
+  elements.gameStage.style.height = `${stage.height}px`;
+  game.resizeViewport(logicalWidth, logicalHeight);
   game.renderIdleFrame();
 }
