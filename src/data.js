@@ -23,16 +23,16 @@ export function getDifficultyProfile(value) {
     level,
     monsterHealthMultiplier: Number((1 + bonus * 0.32).toFixed(2)),
     monsterDamageMultiplier: Number((1 + bonus * 0.18).toFixed(2)),
-    monsterSpeedMultiplier: Number((1 + bonus * 0.06).toFixed(2)),
-    spawnRateMultiplier: Number((1.08 + bonus * 0.12).toFixed(2)),
+    monsterSpeedMultiplier: Number((0.5 + bonus * 0.02).toFixed(2)),
+    spawnRateMultiplier: Number((0.34 + bonus * 0.06).toFixed(2)),
     expMultiplier: Number((1 + bonus * 0.16).toFixed(2)),
     coinMultiplier: Number((1 + bonus * 0.12).toFixed(2)),
     typeAdvanceSeconds: bonus * 80,
     eliteWeightMultiplier: Number((1 + bonus * 0.14).toFixed(2)),
     bossHealthMultiplier: Number((1 + bonus * 0.38).toFixed(2)),
     bossDamageMultiplier: Number((1 + bonus * 0.2).toFixed(2)),
-    bossSpeedMultiplier: Number((1 + bonus * 0.05).toFixed(2)),
-    bossBulletSpeedMultiplier: Number((1 + bonus * 0.08).toFixed(2)),
+    bossSpeedMultiplier: Number((0.5 + bonus * 0.025).toFixed(2)),
+    bossBulletSpeedMultiplier: Number((0.25 + bonus * 0.02).toFixed(2)),
     bossAttackRateMultiplier: Number((1 + bonus * 0.05).toFixed(2)),
   };
 }
@@ -45,7 +45,7 @@ export function getDifficultySummary(value) {
 
 export const PLAYER_BASE = {
   maxHealth: 100,
-  speed: 70,
+  speed: 100,
   radius: 18,
   expPickupRange: 96,
   attackMultiplier: 1,
@@ -58,6 +58,7 @@ export const PLAYER_BASE = {
   critDamage: 1.5,
   dodgeChance: 0.05,
   armor: 0,
+  healthRegen: 0,
   blinkChargesMax: 1,
   blinkRechargeSeconds: 10,
   barrier: 0,
@@ -313,6 +314,22 @@ export const MONSTER_LIBRARY = [
   },
 ];
 
+export const ELITE_MONSTER_DEFINITION = {
+  id: "gardenElite",
+  name: "庭域巨祟",
+  description: "每隔 3 分钟出现一次的精英害虫，移动缓慢、体型庞大、生命极高，击败后可获得局内特殊增益。",
+  color: "#f4b76b",
+  accent: "#8d4f22",
+  detailColor: "#fff2c7",
+  health: 14000,
+  speed: 34,
+  damage: 10,
+  radius: 34,
+  exp: 42,
+  elite: true,
+  shapeId: "eliteBrute",
+};
+
 export const SKILL_LIBRARY = [
   {
     id: "elfArrow",
@@ -323,11 +340,11 @@ export const SKILL_LIBRARY = [
     starterExclusiveId: "arrowPierce",
     maxLevel: 5,
     statsByLevel: [
-      { cooldown: 0.82, damage: 28, count: 1, speed: 520, pierce: 0, size: 9, range: 108 },
-      { cooldown: 0.72, damage: 30, count: 1, speed: 545, pierce: 0, size: 9, range: 150 },
-      { cooldown: 0.64, damage: 40, count: 2, speed: 570, pierce: 1, size: 10, range: 159 },
-      { cooldown: 0.56, damage: 53, count: 2, speed: 595, pierce: 1, size: 10, range: 168 },
-      { cooldown: 0.48, damage: 66, count: 3, speed: 620, pierce: 2, size: 11, range: 177 },
+      { cooldown: 2.64, damage: 56, count: 1, speed: 520, pierce: 0, size: 9, range: 128 },
+      { cooldown: 2.44, damage: 60, count: 1, speed: 545, pierce: 0, size: 9, range: 170 },
+      { cooldown: 2.28, damage: 80, count: 2, speed: 570, pierce: 1, size: 10, range: 179 },
+      { cooldown: 2.12, damage: 106, count: 2, speed: 595, pierce: 1, size: 10, range: 188 },
+      { cooldown: 1.96, damage: 132, count: 3, speed: 620, pierce: 2, size: 11, range: 197 },
     ],
     exclusiveUpgrades: [
       {
@@ -949,6 +966,15 @@ export const GENERAL_UPGRADES = [
     },
   },
   {
+    id: "healthRegenGrowth",
+    name: "生命恢复成长",
+    description: "生命恢复 +0.1 / 秒。",
+    maxLevel: 8,
+    apply: (player, session) => {
+      player.healthRegen += 0.1;
+    },
+  },
+  {
     id: "monsterPressure",
     name: "怪物数量增加",
     description: "刷新速度提高 10%，但本局金币奖励额外提高 8%。",
@@ -972,21 +998,21 @@ export const GENERAL_UPGRADES = [
   {
     id: "projectileOverload",
     name: "弹幕扩编",
-    description: "投射物数量 +1，但怪物数量 +16%。",
+    description: "投射物数量 +1，但怪物数量 +5%。",
     maxLevel: 3,
     apply: (player, session) => {
       player.projectileCountBonus += 1;
-      session.spawnRateMultiplier *= 1.16;
+      session.spawnRateMultiplier *= 1.05;
     },
   },
   {
     id: "summonOverload",
     name: "召群扩列",
-    description: "召唤物数量 +1，但怪物数量 +16%。",
+    description: "召唤物数量 +1，但怪物数量 +5%。",
     maxLevel: 3,
     apply: (player, session) => {
       player.summonCountBonus += 1;
-      session.spawnRateMultiplier *= 1.16;
+      session.spawnRateMultiplier *= 1.05;
     },
   },
   {
@@ -1028,6 +1054,54 @@ export const GENERAL_UPGRADES = [
   },
 ];
 
+export const SPECIAL_BOON_LIBRARY = [
+  {
+    id: "multicast",
+    name: "多重",
+    description: "每次触发技能时有 50% 概率额外触发一次，并尽量锁定不同敌人。",
+  },
+  {
+    id: "phaseFade",
+    name: "虚化",
+    description: "每隔 10 秒进入 3 秒虚化状态，角色半透明并无视所有伤害。",
+  },
+  {
+    id: "chainTrigger",
+    name: "连锁",
+    description: "每次触发技能时有 20% 概率随机触发一个冷却中的其他技能。多重额外触发不会再连锁。",
+  },
+  {
+    id: "safeTeleport",
+    name: "传送",
+    description: "闪现替换为传送，使用后会随机传送到一个相对安全的位置。",
+  },
+  {
+    id: "mirrorImage",
+    name: "镜像",
+    description: "使用闪现或传送后，在原地留下持续 3 秒的镜像，并复制你最后使用的一个技能。",
+  },
+  {
+    id: "echoSpiral",
+    name: "残响回旋",
+    description: "投射物或技能命中敌人后有 15% 概率在命中点产生残响。残响沿原方向再次释放，初始伤害为 40%，最多连续残响 3 次，每次再衰减 20%，且不会触发其他概率效果。",
+  },
+  {
+    id: "timeDebt",
+    name: "时间债务",
+    description: "每击杀一个敌人获得 0.2 秒时间信贷。累积到 10 秒时触发 3 秒时停，期间只有你能移动和攻击；结束后清空信贷并眩晕 1 秒。",
+  },
+  {
+    id: "emberSeed",
+    name: "余烬之种",
+    description: "击杀敌人时有 30% 概率留下种子。3 秒后爆炸；若你提前站在上面 1 秒，则成长为持续 8 秒的余烬之树，但自身移速永久降低 5%，最多叠加 5 次。",
+  },
+  {
+    id: "entropyShield",
+    name: "熵能护盾",
+    description: "获得一个等于最大生命值 50% 的护盾，护盾会衰减并优先吸收伤害。护盾吸伤时提供熵增层数增伤；护盾归零时受到伤害提高 30%，击杀敌人可回复护盾。",
+  },
+];
+
 export const TALENT_LIBRARY = [
   {
     id: "sunheart",
@@ -1038,6 +1112,16 @@ export const TALENT_LIBRARY = [
     apply: (player, level) => {
       player.maxHealth += level * 18;
       player.health += level * 18;
+    },
+  },
+  {
+    id: "verdantMend",
+    name: "晨露回春",
+    description: "每级每秒恢复 0.1 生命。",
+    maxLevel: 5,
+    baseCost: 50,
+    apply: (player, level) => {
+      player.healthRegen += level * 0.1;
     },
   },
   {
@@ -1089,6 +1173,12 @@ export const BOOST_CODEX = [
     description: item.description,
     type: "局内成长",
   })),
+  ...SPECIAL_BOON_LIBRARY.map((item) => ({
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    type: "精英增益",
+  })),
   ...TALENT_LIBRARY.map((item) => ({
     id: item.id,
     name: item.name,
@@ -1126,6 +1216,10 @@ export function getMonsterDefinition(monsterId) {
 export function getBossDefinitionForDifficulty(value) {
   const level = normalizeDifficultyLevel(value);
   return MONSTER_LIBRARY.find((monster) => monster.boss && monster.bossTier === level) || getMonsterDefinition("twilightMower");
+}
+
+export function getSpecialBoonDefinition(boonId) {
+  return SPECIAL_BOON_LIBRARY.find((boon) => boon.id === boonId) || null;
 }
 
 export function normalizeInitialSkillId(value, unlocks) {

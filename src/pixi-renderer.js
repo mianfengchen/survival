@@ -901,6 +901,10 @@ export class PixiRenderer {
       return this.getExternalTexture("bossBug");
     }
 
+    if (enemy.elite) {
+      return this.getExternalTexture("enemyBugStout");
+    }
+
     if (enemy.regionExclusive) {
       return this.getCachedTexture(`region-kin-${enemy.typeId}`, 132, 32, (graphics, x, y, radius) => {
         paintRegionalKin(graphics, x, y, radius, enemy);
@@ -1400,12 +1404,13 @@ export class PixiRenderer {
     this.playerVisual.position.set(player.x, player.y);
     this.playerVisual.mainSprite.texture = textureData.texture;
     this.playerVisual.mainSprite.tint = 0xffffff;
+    this.playerVisual.mainSprite.alpha = player.phaseFadeFor > 0 ? 0.48 : 1;
     this.playerVisual.mainSprite.scale.set(mainScale);
     this.playerVisual.mainSprite.rotation = 0;
     this.playerVisual.shadowSprite.scale.set((player.radius / 24) * 1.38 * PLAYER_VISUAL_SCALE, (player.radius / 24) * 0.74 * PLAYER_VISUAL_SCALE);
-    this.playerVisual.shadowSprite.alpha = 0.16;
+    this.playerVisual.shadowSprite.alpha = player.phaseFadeFor > 0 ? 0.08 : 0.16;
     this.playerVisual.glowSprite.scale.set((player.radius / 24) * 1.24 * PLAYER_VISUAL_SCALE * glowPulse);
-    this.playerVisual.glowSprite.alpha = (player.invulnerableFor > 0 ? 0.34 : 0.22) * this.visualProfile.effectLayerAlpha;
+    this.playerVisual.glowSprite.alpha = (player.invulnerableFor > 0 || player.phaseFadeFor > 0 ? 0.34 : 0.22) * this.visualProfile.effectLayerAlpha;
 
     const graphics = this.layers.playerOverlay;
     if (player.invulnerableFor > 0) {
@@ -1434,19 +1439,21 @@ export class PixiRenderer {
       const visual = this.acquireFromPool("enemies", this.spriteLayers.enemies, () => this.createEnemyVisual());
       const textureData = this.getEnemyTexture(enemy);
       const scale = enemy.radius / textureData.baseRadius;
-      const mainScale = scale * (enemy.boss ? 0.98 * BOSS_VISUAL_SCALE : 1.33 * NORMAL_ENEMY_VISUAL_SCALE);
+      const mainScale = scale * (enemy.boss ? 0.98 * BOSS_VISUAL_SCALE : enemy.elite ? 1.54 * NORMAL_ENEMY_VISUAL_SCALE : 1.33 * NORMAL_ENEMY_VISUAL_SCALE);
       const visualRadius = textureData.baseRadius * mainScale;
-      const glowTint = parseColor(enemy.boss ? enemy.detailColor || enemy.accent : enemy.accent).color;
+      const glowTint = parseColor(enemy.boss ? enemy.detailColor || enemy.accent : enemy.elite ? enemy.detailColor || enemy.color : enemy.accent).color;
       const pulse = enemy.boss
         ? 1 + Math.sin(this.getMotionTime(0.008) + enemy.x * 0.01) * 0.06
+        : enemy.elite
+          ? 1 + Math.sin(this.getMotionTime(0.01) + enemy.specialPhase) * 0.12
         : enemy.regionExclusive
           ? 1 + Math.sin(this.getMotionTime(0.01) + enemy.specialPhase) * 0.08
           : 1;
 
       visual.position.set(enemy.x, enemy.y);
       visual.mainSprite.texture = textureData.texture;
-      visual.mainSprite.tint = mixColors(enemy.color, 0xffffff, enemy.boss ? 0.15 : 0.22);
-      visual.mainSprite.alpha = enemy.boss ? 0.98 : enemy.regionExclusive ? 0.98 : 0.96;
+      visual.mainSprite.tint = mixColors(enemy.color, 0xffffff, enemy.boss ? 0.15 : enemy.elite ? 0.08 : 0.22);
+      visual.mainSprite.alpha = enemy.boss ? 0.98 : enemy.elite ? 1 : enemy.regionExclusive ? 0.98 : 0.96;
       visual.mainSprite.scale.set(mainScale);
       visual.mainSprite.rotation = enemy.boss && enemy.shapeId === "twilightMower"
         ? (enemy.attackPhase || 0) * 0.18
@@ -1454,10 +1461,10 @@ export class PixiRenderer {
           ? Math.sin(this.getMotionTime(0.002) + enemy.specialPhase) * 0.16
           : 0;
       visual.shadowSprite.scale.set(mainScale * 1.4, mainScale * 0.82);
-      visual.shadowSprite.alpha = enemy.boss ? 0.28 : enemy.regionExclusive ? 0.22 : 0.18;
+      visual.shadowSprite.alpha = enemy.boss ? 0.28 : enemy.elite ? 0.26 : enemy.regionExclusive ? 0.22 : 0.18;
       visual.glowSprite.tint = glowTint;
-      visual.glowSprite.scale.set(mainScale * (enemy.boss ? 2.45 : enemy.regionExclusive ? 1.88 : 1.54) * pulse);
-      visual.glowSprite.alpha = (enemy.boss ? 0.24 : enemy.regionExclusive ? 0.18 : 0.09) * this.visualProfile.effectLayerAlpha;
+      visual.glowSprite.scale.set(mainScale * (enemy.boss ? 2.45 : enemy.elite ? 2.08 : enemy.regionExclusive ? 1.88 : 1.54) * pulse);
+      visual.glowSprite.alpha = (enemy.boss ? 0.24 : enemy.elite ? 0.2 : enemy.regionExclusive ? 0.18 : 0.09) * this.visualProfile.effectLayerAlpha;
 
       if (enemy.boss) {
         const bossEffect = this.acquireFromPool("bossEffects", this.spriteLayers.bossEffects, () => this.createBossEffectVisual());
@@ -1707,7 +1714,19 @@ export class PixiRenderer {
     const graphics = this.layers.skillEffects;
     for (const effect of effects) {
       const progress = getProgress(effect);
-      if (effect.kind === "vineWhip") {
+      if (effect.kind === "mirrorClone") {
+        const bob = Math.sin(this.getMotionTime(0.01) + effect.x * 0.01) * 2;
+        beginFill(graphics, effect.color, 0.36 * (1 - progress * 0.4));
+        graphics.drawEllipse(effect.x, effect.y + effect.radius * 0.18 + bob, effect.radius * 0.34, effect.radius * 0.48);
+        graphics.endFill();
+        beginFill(graphics, effect.accent, 0.44 * (1 - progress * 0.28));
+        graphics.drawCircle(effect.x, effect.y - effect.radius * 0.32 + bob, effect.radius * 0.22);
+        graphics.endFill();
+        drawLeaf(graphics, effect.x - effect.radius * 0.22, effect.y - effect.radius * 0.04 + bob, effect.radius * 0.82, effect.radius * 0.24, -0.38, effect.color);
+        drawLeaf(graphics, effect.x + effect.radius * 0.22, effect.y - effect.radius * 0.04 + bob, effect.radius * 0.82, effect.radius * 0.24, 0.38, effect.color);
+        setLine(graphics, 2.6, effect.accent);
+        graphics.drawCircle(effect.x, effect.y + bob, effect.radius * (0.72 + progress * 0.18));
+      } else if (effect.kind === "vineWhip") {
         const controlX = (effect.x + effect.targetX) / 2 + (effect.targetY - effect.y) * 0.12;
         const controlY = (effect.y + effect.targetY) / 2 - (effect.targetX - effect.x) * 0.12;
         setLine(graphics, effect.thickness * 1.7, "rgba(194, 255, 178, 0.24)");
@@ -1962,6 +1981,18 @@ export class PixiRenderer {
   drawMines(mines) {
     const graphics = this.layers.mines;
     for (const mine of mines) {
+      if (mine.kind === "emberSeed") {
+        beginFill(graphics, "rgba(255, 156, 102, 0.88)");
+        graphics.drawCircle(mine.x, mine.y, mine.radius);
+        graphics.endFill();
+        beginFill(graphics, "rgba(255, 228, 170, 0.9)");
+        graphics.drawEllipse(mine.x, mine.y - mine.radius * 0.38, mine.radius * 0.24, mine.radius * 0.36);
+        graphics.endFill();
+        setLine(graphics, 2, "rgba(255, 244, 214, 0.76)");
+        graphics.drawCircle(mine.x, mine.y, mine.radius * (0.66 + (mine.growProgress || 0) * 0.18));
+        continue;
+      }
+
       beginFill(graphics, mine.armTime <= 0 ? "#f0d2a6" : "#e2c191");
       graphics.drawCircle(mine.x, mine.y, mine.radius);
       graphics.endFill();
@@ -2018,12 +2049,16 @@ export class PixiRenderer {
       const flash = clamp(1 - beacon.shotClock / beacon.shotInterval, 0, 1);
       const visual = this.acquireFromPool("beacons", this.spriteLayers.beacons, () => this.createBeaconVisual());
       const scale = beacon.radius / textureData.baseRadius;
+      const tint = beacon.kind === "emberTree" ? parseColor(beacon.color).color : 0xffffff;
       visual.position.set(beacon.x, beacon.y);
       visual.mainSprite.texture = textureData.texture;
+      visual.mainSprite.tint = tint;
       visual.mainSprite.scale.set(scale * 1.08);
       visual.mainSprite.rotation = beacon.pulse * 0.04;
+      visual.haloSprite.tint = beacon.kind === "emberTree" ? mixColors(tint, 0xffffff, 0.18) : 0xffdcb3;
       visual.haloSprite.scale.set(scale * (2.2 + flash * 0.22));
       visual.haloSprite.alpha = (0.18 + flash * 0.16) * this.visualProfile.effectLayerAlpha;
+      visual.ringSprite.tint = beacon.kind === "emberTree" ? mixColors(tint, 0xffffff, 0.36) : 0xffedc7;
       visual.ringSprite.scale.set(scale * (1.6 + flash * 0.22));
       visual.ringSprite.alpha = (0.22 + flash * 0.14) * this.visualProfile.effectLayerAlpha;
       visual.ringSprite.rotation = beacon.pulse * 0.05;

@@ -438,6 +438,7 @@ async function bootApp() {
     crit: "5%",
     dodge: "5%",
     armor: "0",
+    healthRegen: "0.0 / 秒",
     cooldown: "0%",
     blink: "1 / 1",
     expPickupRange: "96",
@@ -972,6 +973,10 @@ const SPECIAL_LEVEL_CHOICE_IDS = new Set(["monsterPressure", "minuteVacuum", "pr
 function getLevelChoiceVariant(choice) {
   if (choice.type === "exclusive") {
     return "exclusive";
+  }
+
+  if (choice.type === "special-boon") {
+    return "special";
   }
 
   if (choice.type === "skill-unlock" || choice.type === "skill-level") {
