@@ -1726,6 +1726,8 @@ h3 {
 
 .wide-card {
   max-width: 1080px;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .pause-layout {
@@ -2534,5 +2536,160 @@ h3 {
 }
   .region-grid[data-dragging="true"] {
     cursor: grabbing;
+  }
+}
+
+/* Home concept implementation: use the commercial 3D menu art as the full menu surface. */
+.menu-view {
+  overflow: hidden;
+  padding: 0;
+  background: #7db8ee;
+}
+
+.menu-view::before {
+  display: none;
+}
+
+.menu-view .campaign-shell {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: var(--app-height);
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  display: block;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.01)),
+    url("../designs/home.png") center / cover no-repeat;
+}
+
+.menu-view .campaign-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 8%, rgba(255, 255, 255, 0.22), transparent 22%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 30%, rgba(25, 70, 32, 0.08));
+}
+
+.menu-view .campaign-hero {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.menu-view .hero-copy,
+.menu-view .campaign-grid {
+  display: none;
+}
+
+.menu-view .campaign-menu {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.menu-view .campaign-menu .primary-button,
+.menu-view .campaign-menu .ghost-button {
+  position: absolute;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 28px;
+  color: transparent;
+  background: transparent;
+  box-shadow: none;
+  text-shadow: none;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.menu-view .campaign-menu .primary-button:hover,
+.menu-view .campaign-menu .ghost-button:hover,
+.menu-view .campaign-menu .primary-button:focus-visible,
+.menu-view .campaign-menu .ghost-button:focus-visible {
+  transform: translateY(-2px);
+  outline: 3px solid rgba(255, 255, 255, 0.86);
+  outline-offset: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 34px rgba(255, 245, 179, 0.66);
+}
+
+.menu-view .campaign-menu .primary-button[data-touch-pressed="true"],
+.menu-view .campaign-menu .ghost-button[data-touch-pressed="true"] {
+  transform: scale(0.985);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.menu-view #openLabButton {
+  left: 4.4%;
+  top: 67.6%;
+  width: 33.4%;
+  height: 13.8%;
+}
+
+.menu-view #openWarButton {
+  left: 36.1%;
+  top: 72.1%;
+  width: 29.4%;
+  height: 16.2%;
+}
+
+.menu-view #openLibraryButton {
+  left: 70.6%;
+  top: 70.9%;
+  width: 25.2%;
+  height: 14.4%;
+}
+
+.menu-view #openBugPlanetButton {
+  left: 69.9%;
+  top: 20.4%;
+  width: 22.4%;
+  height: 16.7%;
+  border-radius: 999px;
+}
+
+@media (min-aspect-ratio: 16 / 9) {
+  .menu-view .campaign-shell {
+    background-size: contain;
+    background-color: #7fbeef;
+  }
+
+  .menu-view .campaign-hero {
+    left: 50%;
+    top: 50%;
+    width: min(100vw, calc(var(--app-height) * 16 / 9));
+    width: min(100dvw, calc(var(--app-height) * 16 / 9));
+    height: min(var(--app-height), calc(100vw * 9 / 16));
+    height: min(var(--app-height), calc(100dvw * 9 / 16));
+    transform: translate(-50%, -50%);
+  }
+}
+
+@media (max-aspect-ratio: 16 / 9) {
+  .menu-view .campaign-shell {
+    background-size: cover;
+  }
+}
+
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
+  .menu-view .campaign-menu .primary-button,
+  .menu-view .campaign-menu .ghost-button {
+    min-height: 0;
+    padding: 0;
+    font-size: 0;
   }
 }
