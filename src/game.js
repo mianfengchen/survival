@@ -270,7 +270,6 @@ export class GameRuntime {
       phaseFadeDuration: 3,
       timeDebtCredit: 0,
       timeDebtActiveFor: 0,
-      timeDebtStunFor: 0,
       timeDebtKillsPaused: false,
       emberSlowStacks: 0,
       entropyStacks: [],
@@ -592,6 +591,9 @@ export class GameRuntime {
       this.generalLevels[upgrade.id] += 1;
       upgrade.apply(this.player, this.session);
       this.callbacks.onToast?.(`获得成长：${upgrade.name}`);
+      if (upgrade.id === "minuteVacuum") {
+        this.pullAllExpPickups();
+      }
       return;
     }
 
@@ -825,7 +827,6 @@ export class GameRuntime {
     if (boon.id === "timeDebt") {
       this.specialState.timeDebtCredit = 0;
       this.specialState.timeDebtActiveFor = 0;
-      this.specialState.timeDebtStunFor = 0;
     }
 
     if (boon.id === "entropyShield") {
@@ -946,14 +947,8 @@ export class GameRuntime {
       this.specialState.timeDebtKillsPaused = true;
       if (this.specialState.timeDebtActiveFor <= 0) {
         this.specialState.timeDebtCredit = 0;
-        this.specialState.timeDebtStunFor = 1;
         this.specialState.timeDebtKillsPaused = false;
-        this.callbacks.onToast?.("时间反噬");
       }
-    }
-
-    if (this.specialState.timeDebtStunFor > 0) {
-      this.specialState.timeDebtStunFor = Math.max(0, this.specialState.timeDebtStunFor - delta);
     }
 
     player.blinkRechargeClock += delta;
@@ -980,9 +975,7 @@ export class GameRuntime {
     if (!timeStopped) {
       this.spawnEnemies(delta);
     }
-    if (this.specialState.timeDebtStunFor <= 0) {
-      this.updateSkillCooldowns(delta);
-    }
+    this.updateSkillCooldowns(delta);
     this.updateProjectiles(delta);
     this.updatePulses(delta);
     this.updateFields(delta);
@@ -1016,10 +1009,6 @@ export class GameRuntime {
   }
 
   movePlayer(delta) {
-    if (this.specialState.timeDebtStunFor > 0) {
-      return;
-    }
-
     const movement = this.getMovementVector();
     const dx = movement.x;
     const dy = movement.y;
@@ -3372,12 +3361,11 @@ export class GameRuntime {
     this.spawnRegionalKinBurst(enemy);
 
     if (this.hasSpecialBoon("timeDebt") && !this.specialState.timeDebtKillsPaused) {
-      this.specialState.timeDebtCredit = Math.min(10, this.specialState.timeDebtCredit + 0.2);
-      if (this.specialState.timeDebtCredit >= 10 && this.specialState.timeDebtActiveFor <= 0) {
-        this.specialState.timeDebtActiveFor = 3;
-        this.specialState.timeDebtCredit = 10;
+      this.specialState.timeDebtCredit = Math.min(100, this.specialState.timeDebtCredit + 0.2);
+      if (this.specialState.timeDebtCredit >= 100 && this.specialState.timeDebtActiveFor <= 0) {
+        this.specialState.timeDebtActiveFor = 5;
+        this.specialState.timeDebtCredit = 100;
         this.specialState.timeDebtKillsPaused = true;
-        this.callbacks.onToast?.("时间停滞");
       }
     }
 
@@ -3645,6 +3633,7 @@ export class GameRuntime {
       blink: `${this.player.blinkCharges} / ${this.player.blinkChargesMax}`,
       expPickupRange: `${Math.round(this.player.expPickupRange)}`,
       kills: `${this.session.kills}`,
+      entropyShield: this.hasSpecialBoon("entropyShield") ? `${Math.ceil(this.player.entropyShield)}` : null,
       skills,
     });
   }

@@ -253,6 +253,7 @@ const elements = {
   openLabButton: document.querySelector("#openLabButton"),
   openLibraryButton: document.querySelector("#openLibraryButton"),
   openBugPlanetButton: document.querySelector("#openBugPlanetButton"),
+  openSettingsButton: document.querySelector("#openSettingsButton"),
   openWarPrepButton: document.querySelector("#openWarPrepButton"),
   confirmWarButton: document.querySelector("#confirmWarButton"),
   storyEyebrow: document.querySelector("#storyEyebrow"),
@@ -612,6 +613,10 @@ function bindUi() {
     showOverlay("bugPlanetScreen");
   });
 
+  elements.openSettingsButton?.addEventListener("click", () => {
+    showOverlay("settingsScreen");
+  });
+
   elements.openWarPrepButton.addEventListener("click", () => {
     const region = getRegionDefinition(selectedRegionId);
     if (!region || !canDeployToRegion(region)) {
@@ -912,7 +917,7 @@ function setEyeComfortMode(enabled) {
 function renderHud(snapshot) {
   renderTouchPauseButton();
   elements.hudTimerText.textContent = snapshot.time === "Boss" ? "Boss 战" : `倒计时 ${snapshot.time}`;
-  elements.hudHealthText.textContent = `生命 ${snapshot.health}`;
+  elements.hudHealthText.textContent = snapshot.entropyShield ? `生命 ${snapshot.health}  熵盾 ${snapshot.entropyShield}` : `生命 ${snapshot.health}`;
   elements.hudLevelText.textContent = `LV ${snapshot.level}`;
   elements.hudExpText.textContent = snapshot.exp;
   elements.hudExpFill.style.width = `${Math.max(0, Math.min(100, (snapshot.expRatio || 0) * 100))}%`;
@@ -1010,60 +1015,70 @@ function renderPersistentPanels() {
     node.textContent = String(progress.meta.wins);
   }
 
-  elements.liberationBadge.textContent = `${liberatedCount} / ${GARDEN_REGIONS.length}`;
-  elements.characterBadge.textContent = String(unlockedCharacters.length);
-  elements.prepDifficultyBadge.textContent = selectedDifficulty.name;
-  elements.mainTagline.textContent = progress.world.tutorialCompleted
-    ? `花园仍有 ${GARDEN_REGIONS.length - liberatedCount} 片区域被害虫控制，你的下一次部署将从 ${getRegionTileLabel(selectedRegion)} 开始。`
-    : "小精灵刚刚苏醒，必须先守住最后的花心。";
-  elements.worldSummaryText.textContent = progress.world.tutorialCompleted
-    ? `当前前线区域 ${frontierCount} 处，已解锁角色 ${unlockedCharacters.length} 名，已恢复景观 ${progress.world.unlockedLandscapes.length} 处。`
-    : "先完成三分钟首战，再从主菜单自由切换战争、研究所、图书馆与害虫星球入口。";
+  if (elements.liberationBadge) elements.liberationBadge.textContent = `${liberatedCount} / ${GARDEN_REGIONS.length}`;
+  if (elements.characterBadge) elements.characterBadge.textContent = String(unlockedCharacters.length);
+  if (elements.prepDifficultyBadge) elements.prepDifficultyBadge.textContent = selectedDifficulty.name;
+  if (elements.mainTagline) {
+    elements.mainTagline.textContent = progress.world.tutorialCompleted
+      ? `花园仍有 ${GARDEN_REGIONS.length - liberatedCount} 片区域被害虫控制，你的下一次部署将从 ${getRegionTileLabel(selectedRegion)} 开始。`
+      : "小精灵刚刚苏醒，必须先守住最后的花心。";
+  }
+  if (elements.worldSummaryText) {
+    elements.worldSummaryText.textContent = progress.world.tutorialCompleted
+      ? `当前前线区域 ${frontierCount} 处，已解锁角色 ${unlockedCharacters.length} 名，已恢复景观 ${progress.world.unlockedLandscapes.length} 处。`
+      : "先完成三分钟首战，再从主菜单自由切换战争、研究所、图书馆与害虫星球入口。";
+  }
 
-  elements.menuSummary.innerHTML = [
-    ["已解放区域", `${liberatedCount} / ${GARDEN_REGIONS.length}`],
-    ["前线区域", `${frontierCount}`],
-    ["最高等级", `Lv.${progress.meta.bestLevel}`],
-    ["最长生存", formatDuration(progress.meta.bestTime)],
-  ]
-    .map(
-      ([label, value]) => `
-        <div>
-          <span>${label}</span>
-          <strong>${value}</strong>
-        </div>
-      `,
-    )
-    .join("");
+  if (elements.menuSummary) {
+    elements.menuSummary.innerHTML = [
+      ["已解放区域", `${liberatedCount} / ${GARDEN_REGIONS.length}`],
+      ["前线区域", `${frontierCount}`],
+      ["最高等级", `Lv.${progress.meta.bestLevel}`],
+      ["最长生存", formatDuration(progress.meta.bestTime)],
+    ]
+      .map(
+        ([label, value]) => `
+          <div>
+            <span>${label}</span>
+            <strong>${value}</strong>
+          </div>
+        `,
+      )
+      .join("");
+  }
 
-  elements.characterRosterPreview.innerHTML = unlockedCharacters
-    .slice(0, 6)
-    .map(
-      (character) => `
-        <article class="roster-preview-item">
-          <strong>${character.name}</strong>
-          <span class="card-note">${character.title}</span>
-          <small>${getSkillDefinition(character.skillId)?.name || "未知技能"}</small>
-        </article>
-      `,
-    )
-    .join("");
+  if (elements.characterRosterPreview) {
+    elements.characterRosterPreview.innerHTML = unlockedCharacters
+      .slice(0, 6)
+      .map(
+        (character) => `
+          <article class="roster-preview-item">
+            <strong>${character.name}</strong>
+            <span class="card-note">${character.title}</span>
+            <small>${getSkillDefinition(character.skillId)?.name || "未知技能"}</small>
+          </article>
+        `,
+      )
+      .join("");
+  }
 
-  elements.prepSummary.innerHTML = [
-    ["目标区域", getRegionTileLabel(selectedRegion)],
-    ["出战角色", selectedCharacter?.name || "小精灵"],
-    ["战役难度", selectedDifficulty.name],
-    ["区域奖励", getRewardMeta(selectedRegion)],
-  ]
-    .map(
-      ([label, value]) => `
-        <article class="map-summary-card">
-          <strong>${label}</strong>
-          <span class="card-note">${value}</span>
-        </article>
-      `,
-    )
-    .join("");
+  if (elements.prepSummary) {
+    elements.prepSummary.innerHTML = [
+      ["目标区域", getRegionTileLabel(selectedRegion)],
+      ["出战角色", selectedCharacter?.name || "小精灵"],
+      ["战役难度", selectedDifficulty.name],
+      ["区域奖励", getRewardMeta(selectedRegion)],
+    ]
+      .map(
+        ([label, value]) => `
+          <article class="map-summary-card">
+            <strong>${label}</strong>
+            <span class="card-note">${value}</span>
+          </article>
+        `,
+      )
+      .join("");
+  }
 
   renderGardenMap();
   renderLab();
@@ -1790,12 +1805,8 @@ function createCodexCard(title, description, meta, locked) {
   `;
 }
 
-function showToast(message) {
-  const node = document.createElement("div");
-  node.className = "toast";
-  node.textContent = message;
-  elements.toastLayer.appendChild(node);
-  window.setTimeout(() => node.remove(), 2200);
+function showToast(_message) {
+  /* Toast notifications disabled per user request */
 }
 
 function getViewportBounds() {

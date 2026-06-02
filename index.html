@@ -32,54 +32,20 @@
       </div>
     </section>
     <section class="app-view menu-view is-active" id="menuView">
-      <div class="menu-shell campaign-shell">
-        <article class="menu-hero panel-card campaign-hero">
-          <div class="hero-copy">
-            <p class="eyebrow">Garden Defense Protocol</p>
-            <h1>花园战争</h1>
-            <p class="subtitle" id="mainTagline">外星害虫从夜空坠入花园，你需要从最后的花心重新夺回 36 片庭域。</p>
-            <p class="hero-description" id="worldSummaryText">
-              首次进入会先经历背景过场与三分钟首战。此后你可以在花园战争、花园研究所、花园图书馆与害虫星球之间切换，持续推进解放线。
-            </p>
-            <div class="hero-meta">
-              <span>植物能量 <strong data-global-field="coins">0</strong></span>
-              <span>总战役 <strong data-global-field="runs">0</strong></span>
-              <span>胜利 <strong data-global-field="wins">0</strong></span>
-            </div>
-          </div>
-          <div class="campaign-menu">
-            <button id="openWarButton" class="primary-button">花园战争</button>
-            <button id="openLabButton" class="ghost-button">花园研究所</button>
-            <button id="openLibraryButton" class="ghost-button">花园图书馆</button>
-            <button id="openBugPlanetButton" class="ghost-button">害虫星球</button>
-          </div>
-        </article>
+      <div class="menu-bg-shell" id="menuBgShell">
+        <div class="menu-sprite-layer" aria-hidden="true"></div>
 
-        <div class="menu-grid campaign-grid">
-          <article class="panel-card">
-            <div class="section-head">
-              <h2>战线概况</h2>
-              <span class="badge" id="liberationBadge">1 / 36</span>
-            </div>
-            <div class="hero-stats campaign-stats" id="menuSummary"></div>
-          </article>
+        <button id="openWarButton" class="menu-entry menu-entry--war" aria-label="花园战争"></button>
 
-          <article class="panel-card">
-            <div class="section-head">
-              <h2>已解锁角色</h2>
-              <span class="badge" id="characterBadge">1</span>
-            </div>
-            <div id="characterRosterPreview" class="card-column"></div>
-          </article>
+        <button id="openLabButton" class="menu-entry menu-entry--lab" aria-label="花园研究所"></button>
 
-          <article class="panel-card">
-            <div class="section-head">
-              <h2>当前备战</h2>
-              <span class="badge" id="prepDifficultyBadge">正常</span>
-            </div>
-            <div id="prepSummary" class="card-column"></div>
-          </article>
-        </div>
+        <button id="openLibraryButton" class="menu-entry menu-entry--library" aria-label="花园图书馆"></button>
+
+        <button id="openBugPlanetButton" class="menu-entry menu-entry--bugplanet" aria-label="害虫星球"></button>
+
+        <button id="openSettingsButton" class="menu-entry menu-entry--settings" aria-label="设置"></button>
+
+        <div class="menu-bg-shell__vignette"></div>
       </div>
 
       <section class="screen-overlay story-screen" id="storyScreen" data-scene="default">
@@ -259,20 +225,22 @@
           </div>
 
           <div class="hud-inline hud-inline-top">
-            <div class="hud-top-values">
-              <span id="hudTimerText">倒计时 15:00</span>
-              <span>植物能量 <strong data-global-field="coins">0</strong></span>
+            <div class="hud-top-left">
+              <span id="hudHealthText">生命 100 / 100</span>
             </div>
-            <div class="hud-top-actions">
-              <button id="eyeComfortButton" class="hud-speed-button hud-eye-button" type="button">护眼 关</button>
-              <button id="speedToggleButton" class="hud-speed-button" type="button">速度 1x</button>
+            <div class="hud-top-right">
+              <div class="hud-top-values">
+                <span id="hudTimerText">倒计时 15:00</span>
+                <span>植物能量 <strong data-global-field="coins">0</strong></span>
+              </div>
+              <div class="hud-top-actions">
+                <button id="eyeComfortButton" class="hud-speed-button hud-eye-button" type="button">护眼 关</button>
+                <button id="speedToggleButton" class="hud-speed-button" type="button">速度 1x</button>
+              </div>
             </div>
           </div>
 
           <div class="hud-bottom-cluster">
-            <div class="hud-inline hud-inline-bottom">
-              <span id="hudHealthText">生命 100 / 100</span>
-            </div>
             <div class="hud-exp-shell">
               <span id="hudLevelText" class="hud-exp-level">LV 1</span>
               <div class="hud-exp-bar">
@@ -334,6 +302,7 @@
                 <div><dt>闪避</dt><dd data-field="dodge">5%</dd></div>
                 <div><dt>护甲</dt><dd data-field="armor">0</dd></div>
                 <div><dt>生命恢复</dt><dd data-field="healthRegen">0.0 / 秒</dd></div>
+                <div><dt>熵盾</dt><dd data-field="entropyShield">-</dd></div>
                 <div><dt>冷却缩减</dt><dd data-field="cooldown">0%</dd></div>
                 <div><dt>闪现</dt><dd data-field="blink">1 / 1</dd></div>
                 <div><dt>吸经验范围</dt><dd data-field="expPickupRange">96</dd></div>

@@ -1125,7 +1125,21 @@ h3 {
 }
 
 .hud-inline-top {
-  align-self: flex-end;
+  align-self: flex-start;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.hud-top-left {
+  text-align: left;
+  align-self: flex-start;
+}
+
+.hud-top-right {
+  display: grid;
+  gap: 6px;
   text-align: right;
   align-items: flex-end;
 }
@@ -2539,7 +2553,9 @@ h3 {
   }
 }
 
-/* Home concept implementation: use the commercial 3D menu art as the full menu surface. */
+/* ── Home Main Menu Concept ── */
+/* Full-screen background + sprite overlay, invisible hitbox buttons on top. */
+
 .menu-view {
   overflow: hidden;
   padding: 0;
@@ -2550,7 +2566,7 @@ h3 {
   display: none;
 }
 
-.menu-view .campaign-shell {
+.menu-bg-shell {
   position: fixed;
   inset: 0;
   width: 100vw;
@@ -2562,96 +2578,135 @@ h3 {
   padding: 0;
   display: block;
   overflow: hidden;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.01)),
-    url("../designs/home.png") center / cover no-repeat;
+  background-image: url("../designs/home-background.jpg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
 }
 
-.menu-view .campaign-shell::after {
-  content: "";
+/* Sprite overlay — contains all UI element art (title, entrances, gear) */
+.menu-sprite-layer {
   position: absolute;
   inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: url("../designs/home-sprite.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.menu-bg-shell__vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
   pointer-events: none;
   background:
     radial-gradient(circle at 50% 8%, rgba(255, 255, 255, 0.22), transparent 22%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 30%, rgba(25, 70, 32, 0.08));
 }
 
-.menu-view .campaign-hero {
+/* ── Entry buttons (invisible hitboxes over sprite elements) ── */
+.menu-entry {
   position: absolute;
-  inset: 0;
-  z-index: 1;
+  z-index: 2;
   display: block;
   padding: 0;
   border: 0;
-  border-radius: 0;
   background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-}
-
-.menu-view .hero-copy,
-.menu-view .campaign-grid {
-  display: none;
-}
-
-.menu-view .campaign-menu {
-  position: absolute;
-  inset: 0;
-  display: block;
-}
-
-.menu-view .campaign-menu .primary-button,
-.menu-view .campaign-menu .ghost-button {
-  position: absolute;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 28px;
   color: transparent;
-  background: transparent;
-  box-shadow: none;
-  text-shadow: none;
-  overflow: hidden;
+  font-size: 0;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+  touch-action: manipulation;
+  overflow: hidden;
+  outline: none;
 }
 
-.menu-view .campaign-menu .primary-button:hover,
-.menu-view .campaign-menu .ghost-button:hover,
-.menu-view .campaign-menu .primary-button:focus-visible,
-.menu-view .campaign-menu .ghost-button:focus-visible {
-  transform: translateY(-2px);
-  outline: 3px solid rgba(255, 255, 255, 0.86);
-  outline-offset: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 34px rgba(255, 245, 179, 0.66);
+.menu-entry:hover,
+.menu-entry:focus-visible {
+  transform: scale(1.04);
+  box-shadow: 0 0 40px rgba(255, 245, 179, 0.5);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
 }
 
-.menu-view .campaign-menu .primary-button[data-touch-pressed="true"],
-.menu-view .campaign-menu .ghost-button[data-touch-pressed="true"] {
-  transform: scale(0.985);
-  background: rgba(255, 255, 255, 0.12);
+.menu-entry[data-touch-pressed="true"] {
+  transform: scale(0.97);
 }
 
-.menu-view #openLabButton {
+/* ── Per‑entry hitbox positions (align with the sprite art) ── */
+/* 花园研究所 — bottom‑left greenhouse */
+.menu-entry--lab {
   left: 4.4%;
   top: 67.6%;
   width: 33.4%;
   height: 13.8%;
 }
 
-.menu-view #openWarButton {
+/* 花园战争 — bottom‑center temple/gate */
+.menu-entry--war {
   left: 36.1%;
   top: 72.1%;
   width: 29.4%;
   height: 16.2%;
 }
 
-.menu-view #openLibraryButton {
+/* 花园图书馆 — bottom‑right library */
+.menu-entry--library {
   left: 70.6%;
   top: 70.9%;
   width: 25.2%;
   height: 14.4%;
+}
+
+/* 害虫星球 — top‑right spaceship/portal */
+.menu-entry--bugplanet {
+  left: 82.2%;
+  top: 18.2%;
+  width: 15.6%;
+  height: 18.4%;
+  border-radius: 50%;
+}
+
+/* 设置齿轮 — small gear */
+.menu-entry--settings {
+  left: auto;
+  right: 3.2%;
+  top: 3.2%;
+  width: 4.8%;
+  aspect-ratio: 1;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 50%;
+}
+
+/* ── Mobile adjustments ── */
+@media (pointer: coarse) {
+  .menu-entry--settings {
+    right: 4%;
+    top: 4%;
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 720px) {
+  .menu-entry--bugplanet {
+    left: 78%;
+    top: 16%;
+    width: 20%;
+    height: 22%;
+  }
+
+  .menu-entry--settings {
+    right: 4.5%;
+    top: 4.5%;
+    width: 7%;
+    min-width: 34px;
+    min-height: 34px;
+  }
 }
 
 .menu-view #openBugPlanetButton {
@@ -2664,7 +2719,7 @@ h3 {
 
 @media (min-aspect-ratio: 16 / 9) {
   .menu-view .campaign-shell {
-    background-size: contain;
+    background-size: cover;
     background-color: #7fbeef;
   }
 
