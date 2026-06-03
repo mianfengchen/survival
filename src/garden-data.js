@@ -74,6 +74,8 @@ export const CHARACTER_LIBRARY = [
     description: "守在日照最足的暖阳花坛，以日冕脉冲撕开虫潮。",
     skillId: "solarPulse",
     color: "#ffd870",
+    visualStyle: "高清拟人化",
+    archiveId: "sunblossom",
   },
   {
     id: "foambud",
@@ -575,6 +577,92 @@ function createRegion(regionIndex) {
 }
 
 export const GARDEN_REGIONS = Array.from({ length: REGION_COLUMNS * REGION_ROWS }, (_, index) => createRegion(index));
+
+/* ── Character Archive ──
+   Extended profiles for the Garden Library character browser.
+   Each entry covers design language, visual assets, animation notes,
+   and lore — all following the "高清拟人化" (HD anthropomorphic) art direction. */
+export const CHARACTER_ARCHIVE = [
+  {
+    id: "sunblossom",
+    name: "向日花灵",
+    title: "灿光观测者",
+    visualStyle: "动漫风高清拟人化",
+    race: "花灵族·太阳分支",
+    ageAppearance: "少女（约 14–16 岁的人类外观）",
+    height: "152 cm（不含花冠）",
+    lore: "向日花灵诞生于花园最古老的暖阳花坛。传说第一株向日葵在正午绽放的瞬间，" +
+      "花蕊中凝聚出一团不会熄灭的日光——那就是她的雏形。" +
+      "她花了一百个夏天才学会用双腿走路，却只花了一个午后便掌握了日冕脉冲——" +
+      "因为那根本不是'学习'，而是刻在她花瓣脉络里的本能。" +
+      "她的使命是观测并记录花园每一缕光的变化，直到虫群遮蔽了天空。",
+    personality: "表面温和沉静，像午后的阳光一样让人放松；战斗时则变得果断而专注。" +
+      "喜欢在日照最足的地方打盹，讨厌阴天和霉菌。说话时会用'光芒'、'暖和'、" +
+      "'照耀'等词汇代替更直接的表达——比如把'消灭敌人'说成'请它们回到黑暗里去'。",
+    designLanguage: {
+      silhouette: "头戴宽大的太阳花花冠，裙摆呈多层花瓣状向外展开；" +
+        "整体呈向上的三角形轮廓，从花冠尖端到脚尖形成流畅的放射线",
+      colorPalette: ["#fff8e7 暖白", "#ffd870 金黄", "#ffae5e 橘暖", "#8b4513 深棕", "#fff5cc 浅金"],
+      keyElements: [
+        "太阳花花冠 — 直径约 1.5 倍头宽，花瓣 12 片呈放射状排列，半透明质感",
+        "金色面纹 — 双颊有小型日冕纹样，使用技能时会微微发光",
+        "花瓣披肩 — 从肩膀延伸至手肘的轻盈花瓣，末端微微卷曲",
+        "层叠裙摆 — 三层由大到小的花瓣构成，行走时如花朵开合",
+        "光玉手镯 — 右手腕的暖金色环饰，施放脉冲时的能量汇聚点",
+      ],
+      proportions: "头身比约 1:5.5，偏向日系少女比例。手掌与脚掌偏小，" +
+        "手指纤细。花冠不计入身高比例。",
+      materials: [
+        "花瓣 — 半透明、微厚、边缘有细密绒毛的向日葵花瓣质感",
+        "皮肤 — 暖色调象牙白，带有极细微的金粉光泽",
+        "饰品 — 磨砂金材质，不反光但自带暖色光晕",
+        "发丝 — 深金棕色，末端渐变为明黄",
+      ],
+      atmosphere: "温暖、希望、宁静中蕴含力量。如同正午阳光穿过温室玻璃——明亮但不刺眼，" +
+        "让人感到安全与治愈。",
+    },
+    visualAssets: {
+      illustration: "designs/archive/sunblossom-illustration.png",
+      sprite: "assets/sprites/player-sunblossom.svg",
+      idleFrames: [
+        "designs/archive/sunblossom-idle-01.svg",
+        "designs/archive/sunblossom-idle-02.svg",
+        "designs/archive/sunblossom-idle-03.svg",
+        "designs/archive/sunblossom-idle-04.svg",
+      ],
+      walkFrames: [
+        "designs/archive/sunblossom-walk-01.svg",
+        "designs/archive/sunblossom-walk-02.svg",
+        "designs/archive/sunblossom-walk-03.svg",
+        "designs/archive/sunblossom-walk-04.svg",
+        "designs/archive/sunblossom-walk-05.svg",
+        "designs/archive/sunblossom-walk-06.svg",
+      ],
+    },
+    animationNotes: {
+      idle: "4 帧循环，周期 2.4 秒。" +
+        "核心动作：呼吸式身体轻微上下起伏（±3px），花冠以极慢速度顺时针微转（60 秒一圈），" +
+        "右手腕光玉手镯以 0.8 秒周期明暗呼吸。裙摆花瓣在帧 2 与帧 4 各向外微张 2px。" +
+        "每 2 秒随机眨眼一次（闭眼 1 帧）。",
+      walk: "6 帧循环，周期 0.6 秒。" +
+        "步态为轻盈的'踮脚步行'——前脚掌先着地，后跟再轻轻落下。" +
+        "花冠在帧 1/3/5 下沉 2px，帧 2/4/6 弹回。裙摆按帧顺序做波浪式上下错动。" +
+        "身后飘落 1-2 帧延迟的花瓣粒子（金色半透明小点，由游戏引擎粒子系统生成，不在帧图中）。",
+      cast: "2 帧 + 特效。帧 1：双手交叉于胸前，头微低，花冠闭合 30%；" +
+        "帧 2：双臂向两侧展开，头抬起，花冠完全张开。" +
+        "金色脉冲波从手镯位置向外扩散（游戏引擎特效层处理）。",
+    },
+    designEvolution: [
+      { version: "v1", date: "原型阶段", note: "程序化圆形色块 + 花瓣旋转，无独立角色模型" },
+      { version: "v2", date: "当前", note: "正面 SVG 精灵图，baseRadius=40，代码旋转朝向" },
+      { version: "v3", date: "规划中", note: "高清拟人化立绘 + idle/walk 帧动画 + cast 特效帧" },
+    ],
+  },
+];
+
+export function getCharacterArchive(characterId) {
+  return CHARACTER_ARCHIVE.find((entry) => entry.id === characterId) || null;
+}
 
 export function getCharacterDefinition(characterId) {
   return CHARACTER_LIBRARY.find((character) => character.id === characterId) || null;

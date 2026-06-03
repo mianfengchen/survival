@@ -554,6 +554,7 @@ export class PixiRenderer {
 
     this.layers = {
       arena: new PIXI.Graphics(),
+      arenaTile: null,
       fieldGlow: new PIXI.Graphics(),
       strikes: new PIXI.Graphics(),
       mines: new PIXI.Graphics(),
@@ -590,6 +591,7 @@ export class PixiRenderer {
 
     const drawOrder = [
       this.layers.arena,
+      this.layers.arenaTile ? this.layers.arenaTile : null,
       this.spriteLayers.decorations,
       this.layers.fieldGlow,
       this.spriteLayers.fields,
@@ -613,15 +615,33 @@ export class PixiRenderer {
     ];
 
     for (const layer of drawOrder) {
-      this.world.addChild(layer);
+      if (layer) {
+        this.world.addChild(layer);
+      }
     }
 
+    this.initArenaTile();
     this.applyVisualProfile();
   }
 
   preloadExternalTextures() {
     for (const assetId of Object.keys(EXTERNAL_ASSET_DEFS)) {
       this.getExternalTexture(assetId);
+    }
+  }
+
+  initArenaTile() {
+    try {
+      const texture = PIXI.Texture.from("./designs/map.jpg");
+      if (texture) {
+        const tile = new PIXI.TilingSprite(texture, ARENA.width, ARENA.height);
+        tile.position.set(0, 0);
+        tile.tilePosition.set(0, 0);
+        this.layers.arenaTile = tile;
+        this.world.addChildAt(tile, 1);
+      }
+    } catch {
+      this.layers.arenaTile = null;
     }
   }
 
@@ -714,7 +734,9 @@ export class PixiRenderer {
     };
 
     for (const layer of Object.values(this.layers)) {
-      layer.clear();
+      if (layer && typeof layer.clear === "function") {
+        layer.clear();
+      }
     }
   }
 
@@ -754,7 +776,9 @@ export class PixiRenderer {
 
     this.updateParticles(delta);
     this.drawArena(camera);
+    /* Decoration layer temporarily disabled
     this.drawDecorations(camera);
+    */
 
     if (!runtime.session && !forceBackground) {
       this.finishFrame();
@@ -1336,18 +1360,22 @@ export class PixiRenderer {
 
   drawArena(camera) {
     const graphics = this.layers.arena;
-    beginFill(graphics, this.visualProfile.groundBaseColor);
-    graphics.drawRect(0, 0, ARENA.width, ARENA.height);
-    graphics.endFill();
+    if (this.layers.arenaTile) {
+      // Tile moves with world container → auto-scrolls with camera
+    } else {
+      beginFill(graphics, this.visualProfile.groundBaseColor);
+      graphics.drawRect(0, 0, ARENA.width, ARENA.height);
+      graphics.endFill();
 
-    beginFill(graphics, this.visualProfile.groundPatchColor);
-    for (let x = Math.floor(camera.x / 240) * 240; x <= camera.x + camera.width + 240; x += 240) {
-      for (let y = Math.floor(camera.y / 220) * 220; y <= camera.y + camera.height + 220; y += 220) {
-        graphics.drawEllipse(x + 80, y + 68, 64, 28);
-        graphics.drawEllipse(x + 144, y + 114, 46, 20);
+      beginFill(graphics, this.visualProfile.groundPatchColor);
+      for (let x = Math.floor(camera.x / 240) * 240; x <= camera.x + camera.width + 240; x += 240) {
+        for (let y = Math.floor(camera.y / 220) * 220; y <= camera.y + camera.height + 220; y += 220) {
+          graphics.drawEllipse(x + 80, y + 68, 64, 28);
+          graphics.drawEllipse(x + 144, y + 114, 46, 20);
+        }
       }
+      graphics.endFill();
     }
-    graphics.endFill();
 
     setLine(graphics, 8, this.visualProfile.groundBorderColor);
     graphics.drawRect(0, 0, ARENA.width, ARENA.height);

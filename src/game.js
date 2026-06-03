@@ -964,10 +964,7 @@ export class GameRuntime {
     if (!session.bossSpawned && session.elapsed < session.roundDurationSeconds) {
       while (session.elapsed >= session.nextEliteSpawnAt) {
         session.nextEliteSpawnAt += session.eliteSpawnInterval;
-        if (!this.hasLivingElite()) {
-          this.spawnElite();
-          break;
-        }
+        this.spawnElite();
       }
     }
 
