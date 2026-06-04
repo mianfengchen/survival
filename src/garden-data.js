@@ -169,6 +169,43 @@ export const CHARACTER_LIBRARY = [
   },
 ];
 
+CHARACTER_LIBRARY.push(
+  ...[
+    ["glassprout", "玻璃温室芽灵", "温室折光师", "花灵", "能把玻璃温室里的晨光折成精准光束。", "glassPrismRay", "#7fd8ff"],
+    ["honeybell", "蜜铃花童", "甜露爆破手", "花朵", "把蜂蜜露珠调成会弹跳爆开的软糖泡泡。", "honeyBomb", "#f0b95f"],
+    ["rainroot", "雨根守望者", "雨圈编织者", "植物", "在泥土里画出圆润雨圈，拖慢虫群脚步。", "rainRootSigil", "#78d4b5"],
+    ["orchidnova", "兰星舞者", "坠星播种者", "花灵", "用兰花舞步召来带尾焰的种星。", "orchidComet", "#d69cff"],
+    ["bramblebee", "荆蜜蜂骑士", "回旋荆刃", "益虫", "投出会折返的荆棘回旋刃，切开密集虫潮。", "brambleBoomerang", "#9bcf63"],
+    ["dewdropper", "露珠工匠", "晶露陷阱师", "植物", "把圆滚滚露珠埋成会爆开的地雷。", "dewdropMine", "#8adfd6"],
+    ["stormlily", "雷纹百合", "电绸裁缝", "花灵", "用电光缎带在虫群头顶落下闪雷。", "stormRibbon", "#9fb8ff"],
+    ["moonwell", "月井睡莲", "月藤捕手", "景观守灵", "从月井里牵出柔软藤蔓，精准缠住高威胁目标。", "moonwellSnare", "#ef91c2"],
+    ["lanternbud", "灯笼花芽", "暖灯射手", "植物", "把灯芯火花凝成明亮小弹，稳定点亮战线。", "lanternSpark", "#f4c86d"],
+    ["harvestdoll", "丰收小偶", "月镰收割者", "花朵", "挥出玩具镰月般的回旋刃，来回清线。", "harvestCrescent", "#ee7778"],
+    ["seedvault", "种库守钥人", "皇家种脉", "花灵", "用种库核心释放护园脉冲。", "seedvaultPulse", "#badb69"],
+    ["pearlshell", "珍珠贝苗", "珍珠泡泡师", "植物", "吹出珍珠泡泡，爆开后形成可爱的范围压制。", "pearlBubble", "#f1d18a"],
+    ["clockivy", "钟藤修理师", "定时藤鞭", "植物", "校准藤蔓节拍，在恰好的瞬间抽击敌人。", "clockIvyLash", "#7bc489"],
+    ["operamoth", "歌剧蛾灵", "回声丝刃", "益虫", "唱出弧形丝刃，飞出后随旋律折返。", "operaMothBlade", "#c6a0f2"],
+    ["antlerleaf", "鹿角叶童", "晶角箭术", "花灵", "把晶角上的光凝成轻快箭矢。", "antlerBolt", "#73d1ff"],
+    ["sporecup", "菌茶杯侍者", "茶杯伏雷", "植物", "摆下小茶杯般的蘑菇雷，靠近就会喷出孢子。", "sporeTeacupMine", "#b8c978"],
+    ["tulipbolt", "郁金电芽", "花杯落雷", "花朵", "在敌人脚下点亮花杯印记，再落下雷光。", "tulipThunder", "#ffab86"],
+    ["eclipsebud", "蚀月牡丹芽", "蚀瓣坠雨", "花灵", "召来暗粉色花瓣流星，砸散后排虫群。", "eclipsePetalRain", "#f073a4"],
+    ["blueflame", "蓝焰树苗", "蓝灯花园", "景观守灵", "铺开蓝色灯火花圃，持续灼烧并牵制虫群。", "blueflameGarden", "#92a7ff"],
+    ["scissorvine", "剪影藤偶", "暮剪藤术", "植物", "让藤蔓像小剪刀一样咔嚓咬住敌人。", "scissorVine", "#ef6872"],
+    ["royalbud", "皇家花苞", "王冠脉冲", "花朵", "展开皇冠般的花苞脉冲，守住近身空间。", "royalBudPulse", "#a8d46b"],
+    ["ambergear", "琥珀齿轮芽", "齿轮泡泡", "植物", "把琥珀齿轮塞进泡泡，撞击后弹出甜亮爆破。", "amberGearBurst", "#f1b86b"],
+    ["aurorapetal", "极光花瓣", "极光针羽", "花灵", "射出极光针羽，给终盘战线稳定远程输出。", "auroraNeedle", "#c9a9ff"],
+    ["grandprism", "大棱镜守心者", "终庭坠晶", "景观守灵", "引导巨大棱镜种星坠落，为最后花心开路。", "grandPrismMeteor", "#72cbff"],
+  ].map(([id, name, title, kind, description, skillId, color]) => ({
+    id,
+    name,
+    title,
+    kind,
+    description,
+    skillId,
+    color,
+  })),
+);
+
 export const LANDSCAPE_LIBRARY = [
   {
     id: "sunDial",
@@ -532,21 +569,48 @@ function createRegionReward(regionIndex) {
 }
 
 function getRegionBoss(regionIndex) {
-  const bossTier = 1 + (regionIndex % 10);
+  const regionBossIds = [
+    "clockvineSerpent",
+    "amberShellCrab",
+    "moonpetalMoth",
+    "prismStag",
+    "myceliumLord",
+    "tempestTulip",
+    "eclipsePeony",
+    "voidLantern",
+    "twilightMower",
+    "budSentinel",
+    "glasshouseMonarch",
+    "honeycombMatron",
+    "rainrootHydra",
+    "orchidWaltzer",
+    "brambleCrown",
+    "dewdropColossus",
+    "stormglassRook",
+    "moonwellSiren",
+    "lanternMimic",
+    "harvestReaper",
+    "seedvaultTitan",
+    "pearlShellDuke",
+    "clockworkIvy",
+    "mothOperaDiva",
+    "prismAntlerKing",
+    "sporeTeaLord",
+    "tulipTempestDuchess",
+    "eclipseBloomOracle",
+    "blueflameArbor",
+    "twilightScissorQueen",
+    "royalBudEngine",
+    "amberClockCrab",
+    "auroraMothCrown",
+    "grandPrismKeeper",
+    "lastLanternRoot",
+    "heartcoreDevourer",
+  ];
+  const bossTier = regionIndex + 1;
   return {
     bossTier,
-    bossId: [
-      "clockvineSerpent",
-      "amberShellCrab",
-      "moonpetalMoth",
-      "prismStag",
-      "myceliumLord",
-      "tempestTulip",
-      "eclipsePeony",
-      "voidLantern",
-      "twilightMower",
-      "budSentinel",
-    ][bossTier - 1],
+    bossId: regionBossIds[regionIndex] || "heartcoreDevourer",
   };
 }
 

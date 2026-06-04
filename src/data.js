@@ -374,6 +374,57 @@ export const MONSTER_LIBRARY = [
   },
 ];
 
+const REGION_BOSS_EXPANSION = [
+  ["glasshouseMonarch", "Glasshouse Monarch", "A crystal-wing garden tyrant that refracts the restored greenhouse light into lance volleys.", "#7fd8ff", "#2d7898", "#e6fbff", 11, "prismStag", "prismLance"],
+  ["honeycombMatron", "Honeycomb Matron", "A golden brood queen that seals paths with amber cross shots and sticky shell guards.", "#f2bd62", "#935f24", "#fff0bd", 12, "amberShellCrab", "crossBurst"],
+  ["rainrootHydra", "Rainroot Hydra", "A many-headed root beast that grows spiral seed barrages from wet soil.", "#79c88e", "#3f7951", "#e4ffe9", 13, "clockvineSerpent", "spiralBloom"],
+  ["orchidWaltzer", "Orchid Waltzer", "A graceful orchid boss that throws drifting moth petals in sweeping dance patterns.", "#d59cff", "#744ca6", "#f6ddff", 14, "moonpetalMoth", "mothSwarm"],
+  ["brambleCrown", "Bramble Crown", "A thorn-crowned war bug that fires petal fans from a living crown of briars.", "#9bcf63", "#4c7b31", "#f3ffd5", 15, "budSentinel", "petalFan"],
+  ["dewdropColossus", "Dewdrop Colossus", "A heavy dew-armored beetle that splits toxic spores across the field.", "#9fd9d1", "#3e817a", "#e5fffb", 16, "myceliumLord", "sporeBurst"],
+  ["stormglassRook", "Stormglass Rook", "A rook-shaped invader that spins twin wheels of charged petals.", "#8eb8ff", "#3f5ca6", "#e2ebff", 17, "tempestTulip", "tempestWheel"],
+  ["moonwellSiren", "Moonwell Siren", "A moonlit boss that calls down eclipse rain from the garden well.", "#ef8fbd", "#8c315a", "#ffe0ef", 18, "eclipsePeony", "eclipseRain"],
+  ["lanternMimic", "Lantern Mimic", "A false garden lantern that builds bright walls of spectral fire.", "#9ba8ff", "#3c4c9a", "#e8ebff", 19, "voidLantern", "lanternWall"],
+  ["harvestReaper", "Harvest Reaper", "A festival reaper with combined twilight bullet patterns and scythe petals.", "#ee7175", "#9b2630", "#ffd8cf", 20, "twilightMower", "cataclysm"],
+  ["seedvaultTitan", "Seedvault Titan", "A vault guardian that protects corrupted seeds behind massive petal fans.", "#b0d66b", "#657d2e", "#f8ffd8", 21, "budSentinel", "petalFan"],
+  ["pearlShellDuke", "Pearl Shell Duke", "A polished shell noble that breaks the lane with crossing pearl shards.", "#efc980", "#8f6428", "#fff1ca", 22, "amberShellCrab", "crossBurst"],
+  ["clockworkIvy", "Clockwork Ivy", "A clockwork vine serpent that winds spiral bullets through the garden paths.", "#78b983", "#3a6f4b", "#e0f8dd", 23, "clockvineSerpent", "spiralBloom"],
+  ["mothOperaDiva", "Moth Opera Diva", "A velvet-wing singer whose notes become homing moth swarms.", "#c6a0f2", "#6750a7", "#f3e0ff", 24, "moonpetalMoth", "mothSwarm"],
+  ["prismAntlerKing", "Prism Antler King", "A late-game prism stag that fires wider mirror lances from both flanks.", "#74d1ff", "#2c6f9a", "#e5f9ff", 25, "prismStag", "prismLance"],
+  ["sporeTeaLord", "Spore Tea Lord", "A mushroom host that pours splitting spores like poisonous tea.", "#b5c978", "#607333", "#f6fad0", 26, "myceliumLord", "sporeBurst"],
+  ["tulipTempestDuchess", "Tulip Tempest Duchess", "A storm tulip ruler that turns the arena into a double wind wheel.", "#ffab86", "#a34d2d", "#ffe5da", 27, "tempestTulip", "tempestWheel"],
+  ["eclipseBloomOracle", "Eclipse Bloom Oracle", "A dark-pink oracle that predicts movement with falling eclipse blooms.", "#f073a4", "#8d2651", "#ffdce9", 28, "eclipsePeony", "eclipseRain"],
+  ["blueflameArbor", "Blueflame Arbor", "An ancient blueflame tree that lays lantern walls across escape routes.", "#8da5ff", "#374c9d", "#e3e9ff", 29, "voidLantern", "lanternWall"],
+  ["twilightScissorQueen", "Twilight Scissor Queen", "A huge scissor-wing queen using layered cataclysm barrages.", "#ef6872", "#992334", "#ffd6cf", 30, "twilightMower", "cataclysm"],
+  ["royalBudEngine", "Royal Bud Engine", "A mechanical bud boss that opens and closes with fan-shaped seed fire.", "#a8d46b", "#587c2f", "#f6ffd9", 31, "budSentinel", "petalFan"],
+  ["amberClockCrab", "Amber Clock Crab", "A final-row shell boss that alternates diagonal and straight amber bursts.", "#f1b86b", "#8d5720", "#ffe8b5", 32, "amberShellCrab", "crossBurst"],
+  ["auroraMothCrown", "Aurora Moth Crown", "A crowned moth wrapped in aurora dust and persistent homing wings.", "#c9a9ff", "#7050b0", "#f5e5ff", 33, "moonpetalMoth", "mothSwarm"],
+  ["grandPrismKeeper", "Grand Prism Keeper", "A mirror garden keeper that focuses three crystal lances at once.", "#72cbff", "#2e6f9a", "#e3f8ff", 34, "prismStag", "prismLance"],
+  ["lastLanternRoot", "Last Lantern Root", "A penultimate root lantern that cages the garden with blue light walls.", "#92a7ff", "#344999", "#e5eaff", 35, "voidLantern", "lanternWall"],
+  ["heartcoreDevourer", "Heartcore Devourer", "The final invader, combining twilight pressure with the corrupted heartcore pulse.", "#f05f6c", "#952232", "#ffd8cb", 36, "twilightMower", "cataclysm"],
+];
+
+MONSTER_LIBRARY.push(
+  ...REGION_BOSS_EXPANSION.map(([id, name, description, color, accent, detailColor, tier], index) => ({
+    id,
+    name,
+    description,
+    color,
+    accent,
+    detailColor,
+    minTime: ROUND_DURATION_SECONDS,
+    weight: 0,
+    health: Math.round(1200000 + index * 420000),
+    speed: 66 + (index % 9) * 3,
+    damage: 22 + index * 2,
+    radius: 64 + Math.min(62, index * 2),
+    exp: 240 + index * 34,
+    boss: true,
+    bossTier: tier,
+    shapeId: id,
+    attackPattern: `advancedBoss-${index + 11}`,
+  })),
+);
+
 export const ELITE_MONSTER_DEFINITION = {
   id: "gardenElite",
   name: "庭域巨祟",
@@ -933,6 +984,97 @@ export const SKILL_LIBRARY = [
   },
 ];
 
+const ADVANCED_SKILL_BLUEPRINTS = [
+  ["glassPrismRay", "Glass Prism Ray", "Fires polished greenhouse light bolts that split through clustered invaders.", "#7fd8ff", "beam"],
+  ["honeyBomb", "Honey Bomb", "Launches sticky honey bombs that burst into slowing splash damage.", "#f0b95f", "lobbedBomb"],
+  ["rainRootSigil", "Rain Root Sigil", "Plants soft rain circles that damage and slow enemies in cute 3D puddles.", "#78d4b5", "field"],
+  ["orchidComet", "Orchid Comet", "Calls orchid-tinted falling stars from the sky.", "#d69cff", "meteor"],
+  ["brambleBoomerang", "Bramble Boomerang", "Throws a curved bramble blade that returns through the enemy wave.", "#9bcf63", "boomerang"],
+  ["dewdropMine", "Dewdrop Mine", "Places glossy dew mines that pop when enemies step close.", "#8adfd6", "mine"],
+  ["stormRibbon", "Storm Ribbon", "Drops charged ribbon lightning on the nearest enemy cluster.", "#9fb8ff", "strike"],
+  ["moonwellSnare", "Moonwell Snare", "Snaps moonlit vines around priority targets and blooms on impact.", "#ef91c2", "snare"],
+  ["lanternSpark", "Lantern Spark", "Shoots warm lantern sparks that chain through nearby invaders.", "#f4c86d", "beam"],
+  ["harvestCrescent", "Harvest Crescent", "Throws harvest crescent blades that slice out and return.", "#ee7778", "boomerang"],
+  ["seedvaultPulse", "Seedvault Pulse", "Releases a protective seed pulse around the player.", "#badb69", "pulse"],
+  ["pearlBubble", "Pearl Bubble", "Fires pearl bubbles that burst into soft splash rings.", "#f1d18a", "lobbedBomb"],
+  ["clockIvyLash", "Clock Ivy Lash", "Whips nearby enemies with timed ivy snares.", "#7bc489", "snare"],
+  ["operaMothBlade", "Opera Moth Blade", "Sends musical moth blades outward and pulls them back.", "#c6a0f2", "boomerang"],
+  ["antlerBolt", "Antler Bolt", "Shoots bright prism antler bolts at the nearest invader.", "#73d1ff", "beam"],
+  ["sporeTeacupMine", "Spore Teacup Mine", "Sets tiny teacup mushroom mines that burst into spores.", "#b8c978", "mine"],
+  ["tulipThunder", "Tulip Thunder", "Calls tulip-shaped lightning strikes with a short warning mark.", "#ffab86", "strike"],
+  ["eclipsePetalRain", "Eclipse Petal Rain", "Drops dark-pink meteor petals from above.", "#f073a4", "meteor"],
+  ["blueflameGarden", "Blueflame Garden", "Paints blue lantern fields that burn and slow enemies.", "#92a7ff", "field"],
+  ["scissorVine", "Scissor Vine", "Cuts into enemies with snapping twilight vines.", "#ef6872", "snare"],
+  ["royalBudPulse", "Royal Bud Pulse", "Expands a royal bud shockwave from the player.", "#a8d46b", "pulse"],
+  ["amberGearBurst", "Amber Gear Burst", "Launches amber gear bombs that pop with toy-like splash damage.", "#f1b86b", "lobbedBomb"],
+  ["auroraNeedle", "Aurora Needle", "Shoots aurora needles with clean long-range pressure.", "#c9a9ff", "beam"],
+  ["grandPrismMeteor", "Grand Prism Meteor", "Calls heavy prism meteors for final-row burst damage.", "#72cbff", "meteor"],
+];
+
+function createAdvancedStats(behavior, index) {
+  const scale = 1 + index * 0.028;
+  const cooldownOffset = index * 0.018;
+  const templates = {
+    beam: (level) => ({ cooldown: 1.7 - level * 0.14 - cooldownOffset, damage: Math.round((34 + level * 16) * scale), count: 1 + Math.floor(level / 2), speed: 620 + level * 26, pierce: level >= 3 ? 2 : 1, size: 8 + level, range: 430 + level * 34 }),
+    lobbedBomb: (level) => ({ cooldown: 3.1 - level * 0.18 - cooldownOffset, damage: Math.round((46 + level * 18) * scale), count: 1 + Math.floor(level / 2), speed: 250 + level * 18, size: 13 + level, splash: 48 + level * 8, range: 290 + level * 18 }),
+    field: (level) => ({ cooldown: 4.2 - level * 0.2 - cooldownOffset, damage: Math.round((14 + level * 8) * scale), count: 1 + Math.floor(level / 2), radius: 68 + level * 12, duration: 3.6 + level * 0.45, tickInterval: 0.42 }),
+    meteor: (level) => ({ cooldown: 5.3 - level * 0.25 - cooldownOffset, damage: Math.round((72 + level * 26) * scale), radius: 50 + level * 8, count: 1 + Math.floor(level / 2), fallTime: 0.86 - level * 0.06 }),
+    boomerang: (level) => ({ cooldown: 2.8 - level * 0.16 - cooldownOffset, damage: Math.round((30 + level * 14) * scale), count: 1 + Math.floor(level / 2), speed: 360 + level * 24, size: 10 + level, range: 250 + level * 24, pierce: 2 + Math.floor(level / 2) }),
+    mine: (level) => ({ cooldown: 4.5 - level * 0.24 - cooldownOffset, damage: Math.round((70 + level * 24) * scale), radius: 58 + level * 9, count: 1 + Math.floor(level / 2), armTime: 0.58 - level * 0.035, duration: 7.5 + level * 0.65 }),
+    strike: (level) => ({ cooldown: 3.8 - level * 0.19 - cooldownOffset, damage: Math.round((58 + level * 22) * scale), count: 1 + Math.floor(level / 2), radius: 54 + level * 8, delay: 0.52 - level * 0.035 }),
+    snare: (level) => ({ cooldown: 3.5 - level * 0.18 - cooldownOffset, damage: Math.round((44 + level * 16) * scale), count: 2 + Math.floor(level / 2), range: 270 + level * 30, root: 0.78 + level * 0.12, bloomRadius: 48 + level * 6 }),
+    pulse: (level) => ({ cooldown: 4.0 - level * 0.18 - cooldownOffset, damage: Math.round((40 + level * 18) * scale), radius: 118 + level * 18, waves: 1 + Math.floor(level / 2), growth: 300 + level * 28 }),
+  };
+  return Array.from({ length: 5 }, (_, index) => {
+    const level = index + 1;
+    const stats = templates[behavior](level);
+    if (typeof stats.cooldown === "number") {
+      stats.cooldown = Number(Math.max(0.65, stats.cooldown).toFixed(2));
+    }
+    if (typeof stats.fallTime === "number") {
+      stats.fallTime = Number(Math.max(0.42, stats.fallTime).toFixed(2));
+    }
+    if (typeof stats.armTime === "number") {
+      stats.armTime = Number(Math.max(0.32, stats.armTime).toFixed(2));
+    }
+    if (typeof stats.delay === "number") {
+      stats.delay = Number(Math.max(0.28, stats.delay).toFixed(2));
+    }
+    return stats;
+  });
+}
+
+function createAdvancedSkill([id, name, description, color, behavior], index) {
+  return {
+    id,
+    name,
+    description,
+    color,
+    advancedBehavior: behavior,
+    unlockCost: 420 + index * 28,
+    maxLevel: 5,
+    statsByLevel: createAdvancedStats(behavior, index),
+    exclusiveUpgrades: [
+      {
+        id: `${id}Focus`,
+        name: "Signature Focus",
+        description: "Improves the signature skill's base damage through focused garden energy.",
+        maxLevel: 2,
+        unlockCost: 120 + index * 4,
+      },
+      {
+        id: `${id}Tempo`,
+        name: "Cute Tempo",
+        description: "Improves the skill rhythm and makes repeated casts feel snappier.",
+        maxLevel: 2,
+        unlockCost: 140 + index * 4,
+      },
+    ],
+  };
+}
+
+SKILL_LIBRARY.push(...ADVANCED_SKILL_BLUEPRINTS.map(createAdvancedSkill));
+
 export const GENERAL_UPGRADES = [
   {
     id: "attackGrowth",
@@ -1138,7 +1280,7 @@ export const SPECIAL_BOON_LIBRARY = [
   {
     id: "mirrorImage",
     name: "镜像",
-    description: "使用闪现或传送后，在原地留下持续 3 秒的镜像，并复制你最后使用的一个技能。",
+    description: "使用闪现或传送后，在原地留下持续 5 秒的镜像。镜像复制当时本体的技能与属性，会自动攻击，且不会被攻击。",
   },
   {
     id: "echoSpiral",
@@ -1253,6 +1395,11 @@ export function getTalentCost(talent, currentLevel) {
 
 export function getSkillDefinition(skillId) {
   return SKILL_LIBRARY.find((skill) => skill.id === skillId);
+}
+
+export function getSkillRuntimeId(skillId) {
+  const definition = getSkillDefinition(skillId);
+  return definition?.baseSkillId || skillId;
 }
 
 export function getExclusiveDefinition(exclusiveId) {

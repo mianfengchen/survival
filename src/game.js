@@ -119,8 +119,15 @@ function scaleProfile(baseProfile, scales = {}) {
 }
 
 const SWORD_GLOW_COLORS = ["#ffe58f", "#8fe9ff", "#ffb4f6", "#b7ff84", "#ffd2a8", "#d7b7ff"];
-const PROJECTILE_COUNT_SKILLS = new Set(["elfArrow", "flyingSword", "bubbleBurst", "thornVolley", "meteorSeed", "ribbonBlade"]);
-const SUMMON_COUNT_SKILLS = new Set(["petalOrbit", "dewGarden", "mushroomMine", "lotusBeacon"]);
+const PROJECTILE_COUNT_SKILLS = new Set([
+  "elfArrow", "flyingSword", "bubbleBurst", "thornVolley", "meteorSeed", "ribbonBlade",
+  "glassPrismRay", "honeyBomb", "orchidComet", "brambleBoomerang", "lanternSpark", "harvestCrescent",
+  "pearlBubble", "operaMothBlade", "antlerBolt", "eclipsePetalRain", "amberGearBurst", "auroraNeedle", "grandPrismMeteor",
+]);
+const SUMMON_COUNT_SKILLS = new Set([
+  "petalOrbit", "dewGarden", "mushroomMine", "lotusBeacon",
+  "rainRootSigil", "dewdropMine", "blueflameGarden", "sporeTeacupMine",
+]);
 const PROJECTILE_GENERAL_UPGRADES = new Set(["projectileSpeed", "projectileSize", "projectileOverload"]);
 const SUMMON_GENERAL_UPGRADES = new Set(["summonOverload"]);
 const UPGRADE_CHOICE_COUNT = 3;
@@ -247,6 +254,7 @@ export class GameRuntime {
     this.strikes = [];
     this.mines = [];
     this.skillEffects = [];
+    this.mirrorClones = [];
     this.meteors = [];
     this.beacons = [];
     this.pickups = [];
@@ -459,6 +467,7 @@ export class GameRuntime {
     this.strikes = [];
     this.mines = [];
     this.skillEffects = [];
+    this.mirrorClones = [];
     this.meteors = [];
     this.beacons = [];
     this.pickups = [];
@@ -772,10 +781,6 @@ export class GameRuntime {
       return Object.keys(this.skillStates).length > 1;
     }
 
-    if (boonId === "mirrorImage") {
-      return Boolean(this.specialState.lastTriggeredSkill);
-    }
-
     return true;
   }
 
@@ -973,6 +978,7 @@ export class GameRuntime {
       this.spawnEnemies(delta);
     }
     this.updateSkillCooldowns(delta);
+    this.updateMirrorClones(delta);
     this.updateProjectiles(delta);
     this.updatePulses(delta);
     this.updateFields(delta);
@@ -1232,24 +1238,47 @@ export class GameRuntime {
   }
 
   spawnMirrorImage(x, y) {
+    const snapshot = this.captureSkillSnapshot();
+    const skillStates = Object.fromEntries(
+      Object.entries(this.skillStates).map(([skillId, state]) => [
+        skillId,
+        {
+          level: state.level,
+          cooldown: state.cooldown,
+          exclusives: { ...(state.exclusives || {}) },
+          glowColor: state.glowColor || null,
+        },
+      ]),
+    );
+
+    this.mirrorClones.push({
+      id: crypto.randomUUID(),
+      x,
+      y,
+      radius: this.player.radius * 1.4,
+      duration: 5,
+      maxDuration: 5,
+      snapshot,
+      skillStates,
+      orbitAngle: this.orbitAngle,
+      orbitHitCooldowns: {},
+    });
+
     this.spawnSkillEffect({
       kind: "mirrorClone",
       x,
       y,
       radius: this.player.radius * 1.4,
-      duration: 3,
+      duration: 5,
       color: "rgba(188, 231, 255, 0.4)",
       accent: "rgba(255, 255, 255, 0.8)",
     });
-
-    if (this.specialState.lastTriggeredSkill) {
-      this.replaySkillRecord(this.specialState.lastTriggeredSkill, { x, y }, { suppressTriggerProcs: true, recordLast: false });
-    }
   }
 
   captureSkillSnapshot() {
     return {
       attackMultiplier: this.player.attackMultiplier,
+      cooldownScale: this.player.cooldownScale,
       critChance: this.player.critChance,
       critDamage: this.player.critDamage,
       rangeMultiplier: this.player.rangeMultiplier,
@@ -1288,6 +1317,7 @@ export class GameRuntime {
     const originalPlayer = {
       x: this.player.x,
       y: this.player.y,
+      cooldownScale: this.player.cooldownScale,
       rangeMultiplier: this.player.rangeMultiplier,
       projectileSpeedMultiplier: this.player.projectileSpeedMultiplier,
       projectileSizeMultiplier: this.player.projectileSizeMultiplier,
@@ -1302,6 +1332,7 @@ export class GameRuntime {
     this.player.x = context.origin.x;
     this.player.y = context.origin.y;
     this.player.rangeMultiplier = context.snapshot.rangeMultiplier;
+    this.player.cooldownScale = context.snapshot.cooldownScale || 1;
     this.player.projectileSpeedMultiplier = context.snapshot.projectileSpeedMultiplier;
     this.player.projectileSizeMultiplier = context.snapshot.projectileSizeMultiplier;
     this.player.projectileCountBonus = context.snapshot.projectileCountBonus;
@@ -1362,6 +1393,8 @@ export class GameRuntime {
   }
 
   castSkillById(skillId, state, stats) {
+    const definition = getSkillDefinition(skillId);
+    if (definition?.advancedBehavior) this.castAdvancedSkill(skillId, state, stats, definition);
     if (skillId === "flyingSword" || skillId === "elfArrow") this.castFlyingSword(skillId, state, stats);
     if (skillId === "solarPulse") this.castSolarPulse(state, stats);
     if (skillId === "bubbleBurst") this.castBubbleBurst(state, stats);
@@ -1376,6 +1409,7 @@ export class GameRuntime {
   }
 
   triggerSkill(skillId, state, stats, options = {}) {
+    const effectiveStats = this.getEffectiveSkillStats(skillId, state, stats);
     const origin = options.origin || { x: this.player.x, y: this.player.y };
     const snapshot = options.snapshot || this.captureSkillSnapshot();
     const record = options.skillRecord || this.createSkillRecord(skillId, state, snapshot);
@@ -1392,7 +1426,7 @@ export class GameRuntime {
         echoDepth: options.echoDepth || 0,
         echoDamageScale: options.echoDamageScale || 1,
       },
-      () => this.castSkillById(skillId, state, stats),
+      () => this.castSkillById(skillId, state, effectiveStats),
     );
 
     this.stampTriggeredObjects(record, countsBefore, {
@@ -1599,16 +1633,314 @@ export class GameRuntime {
 
       const stats = definition.statsByLevel[state.level - 1];
       if (skillId !== "petalOrbit") {
+        const effectiveStats = this.getEffectiveSkillStats(skillId, state, stats);
         state.cooldown -= delta;
         if (state.cooldown > 0) {
           continue;
         }
-        state.cooldown = stats.cooldown * this.player.cooldownScale;
+        state.cooldown = effectiveStats.cooldown * this.player.cooldownScale;
       } else {
         continue;
       }
 
       this.triggerSkill(skillId, state, stats);
+    }
+  }
+
+  getEffectiveSkillStats(skillId, state, stats) {
+    const definition = getSkillDefinition(skillId);
+    if (!definition?.advancedBehavior) {
+      return stats;
+    }
+
+    const focusLevel = state.exclusives?.[`${skillId}Focus`] || 0;
+    const tempoLevel = state.exclusives?.[`${skillId}Tempo`] || 0;
+    const next = { ...stats };
+    if (typeof next.damage === "number" && focusLevel > 0) {
+      next.damage = Math.round(next.damage * (1 + focusLevel * 0.16));
+    }
+    if (typeof next.cooldown === "number" && tempoLevel > 0) {
+      next.cooldown = Number(Math.max(0.45, next.cooldown * (1 - tempoLevel * 0.08)).toFixed(2));
+    }
+    if (typeof next.radius === "number" && focusLevel > 0) {
+      next.radius = Math.round(next.radius * (1 + focusLevel * 0.04));
+    }
+    if (typeof next.range === "number" && tempoLevel > 0) {
+      next.range = Math.round(next.range * (1 + tempoLevel * 0.04));
+    }
+    return next;
+  }
+
+  castAdvancedSkill(skillId, state, stats, definition) {
+    const behavior = definition.advancedBehavior;
+    if (behavior === "beam") this.castAdvancedBeam(skillId, stats);
+    if (behavior === "lobbedBomb") this.castAdvancedBomb(skillId, state, stats);
+    if (behavior === "field") this.castAdvancedField(skillId, state, stats);
+    if (behavior === "meteor") this.castAdvancedMeteor(skillId, state, stats);
+    if (behavior === "boomerang") this.castAdvancedBoomerang(skillId, state, stats);
+    if (behavior === "mine") this.castAdvancedMine(skillId, state, stats);
+    if (behavior === "strike") this.castAdvancedStrike(skillId, state, stats);
+    if (behavior === "snare") this.castAdvancedSnare(skillId, state, stats);
+    if (behavior === "pulse") this.castAdvancedPulse(skillId, state, stats);
+  }
+
+  getAdvancedExclusiveLevels(skillId, state) {
+    return {
+      focus: state.exclusives?.[`${skillId}Focus`] || 0,
+      tempo: state.exclusives?.[`${skillId}Tempo`] || 0,
+    };
+  }
+
+  castAdvancedBeam(skillId, stats) {
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!target) return;
+    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    for (let index = 0; index < totalCount; index += 1) {
+      const aim = this.getProjectileAim(target, index, totalCount, 0.09, assignedTargets);
+      if (!aim) continue;
+      const speed = stats.speed * this.player.projectileSpeedMultiplier;
+      this.projectiles.push({
+        id: crypto.randomUUID(),
+        skillId,
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        vx: aim.direction.x * speed,
+        vy: aim.direction.y * speed,
+        speed,
+        radius: stats.size * this.player.projectileSizeMultiplier,
+        damage: this.rollDamage(stats.damage),
+        pierce: stats.pierce,
+        maxDistance: stats.range * this.player.rangeMultiplier,
+        distanceTravelled: 0,
+        color: definitionColor(skillId),
+        recentHits: {},
+      });
+    }
+  }
+
+  castAdvancedBomb(skillId, state, stats) {
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!target) return;
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    for (let index = 0; index < totalCount; index += 1) {
+      const aim = this.getProjectileAim(target, index, totalCount, 0.18, assignedTargets);
+      if (!aim) continue;
+      const speed = stats.speed * this.player.projectileSpeedMultiplier;
+      this.projectiles.push({
+        id: crypto.randomUUID(),
+        skillId,
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        vx: aim.direction.x * speed,
+        vy: aim.direction.y * speed,
+        speed,
+        radius: stats.size * this.player.projectileSizeMultiplier,
+        damage: this.rollDamage(stats.damage),
+        splash: stats.splash * this.player.rangeMultiplier * (1 + focus * 0.12),
+        maxDistance: stats.range * this.player.rangeMultiplier,
+        distanceTravelled: 0,
+        color: definitionColor(skillId),
+        advancedBomb: true,
+        splitLevel: focus,
+        slowLevel: 1 + tempo,
+      });
+    }
+  }
+
+  castAdvancedField(skillId, state, stats) {
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const totalCount = stats.count + this.getSummonCountBonus(skillId);
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
+    for (let index = 0; index < totalCount; index += 1) {
+      const anchor = anchors[index % Math.max(1, anchors.length)] || this.player;
+      const angle = (Math.PI * 2 * index) / Math.max(1, totalCount);
+      const distance = anchors.length ? 24 + 10 * Math.floor(index / Math.max(1, anchors.length)) : 48;
+      this.spawnField({
+        sourceSkillId: skillId,
+        x: anchor.x + Math.cos(angle) * distance,
+        y: anchor.y + Math.sin(angle) * distance,
+        radius: stats.radius * this.player.rangeMultiplier,
+        duration: stats.duration + tempo * 0.55,
+        tickInterval: stats.tickInterval,
+        damage: this.rollDamage(stats.damage),
+        slowLevel: 1 + tempo,
+        healLevel: skillId === "rainRootSigil" ? focus : 0,
+        burnLevel: skillId === "blueflameGarden" ? 1 + focus : 0,
+        color: `${definitionColor(skillId)}33`,
+        edgeColor: definitionColor(skillId),
+      });
+    }
+  }
+
+  castAdvancedMeteor(skillId, state, stats) {
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
+    for (let index = 0; index < totalCount; index += 1) {
+      const anchor = anchors[index % Math.max(1, anchors.length)] || this.player;
+      const angle = (Math.PI * 2 * index) / Math.max(1, totalCount);
+      const distance = anchors.length ? 28 + 14 * Math.floor(index / Math.max(1, anchors.length)) : 68;
+      const targetX = clamp(anchor.x + Math.cos(angle) * distance, 24, ARENA.width - 24);
+      const targetY = clamp(anchor.y + Math.sin(angle) * distance, 24, ARENA.height - 24);
+      this.meteors.push({
+        id: crypto.randomUUID(),
+        sourceSkillId: skillId,
+        startX: targetX + randomBetween(-240, 240),
+        startY: targetY - (280 + randomBetween(40, 160)),
+        targetX,
+        targetY,
+        radius: stats.radius * this.player.rangeMultiplier,
+        damage: this.rollDamage(stats.damage),
+        fallTime: Math.max(0.35, stats.fallTime - tempo * 0.04),
+        progress: 0,
+        spin: randomBetween(-2.4, 2.4),
+        scorchLevel: skillId === "eclipsePetalRain" ? 0 : focus,
+        shardLevel: 1 + focus,
+        color: definitionColor(skillId),
+      });
+    }
+  }
+
+  castAdvancedBoomerang(skillId, state, stats) {
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!target) return;
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    for (let index = 0; index < totalCount; index += 1) {
+      const aim = this.getProjectileAim(target, index, totalCount, 0.24, assignedTargets);
+      if (!aim) continue;
+      const speed = stats.speed * this.player.projectileSpeedMultiplier;
+      this.projectiles.push({
+        id: crypto.randomUUID(),
+        skillId,
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        vx: aim.direction.x * speed,
+        vy: aim.direction.y * speed,
+        speed,
+        baseSpeed: speed,
+        radius: stats.size * this.player.projectileSizeMultiplier,
+        damage: this.rollDamage(stats.damage),
+        pierce: stats.pierce + tempo,
+        maxDistance: stats.range * this.player.rangeMultiplier,
+        distanceTravelled: 0,
+        color: definitionColor(skillId),
+        returnLevel: tempo,
+        frayLevel: focus,
+        returning: false,
+        advancedBoomerang: true,
+        recentHits: {},
+      });
+    }
+  }
+
+  castAdvancedMine(skillId, state, stats) {
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const totalCount = stats.count + this.getSummonCountBonus(skillId);
+    const baseAngle = this.orbitAngle + Math.PI / Math.max(1, totalCount);
+    for (let index = 0; index < totalCount; index += 1) {
+      const angle = baseAngle + (Math.PI * 2 * index) / Math.max(1, totalCount);
+      const distance = 44 + (index % 2) * 20;
+      this.mines.push({
+        id: crypto.randomUUID(),
+        kind: skillId,
+        sourceSkillId: skillId,
+        x: clamp(this.player.x + Math.cos(angle) * distance, 24, ARENA.width - 24),
+        y: clamp(this.player.y + Math.sin(angle) * distance, 24, ARENA.height - 24),
+        radius: 13 + focus,
+        explosionRadius: stats.radius * this.player.rangeMultiplier * (1 + focus * 0.14),
+        damage: this.rollDamage(stats.damage),
+        armTime: Math.max(0.25, stats.armTime - tempo * 0.06),
+        duration: stats.duration + tempo * 0.6,
+        toxicLevel: skillId === "sporeTeacupMine" ? 1 + focus : 0,
+        burstLevel: 1 + focus,
+        color: definitionColor(skillId),
+      });
+    }
+  }
+
+  castAdvancedStrike(skillId, state, stats) {
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const totalCount = stats.count;
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
+    for (let index = 0; index < totalCount; index += 1) {
+      const anchor = anchors[index % Math.max(1, anchors.length)] || this.player;
+      const angle = (Math.PI * 2 * index) / Math.max(1, totalCount);
+      this.strikes.push({
+        id: crypto.randomUUID(),
+        sourceSkillId: skillId,
+        x: clamp(anchor.x + Math.cos(angle) * 24, 28, ARENA.width - 28),
+        y: clamp(anchor.y + Math.sin(angle) * 24, 28, ARENA.height - 28),
+        radius: stats.radius * this.player.rangeMultiplier,
+        delay: Math.max(0.2, stats.delay - tempo * 0.04),
+        damage: this.rollDamage(stats.damage),
+        chainLevel: focus,
+        fieldLevel: tempo,
+        color: definitionColor(skillId),
+      });
+    }
+  }
+
+  castAdvancedSnare(skillId, state, stats) {
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const totalCount = stats.count + focus;
+    const maxRange = stats.range * this.player.rangeMultiplier;
+    const targets = this.findNearestEnemies(this.player.x, this.player.y, totalCount * 2)
+      .filter((enemy) => circleDistance(enemy, this.player) <= maxRange + enemy.radius)
+      .slice(0, totalCount);
+    for (const target of targets) {
+      const damage = this.rollDamage(stats.damage);
+      this.damageEnemy(target, damage, skillId);
+      target.slowTimer = Math.max(target.slowTimer, stats.root + tempo * 0.36);
+      this.spawnSkillEffect({
+        kind: "vineWhip",
+        x: this.player.x,
+        y: this.player.y,
+        targetX: target.x,
+        targetY: target.y,
+        duration: 0.18,
+        color: definitionColor(skillId),
+        accent: "#ffffff",
+        thickness: 4 + focus,
+      });
+      const bloomRadius = stats.bloomRadius * (1 + focus * 0.16);
+      if (focus > 0) {
+        this.spawnSkillEffect({ kind: "vineBloom", x: target.x, y: target.y, radius: bloomRadius, duration: 0.28, color: definitionColor(skillId), accent: "#fff6df" });
+        for (const enemy of this.enemies) {
+          if (enemy.id !== target.id && circleDistance(enemy, target) <= bloomRadius + enemy.radius) {
+            this.damageEnemy(enemy, damage * (0.28 + focus * 0.1), skillId);
+          }
+        }
+      }
+    }
+  }
+
+  castAdvancedPulse(skillId, state, stats) {
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const totalWaves = stats.waves + focus;
+    for (let waveIndex = 0; waveIndex < totalWaves; waveIndex += 1) {
+      this.pulses.push({
+        id: crypto.randomUUID(),
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        radius: 0,
+        maxRadius: stats.radius * this.player.rangeMultiplier,
+        growth: stats.growth,
+        damage: this.rollDamage(stats.damage),
+        healLevel: skillId === "seedvaultPulse" ? 1 + focus : 0,
+        scorchLevel: skillId === "royalBudPulse" ? tempo : 0,
+        delay: waveIndex * Math.max(0.1, 0.18 - tempo * 0.03),
+        hitSet: new Set(),
+        color: definitionColor(skillId),
+      });
     }
   }
 
@@ -2020,8 +2352,8 @@ export class GameRuntime {
       const angle = (Math.PI * 2 * index) / count;
       this.projectiles.push({
         id: crypto.randomUUID(),
-        skillId: "meteorShard",
-        sourceSkillId: "meteorSeed",
+        skillId: meteor.sourceSkillId ? `${meteor.sourceSkillId}Shard` : "meteorShard",
+        sourceSkillId: meteor.sourceSkillId || "meteorSeed",
         x: meteor.targetX,
         y: meteor.targetY,
         vx: Math.cos(angle) * speed,
@@ -2032,7 +2364,7 @@ export class GameRuntime {
         pierce: 0,
         maxDistance: 120 + meteor.shardLevel * 20,
         distanceTravelled: 0,
-        color: "#ffd4b2",
+        color: meteor.color || "#ffd4b2",
         recentHits: {},
       });
     }
@@ -2047,8 +2379,8 @@ export class GameRuntime {
       const angle = count === 1 ? baseAngle : baseAngle - (spread * (count - 1)) / 2 + index * spread;
       this.projectiles.push({
         id: crypto.randomUUID(),
-        skillId: "ribbonShard",
-        sourceSkillId: "ribbonBlade",
+        skillId: projectile.advancedBoomerang ? `${projectile.skillId}Shard` : "ribbonShard",
+        sourceSkillId: projectile.sourceSkillId || projectile.skillId,
         x: projectile.x,
         y: projectile.y,
         vx: Math.cos(angle) * speed,
@@ -2059,7 +2391,7 @@ export class GameRuntime {
         pierce: 0,
         maxDistance: 96 + projectile.frayLevel * 18,
         distanceTravelled: 0,
-        color: "#dbe2ff",
+        color: projectile.color || "#dbe2ff",
         recentHits: {},
       });
     }
@@ -2140,7 +2472,10 @@ export class GameRuntime {
         }
       }
 
-      if (projectile.skillId === "ribbonBlade" && projectile.returning) {
+      const boomerangProjectile = projectile.skillId === "ribbonBlade" || projectile.advancedBoomerang;
+      const bombProjectile = projectile.skillId === "bubbleBurst" || projectile.advancedBomb;
+
+      if (boomerangProjectile && projectile.returning) {
         const returnSpeed = (projectile.baseSpeed || projectile.speed) * (1.08 + (projectile.returnLevel || 0) * 0.14);
         const direction = this.getDirectionVector(this.player.x - projectile.x, this.player.y - projectile.y);
         projectile.vx = direction.x * returnSpeed;
@@ -2155,13 +2490,13 @@ export class GameRuntime {
       projectile.distanceTravelled += Math.hypot(projectile.vx * delta, projectile.vy * delta);
       let removed = false;
 
-      if (projectile.skillId === "ribbonBlade" && !projectile.returning && projectile.distanceTravelled >= projectile.maxDistance) {
+      if (boomerangProjectile && !projectile.returning && projectile.distanceTravelled >= projectile.maxDistance) {
         projectile.returning = true;
         projectile.distanceTravelled = 0;
       }
 
       if (
-        projectile.skillId === "ribbonBlade" &&
+        boomerangProjectile &&
         projectile.returning &&
         circleDistance(projectile, this.player) <= projectile.radius + this.player.radius + 6
       ) {
@@ -2181,12 +2516,12 @@ export class GameRuntime {
         }
 
         if (projectile.recentHits) {
-          projectile.recentHits[enemy.id] = projectile.skillId === "ribbonBlade" ? 0.24 : 0.12;
+          projectile.recentHits[enemy.id] = boomerangProjectile ? 0.24 : 0.12;
         }
 
         this.damageEnemy(enemy, projectile.damage, projectile);
-        if (projectile.skillId === "bubbleBurst") {
-          this.explodeBubble(projectile);
+        if (bombProjectile) {
+          this.explodeBombProjectile(projectile);
           removed = true;
           break;
         }
@@ -2200,7 +2535,7 @@ export class GameRuntime {
           this.spawnThornBurst(projectile);
         }
 
-        if (projectile.skillId === "ribbonBlade" && projectile.frayLevel > 0) {
+        if (boomerangProjectile && projectile.frayLevel > 0) {
           this.spawnRibbonFray(projectile);
         }
 
@@ -2211,9 +2546,9 @@ export class GameRuntime {
         }
       }
 
-      if (!removed && projectile.distanceTravelled >= projectile.maxDistance && projectile.skillId !== "ribbonBlade") {
-        if (projectile.skillId === "bubbleBurst") {
-          this.explodeBubble(projectile);
+      if (!removed && projectile.distanceTravelled >= projectile.maxDistance && !boomerangProjectile) {
+        if (bombProjectile) {
+          this.explodeBombProjectile(projectile);
         }
         removed = true;
       }
@@ -2234,13 +2569,18 @@ export class GameRuntime {
   }
 
   explodeBubble(projectile) {
+    this.explodeBombProjectile(projectile);
+  }
+
+  explodeBombProjectile(projectile) {
+    const advanced = Boolean(projectile.advancedBomb);
     this.spawnSkillEffect({
-      kind: "bubblePop",
+      kind: advanced ? "advancedPop" : "bubblePop",
       x: projectile.x,
       y: projectile.y,
       radius: projectile.splash * 0.58,
       duration: 0.34,
-      color: "rgba(146, 231, 255, 0.92)",
+      color: advanced ? projectile.color : "rgba(146, 231, 255, 0.92)",
       accent: "rgba(255, 255, 255, 0.94)",
     });
 
@@ -2263,7 +2603,8 @@ export class GameRuntime {
           : { x: Math.cos(baseAngle), y: Math.sin(baseAngle) };
         this.projectiles.push({
           id: crypto.randomUUID(),
-          skillId: "bubbleShard",
+          skillId: advanced ? `${projectile.skillId}Shard` : "bubbleShard",
+          sourceSkillId: projectile.sourceSkillId || projectile.skillId,
           x: projectile.x,
           y: projectile.y,
           vx: direction.x * 240,
@@ -2274,7 +2615,7 @@ export class GameRuntime {
           pierce: 0,
           maxDistance: 120,
           distanceTravelled: 0,
-          color: "#9be6ef",
+          color: advanced ? projectile.color : "#9be6ef",
         });
       }
     }
@@ -2382,7 +2723,7 @@ export class GameRuntime {
 
       if (strike.fieldLevel > 0) {
         this.spawnField({
-          sourceSkillId: "stormBloom",
+          sourceSkillId: strike.sourceSkillId || "stormBloom",
           x: strike.x,
           y: strike.y,
           radius: strike.radius * (0.74 + strike.fieldLevel * 0.08),
@@ -2392,8 +2733,8 @@ export class GameRuntime {
           slowLevel: 1 + strike.fieldLevel,
           healLevel: 0,
           burnLevel: 0,
-          color: "rgba(232, 218, 125, 0.18)",
-          edgeColor: "rgba(255, 250, 200, 0.88)",
+          color: `${strike.color || definitionColor("stormBloom")}2e`,
+          edgeColor: strike.color || "rgba(255, 250, 200, 0.88)",
         });
       }
     }
@@ -2461,6 +2802,100 @@ export class GameRuntime {
     this.skillEffects = next;
   }
 
+  updateMirrorClones(delta) {
+    const next = [];
+    for (const clone of this.mirrorClones) {
+      clone.duration -= delta;
+      clone.orbitAngle += delta * 2.2;
+      if (clone.duration <= 0) {
+        continue;
+      }
+
+      for (const [skillId, state] of Object.entries(clone.skillStates)) {
+        const definition = getSkillDefinition(skillId);
+        if (!definition) {
+          continue;
+        }
+
+        if (skillId === "petalOrbit") {
+          this.updateMirrorPetalOrbit(clone, state, definition, delta);
+          continue;
+        }
+
+        const stats = definition.statsByLevel[state.level - 1];
+        if (!stats?.cooldown) {
+          continue;
+        }
+
+        state.cooldown -= delta;
+        if (state.cooldown > 0) {
+          continue;
+        }
+
+        const effectiveStats = this.getEffectiveSkillStats(skillId, state, stats);
+        state.cooldown = effectiveStats.cooldown * (clone.snapshot.cooldownScale || 1);
+        const record = this.createSkillRecord(skillId, state, clone.snapshot);
+        this.triggerSkill(skillId, state, stats, {
+          origin: { x: clone.x, y: clone.y },
+          snapshot: clone.snapshot,
+          skillRecord: record,
+          suppressTriggerProcs: true,
+          recordLast: false,
+        });
+      }
+
+      next.push(clone);
+    }
+    this.mirrorClones = next;
+  }
+
+  updateMirrorPetalOrbit(clone, state, definition, delta) {
+    const stats = definition.statsByLevel[state.level - 1];
+    if (!stats) {
+      return;
+    }
+
+    for (const enemyId of Object.keys(clone.orbitHitCooldowns)) {
+      clone.orbitHitCooldowns[enemyId] -= delta;
+      if (clone.orbitHitCooldowns[enemyId] <= 0) {
+        delete clone.orbitHitCooldowns[enemyId];
+      }
+    }
+
+    const count = stats.count + (state.exclusives.petalCount || 0);
+    const orbitRadius = stats.orbitRadius * (1 + (state.exclusives.petalBloom || 0) * 0.16) * clone.snapshot.rangeMultiplier;
+    const petalSize = stats.size * clone.snapshot.projectileSizeMultiplier;
+    const damage = stats.damage * clone.snapshot.attackMultiplier;
+    const healLevel = state.exclusives.petalSustain || 0;
+
+    for (let index = 0; index < count; index += 1) {
+      const angle = clone.orbitAngle * stats.angularSpeed + (Math.PI * 2 * index) / count;
+      const petal = {
+        x: clone.x + Math.cos(angle) * orbitRadius,
+        y: clone.y + Math.sin(angle) * orbitRadius,
+        radius: petalSize,
+      };
+
+      for (const enemy of this.enemies) {
+        if (clone.orbitHitCooldowns[enemy.id] > 0) {
+          continue;
+        }
+        if (circleDistance(petal, enemy) <= petal.radius + enemy.radius) {
+          clone.orbitHitCooldowns[enemy.id] = 0.28;
+          this.damageEnemy(enemy, this.rollDamage(damage), {
+            sourceSkillId: "petalOrbit",
+            castOriginX: clone.x,
+            castOriginY: clone.y,
+            skillRecord: this.createSkillRecord("petalOrbit", state, clone.snapshot),
+          });
+          if (healLevel > 0) {
+            this.player.health = Math.min(this.player.maxHealth, this.player.health + 0.2 * healLevel);
+          }
+        }
+      }
+    }
+  }
+
   updateMeteors(delta) {
     const next = [];
     for (const meteor of this.meteors) {
@@ -2489,7 +2924,7 @@ export class GameRuntime {
 
       if (meteor.scorchLevel > 0) {
         this.spawnField({
-          sourceSkillId: "meteorSeed",
+          sourceSkillId: meteor.sourceSkillId || "meteorSeed",
           x: meteor.targetX,
           y: meteor.targetY,
           radius: meteor.radius * (0.56 + meteor.scorchLevel * 0.08),
@@ -2604,8 +3039,8 @@ export class GameRuntime {
         const angle = (Math.PI * 2 * index) / count;
         this.projectiles.push({
           id: crypto.randomUUID(),
-          skillId: "sporeShard",
-          sourceSkillId: "mushroomMine",
+          skillId: mine.sourceSkillId ? `${mine.sourceSkillId}Shard` : "sporeShard",
+          sourceSkillId: mine.sourceSkillId || "mushroomMine",
           x: mine.x,
           y: mine.y,
           vx: Math.cos(angle) * speed,
@@ -2616,7 +3051,7 @@ export class GameRuntime {
           pierce: 0,
           maxDistance: 110 + mine.burstLevel * 20,
           distanceTravelled: 0,
-          color: "#f3d7aa",
+          color: mine.color || "#f3d7aa",
           slowLevel: 0,
           burstLevel: 0,
           hasBurst: true,
@@ -2626,7 +3061,7 @@ export class GameRuntime {
 
     if (mine.toxicLevel > 0) {
       this.spawnField({
-        sourceSkillId: "mushroomMine",
+        sourceSkillId: mine.sourceSkillId || "mushroomMine",
         x: mine.x,
         y: mine.y,
         radius: mine.explosionRadius * 0.72,
@@ -2636,8 +3071,8 @@ export class GameRuntime {
         slowLevel: 1,
         healLevel: 0,
         burnLevel: mine.toxicLevel,
-        color: "rgba(188, 214, 112, 0.2)",
-        edgeColor: "rgba(240, 255, 200, 0.78)",
+        color: `${mine.color || "#bcd670"}33`,
+        edgeColor: mine.color || "rgba(240, 255, 200, 0.78)",
       });
     }
   }
@@ -2794,6 +3229,7 @@ export class GameRuntime {
       ((enemy.attackPattern === "cataclysm" ? 1.55 : 2.3) - enemy.bossTier * 0.08) / profile.bossAttackRateMultiplier,
     );
 
+    if (enemy.attackPattern?.startsWith("advancedBoss-")) this.fireAdvancedBossPattern(enemy, profile);
     if (enemy.attackPattern === "petalFan") this.fireBossPetalFan(enemy, profile);
     if (enemy.attackPattern === "spiralBloom") this.fireBossSpiralBloom(enemy, profile);
     if (enemy.attackPattern === "crossBurst") this.fireBossCrossBurst(enemy, profile);
@@ -3049,6 +3485,161 @@ export class GameRuntime {
           splitKind: "seed",
         });
       }
+    }
+  }
+
+  fireAdvancedBossPattern(enemy, profile) {
+    const patternIndex = Math.max(0, enemy.bossTier - 11);
+    const baseAngle = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
+    const speedScale = profile.bossBulletSpeedMultiplier;
+    const damage = 16 + profile.level * 2.1 + patternIndex * 1.15;
+    const color = enemy.color;
+    const accentColor = enemy.detailColor || enemy.accent;
+    const variant = patternIndex % 8;
+
+    if (variant === 0) {
+      const count = 5 + Math.floor(patternIndex / 4);
+      for (let index = 0; index < count; index += 1) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: baseAngle + (index - (count - 1) / 2) * 0.16,
+          speed: (250 + patternIndex * 4) * speedScale,
+          radius: 9,
+          damage,
+          life: 5.4,
+          color,
+          accentColor,
+          kind: "prism",
+          splitCount: enemy.attackPhase % 3 === 0 ? 2 : 0,
+          splitSpeed: 160 * speedScale,
+          splitRadius: 5,
+          splitKind: "shard",
+        });
+      }
+      return;
+    }
+
+    if (variant === 1) {
+      for (let ring = 0; ring < 2; ring += 1) {
+        const count = 7 + ring * 5;
+        for (let index = 0; index < count; index += 1) {
+          this.spawnEnemyProjectile({
+            x: enemy.x,
+            y: enemy.y,
+            angle: enemy.attackPhase * 0.28 * (ring === 0 ? 1 : -1) + (Math.PI * 2 * index) / count,
+            speed: (145 + ring * 48 + patternIndex * 3) * speedScale,
+            radius: 8 + ring,
+            damage: damage * (ring === 0 ? 0.72 : 0.9),
+            life: 6.2,
+            color,
+            accentColor,
+            kind: ring === 0 ? "seed" : "shard",
+            angularVelocity: ring === 0 ? 0.7 : -0.46,
+          });
+        }
+      }
+      return;
+    }
+
+    if (variant === 2) {
+      const lanes = 4 + (patternIndex % 3);
+      for (let index = 0; index < lanes; index += 1) {
+        const offset = (index - (lanes - 1) / 2) * 74;
+        this.spawnEnemyProjectile({
+          x: clamp(this.player.x + offset, 24, ARENA.width - 24),
+          y: clamp(this.player.y - 460 - index * 18, 24, ARENA.height - 24),
+          angle: Math.PI / 2,
+          speed: (330 + patternIndex * 5) * speedScale,
+          radius: 11,
+          damage,
+          life: 2.8,
+          color,
+          accentColor,
+          kind: "eclipse",
+          splitCount: enemy.attackPhase % 2 === 0 ? 3 : 0,
+          splitSpeed: 140 * speedScale,
+          splitRadius: 4,
+        });
+      }
+      return;
+    }
+
+    if (variant === 3) {
+      const count = 6 + Math.floor(patternIndex / 5);
+      for (let index = 0; index < count; index += 1) {
+        const side = index % 2 === 0 ? -1 : 1;
+        this.spawnEnemyProjectile({
+          x: enemy.x + side * enemy.radius * 0.62,
+          y: enemy.y - enemy.radius * 0.16,
+          angle: baseAngle + side * (0.22 + index * 0.025),
+          speed: (168 + patternIndex * 3) * speedScale,
+          radius: 9,
+          damage: damage * 0.82,
+          life: 7,
+          color,
+          accentColor,
+          kind: "moth",
+          homingStrength: 0.045 + patternIndex * 0.0015,
+        });
+      }
+      return;
+    }
+
+    if (variant === 4) {
+      const spread = 96;
+      const horizontal = enemy.attackPhase % 2 === 0;
+      for (let index = 0; index < 6; index += 1) {
+        const offset = (index - 2.5) * spread;
+        const x = horizontal ? clamp(this.player.x - 520, 24, ARENA.width - 24) : clamp(this.player.x + offset, 24, ARENA.width - 24);
+        const y = horizontal ? clamp(this.player.y + offset, 24, ARENA.height - 24) : clamp(this.player.y - 420, 24, ARENA.height - 24);
+        this.spawnEnemyProjectile({
+          x,
+          y,
+          angle: horizontal ? 0 : Math.PI / 2,
+          speed: (230 + patternIndex * 3) * speedScale,
+          radius: 10,
+          damage,
+          life: 5.6,
+          color,
+          accentColor,
+          kind: "lantern",
+        });
+      }
+      return;
+    }
+
+    if (variant === 5) {
+      const count = 8 + Math.floor(patternIndex / 3);
+      for (let index = 0; index < count; index += 1) {
+        this.spawnEnemyProjectile({
+          x: enemy.x,
+          y: enemy.y,
+          angle: baseAngle + (Math.PI * 2 * index) / count,
+          speed: (180 + (index % 3) * 32) * speedScale,
+          radius: 8,
+          damage: damage * 0.82,
+          life: 5.4,
+          color,
+          accentColor,
+          kind: "gust",
+          angularVelocity: index % 2 === 0 ? 0.62 : -0.62,
+        });
+      }
+      return;
+    }
+
+    if (variant === 6) {
+      this.fireBossSporeBurst(enemy, profile);
+      if (enemy.attackPhase % 2 === 0) {
+        this.fireBossCrossBurst(enemy, profile);
+      }
+      return;
+    }
+
+    this.fireBossPetalFan(enemy, profile);
+    if (enemy.attackPhase % 2 === 0) {
+      this.fireBossMothSwarm(enemy, profile);
     }
   }
 

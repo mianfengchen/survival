@@ -2627,38 +2627,64 @@ h3 {
 .menu-entry:hover,
 .menu-entry:focus-visible {
   transform: scale(1.04);
-  box-shadow: 0 0 40px rgba(255, 245, 179, 0.5);
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
 }
 
 .menu-entry[data-touch-pressed="true"] {
   transform: scale(0.97);
 }
 
+.menu-title {
+  position: absolute;
+  left: 50%;
+  top: 4%;
+  width: calc(96000vw / 2560 / 1.6);
+  height: calc(44700vw / 2560 / 1.6);
+  transform: translate3d(-50%, 0, 0);
+  background-image: url("../designs/home-sprite-title.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+}
+
 /* ── Per‑entry hitbox positions (align with the sprite art) ── */
 /* 花园研究所 — bottom‑left greenhouse */
 .menu-entry--lab {
-  left: 4.4%;
-  top: 67.6%;
-  width: 33.4%;
-  height: 13.8%;
+  position: absolute;
+  left: calc(50% + 26000vw / 2560);
+  bottom: 23%;
+  width: calc(40900vw / 2560 / 1.6);
+  height: calc(40900vw / 2560 / 1.6);
+  background-image: url("../designs/home-sprite-lab.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
 }
 
 /* 花园战争 — bottom‑center temple/gate */
 .menu-entry--war {
-  left: 36.1%;
-  top: 72.1%;
-  width: 29.4%;
-  height: 16.2%;
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  width: calc(61300vw / 2560 / 1.6);
+  height: calc(47500vw / 2560 / 1.6);
+  margin-left: calc(-61300vw / 2560 / 3.2);
+  background-image: url("../designs/home-sprite-war.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
 }
 
 /* 花园图书馆 — bottom‑right library */
 .menu-entry--library {
-  left: 70.6%;
-  top: 70.9%;
-  width: 25.2%;
-  height: 14.4%;
+  position: absolute;
+  left: calc(50% - 52000vw / 2560);
+  bottom: 18%;
+  width: calc(40900vw / 2560 / 1.6);
+  height: calc(40900vw / 2560 / 1.6);
+  background-image: url("../designs/home-sprite-library.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
 }
 
 /* 害虫星球 — top‑right spaceship/portal */

@@ -92,6 +92,33 @@ const PLAYER_CHARACTER_TEXTURES = Object.freeze({
   lotuskeeper: "playerLotuskeeper",
 });
 
+const ADVANCED_CHARACTER_VISUALS = Object.freeze({
+  glassprout: ["#7fd8ff", "#2d7898", "prism"],
+  honeybell: ["#f0b95f", "#935f24", "bell"],
+  rainroot: ["#78d4b5", "#3f7951", "root"],
+  orchidnova: ["#d69cff", "#744ca6", "star"],
+  bramblebee: ["#9bcf63", "#4c7b31", "wing"],
+  dewdropper: ["#8adfd6", "#3e817a", "drop"],
+  stormlily: ["#9fb8ff", "#3f5ca6", "bolt"],
+  moonwell: ["#ef91c2", "#8c315a", "moon"],
+  lanternbud: ["#f4c86d", "#9e7422", "lantern"],
+  harvestdoll: ["#ee7778", "#9b2630", "crescent"],
+  seedvault: ["#badb69", "#657d2e", "seed"],
+  pearlshell: ["#f1d18a", "#8f6428", "pearl"],
+  clockivy: ["#7bc489", "#3a6f4b", "clock"],
+  operamoth: ["#c6a0f2", "#6750a7", "moth"],
+  antlerleaf: ["#73d1ff", "#2c6f9a", "antler"],
+  sporecup: ["#b8c978", "#607333", "cup"],
+  tulipbolt: ["#ffab86", "#a34d2d", "bolt"],
+  eclipsebud: ["#f073a4", "#8d2651", "eclipse"],
+  blueflame: ["#92a7ff", "#344999", "flame"],
+  scissorvine: ["#ef6872", "#992334", "scissor"],
+  royalbud: ["#a8d46b", "#587c2f", "crown"],
+  ambergear: ["#f1b86b", "#8d5720", "gear"],
+  aurorapetal: ["#c9a9ff", "#7050b0", "aurora"],
+  grandprism: ["#72cbff", "#2e6f9a", "prism"],
+});
+
 export const RENDERER_EXTERNAL_ASSET_PATHS = Object.freeze(Object.values(EXTERNAL_ASSET_DEFS).map((definition) => definition.path));
 
 function clamp(value, min, max) {
@@ -115,6 +142,15 @@ function mixColors(left, right, amount = 0.5) {
   const green = Math.round(leftGreen + (rightGreen - leftGreen) * amount);
   const blue = Math.round(leftBlue + (rightBlue - leftBlue) * amount);
   return (red << 16) + (green << 8) + blue;
+}
+
+function hashString(value) {
+  let hash = 0;
+  const text = String(value || "");
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) | 0;
+  }
+  return hash;
 }
 
 function fract(value) {
@@ -262,6 +298,73 @@ function paintNormalEnemy(graphics, x, y, radius, enemy) {
   graphics.endFill();
 
   paintFace(graphics, x, y + radius * 0.08, radius * 0.82);
+}
+
+function paintAdvancedPlayer(graphics, x, y, radius, visual) {
+  const [color, accent, motif] = visual;
+  beginFill(graphics, "rgba(42, 54, 35, 0.18)");
+  graphics.drawEllipse(x, y + radius * 0.62, radius * 0.72, radius * 0.22);
+  graphics.endFill();
+  beginFill(graphics, color);
+  graphics.drawEllipse(x, y + radius * 0.08, radius * 0.5, radius * 0.62);
+  graphics.endFill();
+  beginFill(graphics, accent);
+  graphics.drawCircle(x, y - radius * 0.5, radius * 0.42);
+  graphics.endFill();
+  beginFill(graphics, "rgba(255,255,255,0.38)");
+  graphics.drawCircle(x - radius * 0.16, y - radius * 0.62, radius * 0.12);
+  graphics.endFill();
+
+  if (motif === "wing" || motif === "moth" || motif === "aurora") {
+    beginFill(graphics, "rgba(255,255,255,0.52)");
+    graphics.drawEllipse(x - radius * 0.52, y - radius * 0.1, radius * 0.28, radius * 0.48);
+    graphics.drawEllipse(x + radius * 0.52, y - radius * 0.1, radius * 0.28, radius * 0.48);
+    graphics.endFill();
+  } else if (motif === "prism" || motif === "pearl") {
+    beginFill(graphics, "rgba(255,255,255,0.58)");
+    drawRotatedDiamond(graphics, x, y - radius * 0.94, radius * 0.34, radius * 0.46);
+    graphics.endFill();
+  } else if (motif === "bolt") {
+    beginFill(graphics, "#fff7b0");
+    drawPolyline(graphics, [[x, y - radius * 1.05], [x - radius * 0.18, y - radius * 0.58], [x + radius * 0.08, y - radius * 0.58], [x - radius * 0.04, y - radius * 0.22]], false);
+    graphics.endFill();
+  } else if (motif === "crown") {
+    beginFill(graphics, "#ffe28a");
+    drawStar(graphics, x, y - radius * 0.98, radius * 0.34, radius * 0.18, 5);
+    graphics.endFill();
+  } else {
+    for (let index = 0; index < 5; index += 1) {
+      const angle = -Math.PI / 2 + (Math.PI * 2 * index) / 5;
+      drawLeaf(graphics, x + Math.cos(angle) * radius * 0.18, y - radius * 0.56 + Math.sin(angle) * radius * 0.08, radius * 0.38, radius * 0.12, angle, index % 2 === 0 ? color : "rgba(255,255,255,0.68)");
+    }
+  }
+
+  paintFace(graphics, x, y - radius * 0.48, radius * 0.38);
+}
+
+function paintAdvancedBossBody(graphics, x, y, radius, enemy) {
+  const variant = Math.abs(hashString(enemy.shapeId || enemy.id || "boss")) % 9;
+  const petalCount = 6 + (variant % 5);
+  for (let index = 0; index < petalCount; index += 1) {
+    const angle = (Math.PI * 2 * index) / petalCount + variant * 0.08;
+    drawLeaf(graphics, x + Math.cos(angle) * radius * 0.18, y + Math.sin(angle) * radius * 0.12, radius * (0.72 + (variant % 3) * 0.08), radius * 0.2, angle, index % 2 === 0 ? enemy.detailColor : enemy.color);
+  }
+  beginFill(graphics, enemy.color);
+  if (variant % 3 === 0) {
+    drawRotatedDiamond(graphics, x, y, radius * 1.0, radius * 1.24, variant * 0.08);
+  } else if (variant % 3 === 1) {
+    graphics.drawEllipse(x, y, radius * 0.82, radius * 0.66);
+  } else {
+    drawStar(graphics, x, y, radius * 0.82, radius * 0.48, 6 + (variant % 4));
+  }
+  graphics.endFill();
+  beginFill(graphics, enemy.accent);
+  graphics.drawCircle(x, y + radius * 0.02, radius * 0.32);
+  graphics.endFill();
+  beginFill(graphics, "rgba(255,255,255,0.42)");
+  graphics.drawCircle(x - radius * 0.16, y - radius * 0.22, radius * 0.12);
+  graphics.endFill();
+  paintFace(graphics, x, y + radius * 0.03, radius * 0.42, "rgba(35, 35, 42, 0.82)");
 }
 
 function paintBossBody(graphics, x, y, radius, enemy) {
@@ -848,6 +951,12 @@ export class PixiRenderer {
   }
 
   getPlayerTexture(characterId = "spriteScout") {
+    const advancedVisual = ADVANCED_CHARACTER_VISUALS[characterId];
+    if (advancedVisual) {
+      return this.getCachedTexture(`player-advanced-${characterId}`, 128, 40, (graphics, x, y, radius) => {
+        paintAdvancedPlayer(graphics, x, y, radius, advancedVisual);
+      });
+    }
     const assetId = PLAYER_CHARACTER_TEXTURES[characterId] || "playerFairy";
     return this.getExternalTexture(assetId);
   }
@@ -922,7 +1031,13 @@ export class PixiRenderer {
 
   getEnemyTexture(enemy) {
     if (enemy.boss) {
-      return this.getExternalTexture("bossBug");
+      return this.getCachedTexture(`boss-${enemy.shapeId || enemy.typeId}`, 180, 60, (graphics, x, y, radius) => {
+        if (enemy.shapeId?.startsWith?.("glasshouse") || enemy.attackPattern?.startsWith?.("advancedBoss-")) {
+          paintAdvancedBossBody(graphics, x, y, radius, enemy);
+        } else {
+          paintBossBody(graphics, x, y, radius, enemy);
+        }
+      });
     }
 
     if (enemy.elite) {
@@ -998,6 +1113,13 @@ export class PixiRenderer {
       case "ribbonShard":
         return this.getExternalTexture("projectileRibbon");
       default:
+        {
+          const definition = getSkillDefinition(projectile.sourceSkillId || projectile.skillId);
+          if (definition?.advancedBehavior === "beam") return this.getExternalTexture("projectileArrow");
+          if (definition?.advancedBehavior === "lobbedBomb") return this.getBubbleProjectileTexture(projectile.skillId.endsWith("Shard"));
+          if (definition?.advancedBehavior === "boomerang") return this.getExternalTexture("projectileRibbon");
+          if (definition?.advancedBehavior === "meteor") return this.getExternalTexture("projectileMeteor");
+        }
         return this.getExternalTexture("projectileOrb");
     }
   }
@@ -1608,6 +1730,8 @@ export class PixiRenderer {
     const fallbackGraphics = this.layers.projectileFallbacks;
     for (const projectile of projectiles) {
       const isBubble = projectile.skillId === "bubbleBurst" || projectile.skillId === "bubbleShard";
+      const definition = getSkillDefinition(projectile.sourceSkillId || projectile.skillId);
+      const advancedProjectile = Boolean(definition?.advancedBehavior || projectile.advancedBomb || projectile.advancedBoomerang || projectile.skillId.endsWith("Shard"));
       const supported = [
         "elfArrow",
         "flyingSword",
@@ -1619,7 +1743,7 @@ export class PixiRenderer {
         "sporeShard",
         "ribbonBlade",
         "ribbonShard",
-      ].includes(projectile.skillId);
+      ].includes(projectile.skillId) || advancedProjectile;
 
       if (!supported) {
         beginFill(fallbackGraphics, projectile.color);
