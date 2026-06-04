@@ -1489,7 +1489,7 @@ export class GameRuntime {
     }
 
     const nextDepth = (sourceContext.echoDepth || 0) + 1;
-    if (nextDepth > 3 || Math.random() >= 0.15) {
+    if (nextDepth > 3 || Math.random() >= 0.05) {
       return;
     }
 

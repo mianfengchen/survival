@@ -943,6 +943,14 @@ export class PixiRenderer {
         return this.getExternalTexture("enemyBugTall");
       case "sunbudBrute":
         return this.getExternalTexture("enemyBugStout");
+      case "brambleShell":
+        return this.getExternalTexture("enemyBugStout");
+      case "sporeDrifter":
+        return this.getExternalTexture("enemyBugTall");
+      case "mossColossus":
+        return this.getExternalTexture("enemyBugStout");
+      case "crystalWeaver":
+        return this.getExternalTexture("enemyBugRound");
       default:
         return this.getExternalTexture("enemyBugRound");
     }
@@ -1953,13 +1961,13 @@ export class PixiRenderer {
       visual.position.set(field.x, field.y);
       visual.mainSprite.texture = textureData.texture;
       visual.mainSprite.tint = tint;
-      visual.mainSprite.scale.set(scale * 2);
+      visual.mainSprite.scale.set(scale);
       visual.mainSprite.rotation = field.sourceSkillId === "stormBloom" ? this.getMotionTime(0.0008) : field.sourceSkillId === "meteorSeed" ? -this.getMotionTime(0.0006) : 0;
       visual.auraSprite.tint = parseColor(field.color).color;
-      visual.auraSprite.scale.set(scale * (field.sourceSkillId === "mushroomMine" ? 4.3 : 4.8));
+      visual.auraSprite.scale.set(scale * (field.sourceSkillId === "mushroomMine" ? 2.15 : 2.4));
       visual.auraSprite.alpha = (field.sourceSkillId === "stormBloom" ? 0.18 : 0.14) * this.visualProfile.effectLayerAlpha;
       visual.ringSprite.tint = parseColor(field.edgeColor || field.color).color;
-      visual.ringSprite.scale.set(scale * (field.sourceSkillId === "stormBloom" ? 3.2 : 3.6));
+      visual.ringSprite.scale.set(scale * (field.sourceSkillId === "stormBloom" ? 1.6 : 1.8));
       visual.ringSprite.rotation = this.getMotionTime(0.001) + field.x * 0.0002;
       visual.ringSprite.alpha = 0.18 * this.visualProfile.effectLayerAlpha;
 
