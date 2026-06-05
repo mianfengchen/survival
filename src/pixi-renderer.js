@@ -646,6 +646,7 @@ export class PixiRenderer {
       pickups: [],
       enemyProjectiles: [],
       orbitals: [],
+      damageNumbers: [],
     };
     this.poolUsage = Object.create(null);
     this.particlePool = [];
@@ -684,6 +685,7 @@ export class PixiRenderer {
       enemies: new PIXI.Container(),
       particles: new PIXI.Container(),
       player: new PIXI.Container(),
+      damageNumbers: new PIXI.Container(),
     };
 
     this.spriteLayers.particles.filters = [new PIXI.BlurFilter(2.2)];
@@ -714,6 +716,7 @@ export class PixiRenderer {
       this.spriteLayers.player,
       this.layers.playerOverlay,
       this.layers.enemyBars,
+      this.spriteLayers.damageNumbers,
       this.spriteLayers.particles,
     ];
 
@@ -834,6 +837,7 @@ export class PixiRenderer {
       pickups: 0,
       enemyProjectiles: 0,
       orbitals: 0,
+      damageNumbers: 0,
     };
 
     for (const layer of Object.values(this.layers)) {
@@ -902,6 +906,7 @@ export class PixiRenderer {
     this.drawSkillEffects(runtime.skillEffects || [], delta);
     this.drawEnemyProjectiles(runtime.enemyProjectiles || [], delta);
     this.drawPlayer(runtime.player, delta, runtime.session?.selectedCharacterId);
+    this.drawDamageNumbers(runtime.damageNumbers || []);
 
     this.finishFrame();
     this.app.renderer.render(this.app.stage);
@@ -1902,6 +1907,47 @@ export class PixiRenderer {
           blendMode: SCREEN_BLEND,
         });
       }
+    }
+  }
+
+  createDamageNumberVisual() {
+    const text = new PIXI.Text("", {
+      fontFamily: "\"Arial Rounded MT Bold\", \"Trebuchet MS\", sans-serif",
+      fontSize: 24,
+      fontWeight: "900",
+      fill: "#fff6d8",
+      stroke: "#6e3c6b",
+      strokeThickness: 5,
+      dropShadow: true,
+      dropShadowColor: "#4a2354",
+      dropShadowBlur: 0,
+      dropShadowAngle: Math.PI / 2,
+      dropShadowDistance: 3,
+      letterSpacing: 0,
+      lineJoin: "round",
+    });
+    text.anchor.set(0.5);
+    return text;
+  }
+
+  drawDamageNumbers(numbers) {
+    for (const number of numbers) {
+      const visual = this.acquireFromPool("damageNumbers", this.spriteLayers.damageNumbers, () => this.createDamageNumberVisual());
+      const progress = clamp(number.age / Math.max(0.001, number.maxDuration || 1), 0, 1);
+      const crit = Boolean(number.crit);
+      const pop = crit
+        ? 1 + Math.sin(Math.min(1, progress * 2.4) * Math.PI) * 0.28
+        : 1 + Math.sin(Math.min(1, progress * 2.2) * Math.PI) * 0.12;
+
+      visual.text = crit ? `*${number.value}*` : String(number.value);
+      visual.style.fontSize = crit ? 34 : 23;
+      visual.style.fill = crit ? "#ffe76d" : "#fff7dc";
+      visual.style.stroke = crit ? "#b44773" : "#6d4a8d";
+      visual.style.strokeThickness = crit ? 7 : 5;
+      visual.position.set(number.x, number.y);
+      visual.scale.set(pop);
+      visual.rotation = Math.sin((number.age + number.x * 0.001) * 8) * (crit ? 0.08 : 0.04);
+      visual.alpha = clamp(1 - Math.max(0, progress - 0.62) / 0.38, 0, 1);
     }
   }
 

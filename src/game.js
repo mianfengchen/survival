@@ -134,6 +134,10 @@ const UPGRADE_CHOICE_COUNT = 3;
 const SPECIAL_BOON_CHOICE_COUNT = 3;
 const ELITE_SPAWN_INTERVAL_SECONDS = 180;
 const MONSTER_CONTACT_DAMAGE_SCALE = 0.58;
+const ENEMY_PROJECTILE_BASE_LIFE_SCALE = 1.18;
+const ENEMY_PROJECTILE_MIN_LIFE = 3.2;
+const ENEMY_PROJECTILE_MAX_LIFE = 8.6;
+const BOSS_ATTACK_MIN_INTERVAL = 0.72;
 const UPGRADE_CHOICE_WEIGHTS = Object.freeze({
   general: 1,
   "skill-unlock": 3,
@@ -215,7 +219,6 @@ function createPlayer() {
     barrier: PLAYER_BASE.barrier,
     invulnerableFor: 0,
     phaseFadeFor: 0,
-    entropyShield: 0,
   };
 }
 
@@ -243,6 +246,7 @@ export class GameRuntime {
     this.specialBoonLevels = Object.fromEntries(SPECIAL_BOON_LIBRARY.map((item) => [item.id, 0]));
     this.skillStates = {};
     this.activeSkillTrigger = null;
+    this.lastDamageRoll = null;
     this.pendingChoiceMode = null;
     this.specialState = this.createSpecialState();
     this.session = null;
@@ -257,6 +261,7 @@ export class GameRuntime {
     this.mirrorClones = [];
     this.meteors = [];
     this.beacons = [];
+    this.damageNumbers = [];
     this.pickups = [];
     this.orbitAngle = 0;
     this.lastTimestamp = 0;
@@ -276,11 +281,16 @@ export class GameRuntime {
       phaseFadeCycle: 10,
       phaseFadeInterval: 10,
       phaseFadeDuration: 3,
-      timeDebtCredit: 0,
-      timeDebtActiveFor: 0,
-      timeDebtKillsPaused: false,
+      chargedStrikeChance: 0.01,
+      chargedStrikeActive: false,
+      killingIntentHits: 0,
+      killingIntentFor: 0,
+      killingIntentCooldown: 0,
+      frostBudDamageTaken: 0,
+      frostBudCooldown: 0,
+      frostBudZone: null,
+      iceThornCooldown: 0,
       emberSlowStacks: 0,
-      entropyStacks: [],
       lastTriggeredSkill: null,
     };
   }
@@ -434,7 +444,7 @@ export class GameRuntime {
       expRequired: 18,
       spawnTimer: 0.85,
       spawnRateMultiplier: difficultyProfile.spawnRateMultiplier,
-      coinRewardMultiplier: difficultyProfile.coinMultiplier * (options.energyRewardScale || 1),
+      coinRewardMultiplier: difficultyProfile.coinMultiplier * (options.energyRewardScale ?? 1),
       expVacuumEnabled: false,
       expVacuumInterval: 0,
       expVacuumTimer: 0,
@@ -470,6 +480,7 @@ export class GameRuntime {
     this.mirrorClones = [];
     this.meteors = [];
     this.beacons = [];
+    this.damageNumbers = [];
     this.pickups = [];
     this.orbitAngle = 0;
     this.pendingChoices = [];
@@ -829,14 +840,24 @@ export class GameRuntime {
       this.specialState.phaseFadeCycle = this.specialState.phaseFadeInterval;
     }
 
-    if (boon.id === "timeDebt") {
-      this.specialState.timeDebtCredit = 0;
-      this.specialState.timeDebtActiveFor = 0;
+    if (boon.id === "chargedStrike") {
+      this.specialState.chargedStrikeChance = 0.01;
     }
 
-    if (boon.id === "entropyShield") {
-      this.player.entropyShield = Math.max(this.player.entropyShield, this.player.maxHealth * 0.5);
-      this.specialState.entropyStacks = [];
+    if (boon.id === "killingIntent") {
+      this.specialState.killingIntentHits = 0;
+      this.specialState.killingIntentFor = 0;
+      this.specialState.killingIntentCooldown = 0;
+    }
+
+    if (boon.id === "frostBud") {
+      this.specialState.frostBudDamageTaken = 0;
+      this.specialState.frostBudCooldown = 0;
+      this.specialState.frostBudZone = null;
+    }
+
+    if (boon.id === "iceThorn") {
+      this.specialState.iceThornCooldown = 0;
     }
 
     this.callbacks.onToast?.(`获得精英增益：${boon.name}`);
@@ -930,7 +951,6 @@ export class GameRuntime {
   update(delta) {
     const player = this.player;
     const session = this.session;
-    const timeStopped = this.specialState.timeDebtActiveFor > 0;
 
     session.elapsed += delta;
     player.invulnerableFor = Math.max(0, player.invulnerableFor - delta);
@@ -948,22 +968,7 @@ export class GameRuntime {
       }
     }
 
-    if (this.hasSpecialBoon("entropyShield")) {
-      const maxShield = this.getEntropyShieldMax();
-      player.entropyShield = Math.min(maxShield, Math.max(0, player.entropyShield - maxShield * 0.02 * delta));
-      this.specialState.entropyStacks = this.specialState.entropyStacks
-        .map((remaining) => remaining - delta)
-        .filter((remaining) => remaining > 0);
-    }
-
-    if (this.specialState.timeDebtActiveFor > 0) {
-      this.specialState.timeDebtActiveFor = Math.max(0, this.specialState.timeDebtActiveFor - delta);
-      this.specialState.timeDebtKillsPaused = true;
-      if (this.specialState.timeDebtActiveFor <= 0) {
-        this.specialState.timeDebtCredit = 0;
-        this.specialState.timeDebtKillsPaused = false;
-      }
-    }
+    this.updateSpecialBoonTimers(delta);
 
     player.blinkRechargeClock += delta;
     if (player.blinkRechargeClock >= player.blinkRechargeSeconds) {
@@ -983,9 +988,7 @@ export class GameRuntime {
     }
 
     this.movePlayer(delta);
-    if (!timeStopped) {
-      this.spawnEnemies(delta);
-    }
+    this.spawnEnemies(delta);
     this.updateSkillCooldowns(delta);
     this.updateMirrorClones(delta);
     this.updateProjectiles(delta);
@@ -994,13 +997,12 @@ export class GameRuntime {
     this.updateStrikes(delta);
     this.updateMines(delta);
     this.updateSkillEffects(delta);
+    this.updateDamageNumbers(delta);
     this.updateMeteors(delta);
     this.updateBeacons(delta);
     this.updateOrbitals(delta);
-    if (!timeStopped) {
-      this.updateEnemies(delta);
-      this.updateEnemyProjectiles(delta);
-    }
+    this.updateEnemies(delta);
+    this.updateEnemyProjectiles(delta);
     this.updatePickups(delta);
 
     if (session.expVacuumEnabled) {
@@ -1192,6 +1194,7 @@ export class GameRuntime {
       burnTimer: 0,
       burnDamage: 0,
       slowTimer: 0,
+      freezeTimer: 0,
       hitCooldowns: {},
       attackClock: definition.boss ? Math.max(0.55, 2.1 - (definition.bossTier || 1) * 0.08) : 0,
       attackPhase: 0,
@@ -1210,22 +1213,14 @@ export class GameRuntime {
     this.callbacks.onToast?.(`${ELITE_MONSTER_DEFINITION.name} 出现`);
   }
 
-  getEntropyShieldMax() {
-    return this.player.maxHealth * 0.5;
-  }
-
-  addEntropyStack() {
-    if (!this.hasSpecialBoon("entropyShield") || this.player.entropyShield <= 0) {
-      return;
-    }
-
-    this.specialState.entropyStacks.push(8);
-    if (this.specialState.entropyStacks.length > 10) {
-      this.specialState.entropyStacks = this.specialState.entropyStacks.slice(-10);
-    }
-  }
-
   findSaferTeleportPoint() {
+    if (this.hasSpecialBoon("safeTeleport") && this.specialState.frostBudZone?.duration > 0) {
+      return {
+        x: this.specialState.frostBudZone.x,
+        y: this.specialState.frostBudZone.y,
+      };
+    }
+
     const samples = [];
     const camera = this.getCamera();
     for (let index = 0; index < 18; index += 1) {
@@ -1257,6 +1252,112 @@ export class GameRuntime {
     return safest;
   }
 
+  updateSpecialBoonTimers(delta) {
+    if (this.specialState.killingIntentFor > 0) {
+      this.specialState.killingIntentFor = Math.max(0, this.specialState.killingIntentFor - delta);
+      if (this.specialState.killingIntentFor <= 0) {
+        this.specialState.killingIntentCooldown = 15;
+      }
+    } else {
+      this.specialState.killingIntentCooldown = Math.max(0, this.specialState.killingIntentCooldown - delta);
+    }
+
+    this.specialState.frostBudCooldown = Math.max(0, this.specialState.frostBudCooldown - delta);
+    this.specialState.iceThornCooldown = Math.max(0, this.specialState.iceThornCooldown - delta);
+
+    const zone = this.specialState.frostBudZone;
+    if (zone) {
+      zone.duration -= delta;
+      this.enforceFrostBudZone(zone);
+      if (zone.duration <= 0) {
+        this.specialState.frostBudZone = null;
+        this.specialState.frostBudCooldown = 60;
+        this.teleportToSafePoint();
+        this.callbacks.onToast?.("冰霜花苞消散");
+      }
+    }
+  }
+
+  isPointInsideFrostBudZone(x, y, padding = 0) {
+    const zone = this.specialState.frostBudZone;
+    return Boolean(zone && zone.duration > 0 && Math.hypot(x - zone.x, y - zone.y) <= zone.radius + padding);
+  }
+
+  enforceFrostBudZone(zone) {
+    for (const enemy of this.enemies) {
+      this.pushEnemyOutOfFrostBud(enemy, zone);
+    }
+
+    for (const projectile of this.enemyProjectiles) {
+      this.pushEnemyProjectileOutOfFrostBud(projectile, zone);
+    }
+  }
+
+  pushEnemyOutOfFrostBud(enemy, zone) {
+    const dx = enemy.x - zone.x;
+    const dy = enemy.y - zone.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const minDistance = zone.radius + enemy.radius + 4;
+    if (distance < minDistance) {
+      enemy.x = clamp(zone.x + (dx / distance) * minDistance, 24, ARENA.width - 24);
+      enemy.y = clamp(zone.y + (dy / distance) * minDistance, 24, ARENA.height - 24);
+      enemy.slowTimer = Math.max(enemy.slowTimer, 0.3);
+    }
+  }
+
+  pushEnemyProjectileOutOfFrostBud(projectile, zone) {
+    const dx = projectile.x - zone.x;
+    const dy = projectile.y - zone.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const minDistance = zone.radius + projectile.radius + 3;
+    if (distance < minDistance) {
+      projectile.x = zone.x + (dx / distance) * minDistance;
+      projectile.y = zone.y + (dy / distance) * minDistance;
+      const outwardX = dx / distance;
+      const outwardY = dy / distance;
+      const dot = projectile.vx * outwardX + projectile.vy * outwardY;
+      if (dot < 0) {
+        projectile.vx -= 2 * dot * outwardX;
+        projectile.vy -= 2 * dot * outwardY;
+      }
+    }
+  }
+
+  spawnFrostBudZone() {
+    const camera = this.getCamera();
+    const angle = randomBetween(0, Math.PI * 2);
+    const distance = randomBetween(70, 180);
+    const x = clamp(this.player.x + Math.cos(angle) * distance, camera.x + 80, camera.x + camera.width - 80);
+    const y = clamp(this.player.y + Math.sin(angle) * distance, camera.y + 80, camera.y + camera.height - 80);
+    this.specialState.frostBudZone = {
+      x: clamp(x, 100, ARENA.width - 100),
+      y: clamp(y, 100, ARENA.height - 100),
+      radius: 100,
+      duration: 10,
+      maxDuration: 10,
+    };
+    this.spawnSkillEffect({
+      kind: "frostBudZone",
+      x: this.specialState.frostBudZone.x,
+      y: this.specialState.frostBudZone.y,
+      radius: 100,
+      duration: 10,
+      color: "rgba(150, 226, 255, 0.28)",
+      accent: "rgba(238, 252, 255, 0.9)",
+    });
+    this.callbacks.onToast?.("冰霜花苞");
+  }
+
+  teleportToSafePoint() {
+    const point = this.findSaferTeleportPoint();
+    this.player.x = point.x;
+    this.player.y = point.y;
+    this.player.invulnerableFor = Math.max(this.player.invulnerableFor, 0.45);
+    if (this.hasSpecialBoon("mirrorImage")) {
+      this.spawnMirrorImage(point.x, point.y);
+    }
+  }
+
   spawnMirrorImage(x, y) {
     const snapshot = this.captureSkillSnapshot();
     const skillStates = Object.fromEntries(
@@ -1276,8 +1377,8 @@ export class GameRuntime {
       x,
       y,
       radius: this.player.radius * 1.4,
-      duration: 5,
-      maxDuration: 5,
+      duration: 10,
+      maxDuration: 10,
       snapshot,
       skillStates,
       orbitAngle: this.orbitAngle,
@@ -1289,7 +1390,7 @@ export class GameRuntime {
       x,
       y,
       radius: this.player.radius * 1.4,
-      duration: 5,
+      duration: 10,
       color: "rgba(188, 231, 255, 0.4)",
       accent: "rgba(255, 255, 255, 0.8)",
     });
@@ -1306,8 +1407,34 @@ export class GameRuntime {
       projectileSizeMultiplier: this.player.projectileSizeMultiplier,
       projectileCountBonus: this.player.projectileCountBonus,
       summonCountBonus: this.player.summonCountBonus,
-      entropyDamageMultiplier: this.hasSpecialBoon("entropyShield") ? 1 + this.specialState.entropyStacks.length * 0.05 : 1,
+      frostBudDamageMultiplier: this.isPointInsideFrostBudZone(this.player.x, this.player.y) ? 1.15 : 1,
     };
+  }
+
+  applyChargedStrikeSnapshot(snapshot, origin) {
+    const chance = clamp(this.specialState.chargedStrikeChance || 0.01, 0.01, 1);
+    if (Math.random() < chance) {
+      this.specialState.chargedStrikeChance = 0.01;
+      this.spawnSkillEffect({
+        kind: "chargedStrike",
+        x: origin.x,
+        y: origin.y,
+        radius: 72,
+        duration: 0.42,
+        color: "rgba(255, 232, 144, 0.34)",
+        accent: "rgba(255, 255, 235, 0.9)",
+      });
+      this.callbacks.onToast?.("蓄力一击");
+      return {
+        ...snapshot,
+        attackMultiplier: snapshot.attackMultiplier * 2,
+        rangeMultiplier: snapshot.rangeMultiplier * 2,
+        projectileSizeMultiplier: snapshot.projectileSizeMultiplier * 2,
+      };
+    }
+
+    this.specialState.chargedStrikeChance = Math.min(1, chance + 0.01);
+    return snapshot;
   }
 
   createSkillRecord(skillId, state, snapshot) {
@@ -1380,6 +1507,7 @@ export class GameRuntime {
         exclusives: { ...record.exclusives },
         glowColor: record.glowColor,
         snapshot: { ...record.snapshot },
+        replayOverride: record.replayOverride ? { ...record.replayOverride } : null,
       };
       entry.echoDepth = context.echoDepth || 0;
       entry.echoDamageScale = context.echoDamageScale || 1;
@@ -1393,6 +1521,7 @@ export class GameRuntime {
     }
     for (const field of this.fields.slice(countsBefore.fields)) {
       stampEntry(field, field.sourceSkillId || record.skillId);
+      field.skillRecord.replayOverride = this.createSingleFieldReplayOverride(field);
     }
     for (const strike of this.strikes.slice(countsBefore.strikes)) {
       stampEntry(strike);
@@ -1410,6 +1539,57 @@ export class GameRuntime {
       beacon.kind = beacon.kind || "lotusBeacon";
       stampEntry(beacon);
     }
+  }
+
+  createSingleFieldReplayOverride(field) {
+    return {
+      kind: "singleField",
+      sourceSkillId: field.sourceSkillId,
+      radius: field.radius,
+      duration: field.duration,
+      tickInterval: field.tickInterval,
+      damage: field.damage,
+      slowLevel: field.slowLevel || 0,
+      healLevel: field.healLevel || 0,
+      burnLevel: field.burnLevel || 0,
+      color: field.color,
+      edgeColor: field.edgeColor,
+    };
+  }
+
+  replaySingleFieldRecord(record, origin, options = {}) {
+    const override = record.replayOverride;
+    if (!override || override.kind !== "singleField") {
+      return false;
+    }
+
+    const echoDamageScale = options.echoDamageScale || 1;
+    const fieldRecord = {
+      ...record,
+      snapshot: options.snapshot || { ...record.snapshot },
+      replayOverride: { ...override },
+    };
+
+    this.spawnField({
+      sourceSkillId: override.sourceSkillId || record.skillId,
+      x: origin.x,
+      y: origin.y,
+      radius: override.radius,
+      duration: override.duration,
+      tickInterval: override.tickInterval,
+      damage: override.damage * echoDamageScale,
+      slowLevel: override.slowLevel,
+      healLevel: override.healLevel,
+      burnLevel: override.burnLevel,
+      color: override.color,
+      edgeColor: override.edgeColor,
+      skillRecord: fieldRecord,
+      castOriginX: origin.x,
+      castOriginY: origin.y,
+      echoDepth: options.echoDepth || 0,
+      echoDamageScale,
+    });
+    return true;
   }
 
   castSkillById(skillId, state, stats) {
@@ -1431,7 +1611,10 @@ export class GameRuntime {
   triggerSkill(skillId, state, stats, options = {}) {
     const effectiveStats = this.getEffectiveSkillStats(skillId, state, stats);
     const origin = options.origin || { x: this.player.x, y: this.player.y };
-    const snapshot = options.snapshot || this.captureSkillSnapshot();
+    let snapshot = options.snapshot || this.captureSkillSnapshot();
+    if (!options.suppressTriggerProcs && this.hasSpecialBoon("chargedStrike")) {
+      snapshot = this.applyChargedStrikeSnapshot(snapshot, origin);
+    }
     const record = options.skillRecord || this.createSkillRecord(skillId, state, snapshot);
     const countsBefore = this.getTriggeredCollectionCounts();
     const primaryTarget = this.findNearestEnemy(origin.x, origin.y);
@@ -1507,6 +1690,10 @@ export class GameRuntime {
       return;
     }
 
+    if (this.replaySingleFieldRecord(record, origin, options)) {
+      return;
+    }
+
     const state = {
       level: record.level,
       cooldown: 0,
@@ -1545,6 +1732,7 @@ export class GameRuntime {
     if (sourceContext.echoChecked) {
       return;
     }
+    sourceContext.echoChecked = true;
 
     const nextDepth = (sourceContext.echoDepth || 0) + 1;
     if (nextDepth > 3 || Math.random() >= 0.05) {
@@ -2484,6 +2672,11 @@ export class GameRuntime {
       burnLevel: config.burnLevel || 0,
       color: config.color || "rgba(255,255,255,0.18)",
       edgeColor: config.edgeColor || "rgba(255,255,255,0.68)",
+      skillRecord: config.skillRecord || null,
+      castOriginX: config.castOriginX ?? config.x,
+      castOriginY: config.castOriginY ?? config.y,
+      echoDepth: config.echoDepth || 0,
+      echoDamageScale: config.echoDamageScale || 1,
       echoChecked: false,
     });
   }
@@ -2802,22 +2995,25 @@ export class GameRuntime {
       if (field.tickClock <= 0) {
         field.tickClock += field.tickInterval;
         const isFirstTick = !field.echoChecked;
+        const fieldEchoSource = isFirstTick && field.sourceSkillId
+          ? {
+            sourceSkillId: field.sourceSkillId,
+            castOriginX: field.castOriginX || this.player.x,
+            castOriginY: field.castOriginY || this.player.y,
+            skillRecord: field.skillRecord,
+            echoDepth: field.echoDepth || 0,
+            echoDamageScale: field.echoDamageScale || 1,
+            echoChecked: false,
+          }
+          : null;
         let hitCount = 0;
         for (const enemy of this.enemies) {
           if (circleDistance(field, enemy) > field.radius + enemy.radius) {
             continue;
           }
           hitCount += 1;
-          if (isFirstTick && field.sourceSkillId) {
-            this.damageEnemy(enemy, field.damage, {
-              sourceSkillId: field.sourceSkillId,
-              castOriginX: field.castOriginX || this.player.x,
-              castOriginY: field.castOriginY || this.player.y,
-              skillRecord: field.skillRecord,
-              echoDepth: field.echoDepth || 0,
-              echoDamageScale: field.echoDamageScale || 1,
-              echoChecked: false,
-            });
+          if (fieldEchoSource) {
+            this.damageEnemy(enemy, field.damage, fieldEchoSource);
           } else {
             this.damageEnemy(enemy, field.damage, field);
           }
@@ -2953,6 +3149,43 @@ export class GameRuntime {
     this.skillEffects = next;
   }
 
+  updateDamageNumbers(delta) {
+    const next = [];
+    for (const number of this.damageNumbers) {
+      number.age += delta;
+      number.duration -= delta;
+      number.y -= number.floatSpeed * delta;
+      number.x += number.drift * delta;
+      if (number.duration > 0) {
+        next.push(number);
+      }
+    }
+    this.damageNumbers = next;
+  }
+
+  spawnDamageNumber(enemy, damage, crit) {
+    if (!this.session?.bossSpawned) {
+      return;
+    }
+
+    this.damageNumbers.push({
+      id: crypto.randomUUID(),
+      x: enemy.x + randomBetween(-enemy.radius * 0.45, enemy.radius * 0.45),
+      y: enemy.y - enemy.radius * 0.72 + randomBetween(-12, 8),
+      value: Math.max(1, Math.round(damage)),
+      crit,
+      age: 0,
+      duration: crit ? 0.92 : 0.72,
+      maxDuration: crit ? 0.92 : 0.72,
+      floatSpeed: crit ? 78 : 58,
+      drift: randomBetween(-18, 18),
+    });
+
+    if (this.damageNumbers.length > 90) {
+      this.damageNumbers.splice(0, this.damageNumbers.length - 90);
+    }
+  }
+
   updateMirrorClones(delta) {
     const next = [];
     for (const clone of this.mirrorClones) {
@@ -3016,8 +3249,8 @@ export class GameRuntime {
     const count = stats.count + (state.exclusives.petalCount || 0);
     const orbitRadius = stats.orbitRadius * (1 + (state.exclusives.petalBloom || 0) * 0.16) * clone.snapshot.rangeMultiplier;
     const petalSize = stats.size * clone.snapshot.projectileSizeMultiplier;
-    const damage = stats.damage * clone.snapshot.attackMultiplier;
     const healLevel = state.exclusives.petalSustain || 0;
+    const skillRecord = this.createSkillRecord("petalOrbit", state, clone.snapshot);
 
     for (let index = 0; index < count; index += 1) {
       const angle = clone.orbitAngle * stats.angularSpeed + (Math.PI * 2 * index) / count;
@@ -3033,11 +3266,18 @@ export class GameRuntime {
         }
         if (circleDistance(petal, enemy) <= petal.radius + enemy.radius) {
           clone.orbitHitCooldowns[enemy.id] = 0.28;
-          this.damageEnemy(enemy, this.rollDamage(damage), {
-            sourceSkillId: "petalOrbit",
-            castOriginX: clone.x,
-            castOriginY: clone.y,
-            skillRecord: this.createSkillRecord("petalOrbit", state, clone.snapshot),
+          this.withSkillTriggerContext({
+            skillId: "petalOrbit",
+            origin: { x: clone.x, y: clone.y },
+            snapshot: clone.snapshot,
+            skillRecord,
+          }, () => {
+            this.damageEnemy(enemy, this.rollDamage(stats.damage), {
+              sourceSkillId: "petalOrbit",
+              castOriginX: clone.x,
+              castOriginY: clone.y,
+              skillRecord,
+            });
           });
           if (healLevel > 0) {
             this.player.health = Math.min(this.player.maxHealth, this.player.health + 0.2 * healLevel);
@@ -3346,6 +3586,13 @@ export class GameRuntime {
         enemy.health -= enemy.burnDamage * delta;
       }
 
+      if (enemy.freezeTimer > 0) {
+        enemy.freezeTimer = Math.max(0, enemy.freezeTimer - delta);
+        enemy.slowTimer = Math.max(enemy.slowTimer, enemy.freezeTimer);
+        remaining.push(enemy);
+        continue;
+      }
+
       const direction = this.getDirectionVector(this.player.x - enemy.x, this.player.y - enemy.y);
       const slowFactor = enemy.slowTimer > 0 ? 0.68 : 1;
       enemy.slowTimer = Math.max(0, enemy.slowTimer - delta);
@@ -3355,6 +3602,9 @@ export class GameRuntime {
       }
       enemy.x += direction.x * enemy.speed * slowFactor * delta;
       enemy.y += direction.y * enemy.speed * slowFactor * delta;
+      if (this.specialState.frostBudZone) {
+        this.pushEnemyOutOfFrostBud(enemy, this.specialState.frostBudZone);
+      }
 
       if (circleDistance(enemy, this.player) <= enemy.radius + this.player.radius && enemy.contactCooldown <= 0) {
         enemy.contactCooldown = 0.85;
@@ -3375,9 +3625,12 @@ export class GameRuntime {
 
     const profile = this.session.difficultyProfile;
     enemy.attackPhase += 1;
+    const tier = Math.max(1, enemy.bossTier || profile.level || 1);
+    const tierPressure = Math.min(0.9, (tier - 1) * 0.035);
+    const baseInterval = enemy.attackPattern === "cataclysm" ? 1.7 : 2.45;
     enemy.attackClock = Math.max(
-      0.42,
-      ((enemy.attackPattern === "cataclysm" ? 1.55 : 2.3) - enemy.bossTier * 0.08) / profile.bossAttackRateMultiplier,
+      BOSS_ATTACK_MIN_INTERVAL,
+      (baseInterval - tierPressure) / profile.bossAttackRateMultiplier,
     );
 
     if (enemy.attackPattern?.startsWith("advancedBoss-")) this.fireAdvancedBossPattern(enemy, profile);
@@ -3395,7 +3648,13 @@ export class GameRuntime {
 
   spawnEnemyProjectile(config) {
     const angle = config.angle ?? 0;
-    const speed = config.speed ?? 180;
+    const tier = Math.max(1, config.bossTier || this.session?.difficultyLevel || 1);
+    const tierBonus = Math.min(35, tier - 1);
+    const lifeScale = ENEMY_PROJECTILE_BASE_LIFE_SCALE + tierBonus * 0.006;
+    const damageScale = 0.9 + tierBonus * 0.008;
+    const speed = (config.speed ?? 180) * (config.speedScale ?? 1);
+    const baseLife = config.life ?? 6;
+    const tunedLife = clamp(baseLife * lifeScale, Math.max(baseLife, ENEMY_PROJECTILE_MIN_LIFE), ENEMY_PROJECTILE_MAX_LIFE);
     this.enemyProjectiles.push({
       x: config.x,
       y: config.y,
@@ -3403,8 +3662,8 @@ export class GameRuntime {
       vy: Math.sin(angle) * speed,
       speed,
       radius: config.radius ?? 9,
-      damage: config.damage ?? 12,
-      life: config.life ?? 6,
+      damage: (config.damage ?? 12) * damageScale,
+      life: tunedLife,
       color: config.color ?? "#ffffff",
       accentColor: config.accentColor ?? "rgba(255,255,255,0.7)",
       kind: config.kind ?? "orb",
@@ -3643,13 +3902,13 @@ export class GameRuntime {
     const patternIndex = Math.max(0, enemy.bossTier - 11);
     const baseAngle = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
     const speedScale = profile.bossBulletSpeedMultiplier;
-    const damage = 16 + profile.level * 2.1 + patternIndex * 1.15;
+    const damage = 15 + profile.level * 1.9 + patternIndex * 0.95;
     const color = enemy.color;
     const accentColor = enemy.detailColor || enemy.accent;
     const variant = patternIndex % 8;
 
     if (variant === 0) {
-      const count = 5 + Math.floor(patternIndex / 4);
+      const count = Math.min(8, 4 + Math.floor(patternIndex / 5));
       for (let index = 0; index < count; index += 1) {
         this.spawnEnemyProjectile({
           x: enemy.x,
@@ -3673,7 +3932,7 @@ export class GameRuntime {
 
     if (variant === 1) {
       for (let ring = 0; ring < 2; ring += 1) {
-        const count = 7 + ring * 5;
+        const count = 6 + ring * 4;
         for (let index = 0; index < count; index += 1) {
           this.spawnEnemyProjectile({
             x: enemy.x,
@@ -3694,7 +3953,7 @@ export class GameRuntime {
     }
 
     if (variant === 2) {
-      const lanes = 4 + (patternIndex % 3);
+      const lanes = 3 + (patternIndex % 3);
       for (let index = 0; index < lanes; index += 1) {
         const offset = (index - (lanes - 1) / 2) * 74;
         this.spawnEnemyProjectile({
@@ -3717,7 +3976,7 @@ export class GameRuntime {
     }
 
     if (variant === 3) {
-      const count = 6 + Math.floor(patternIndex / 5);
+      const count = Math.min(8, 5 + Math.floor(patternIndex / 7));
       for (let index = 0; index < count; index += 1) {
         const side = index % 2 === 0 ? -1 : 1;
         this.spawnEnemyProjectile({
@@ -3731,7 +3990,7 @@ export class GameRuntime {
           color,
           accentColor,
           kind: "moth",
-          homingStrength: 0.045 + patternIndex * 0.0015,
+          homingStrength: 0.035 + patternIndex * 0.001,
         });
       }
       return;
@@ -3740,8 +3999,8 @@ export class GameRuntime {
     if (variant === 4) {
       const spread = 96;
       const horizontal = enemy.attackPhase % 2 === 0;
-      for (let index = 0; index < 6; index += 1) {
-        const offset = (index - 2.5) * spread;
+      for (let index = 0; index < 5; index += 1) {
+        const offset = (index - 2) * spread;
         const x = horizontal ? clamp(this.player.x - 520, 24, ARENA.width - 24) : clamp(this.player.x + offset, 24, ARENA.width - 24);
         const y = horizontal ? clamp(this.player.y + offset, 24, ARENA.height - 24) : clamp(this.player.y - 420, 24, ARENA.height - 24);
         this.spawnEnemyProjectile({
@@ -3761,7 +4020,7 @@ export class GameRuntime {
     }
 
     if (variant === 5) {
-      const count = 8 + Math.floor(patternIndex / 3);
+      const count = Math.min(10, 7 + Math.floor(patternIndex / 5));
       for (let index = 0; index < count; index += 1) {
         this.spawnEnemyProjectile({
           x: enemy.x,
@@ -3782,9 +4041,6 @@ export class GameRuntime {
 
     if (variant === 6) {
       this.fireBossSporeBurst(enemy, profile);
-      if (enemy.attackPhase % 2 === 0) {
-        this.fireBossCrossBurst(enemy, profile);
-      }
       return;
     }
 
@@ -3797,7 +4053,7 @@ export class GameRuntime {
   fireBossPetalFan(enemy, profile) {
     const direction = this.getDirectionVector(this.player.x - enemy.x, this.player.y - enemy.y);
     const baseAngle = Math.atan2(direction.y, direction.x);
-    const count = 6 + Math.floor(profile.level / 2);
+    const count = 5 + Math.floor(profile.level / 3);
     const spread = Math.PI / 2.7;
     const speed = 225 * profile.bossBulletSpeedMultiplier;
     for (let index = 0; index < count; index += 1) {
@@ -3871,7 +4127,7 @@ export class GameRuntime {
   }
 
   fireBossMothSwarm(enemy, profile) {
-    const count = 4 + Math.floor(profile.level / 2);
+    const count = 3 + Math.floor(profile.level / 3);
     const baseAngle = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
     for (let index = 0; index < count; index += 1) {
       const wingOffset = (index - (count - 1) / 2) * 16;
@@ -3886,7 +4142,7 @@ export class GameRuntime {
         color: enemy.color,
         accentColor: enemy.detailColor,
         kind: "moth",
-        homingStrength: 0.06 + enemy.bossTier * 0.004,
+        homingStrength: 0.045 + enemy.bossTier * 0.0025,
       });
     }
   }
@@ -3918,7 +4174,7 @@ export class GameRuntime {
   }
 
   fireBossSporeBurst(enemy, profile) {
-    const count = 5 + Math.floor(profile.level / 3);
+    const count = 4 + Math.floor(profile.level / 4);
     const baseAngle = enemy.attackPhase * 0.37;
     for (let index = 0; index < count; index += 1) {
       this.spawnEnemyProjectile({
@@ -3928,11 +4184,11 @@ export class GameRuntime {
         speed: 135 * profile.bossBulletSpeedMultiplier,
         radius: 14,
         damage: 15 + profile.level * 1.7,
-        life: 2.7,
+        life: 3.6,
         color: enemy.color,
         accentColor: enemy.detailColor,
         kind: "spore",
-        splitCount: 4 + Math.floor(profile.level / 2),
+        splitCount: 2 + Math.floor(profile.level / 4),
         splitSpeed: 190 * profile.bossBulletSpeedMultiplier,
         splitRadius: 6,
         splitKind: "sporeShard",
@@ -3941,8 +4197,8 @@ export class GameRuntime {
   }
 
   fireBossTempestWheel(enemy, profile) {
-    const outerCount = 10 + profile.level;
-    const innerCount = 6 + Math.floor(profile.level / 2);
+    const outerCount = 8 + Math.floor(profile.level * 0.8);
+    const innerCount = 5 + Math.floor(profile.level / 3);
     const baseAngle = enemy.attackPhase * 0.33;
     for (let index = 0; index < outerCount; index += 1) {
       this.spawnEnemyProjectile({
@@ -3977,7 +4233,7 @@ export class GameRuntime {
   }
 
   fireBossEclipseRain(enemy, profile) {
-    const count = 4 + Math.floor(profile.level / 2);
+    const count = 3 + Math.floor(profile.level / 3);
     for (let index = 0; index < count; index += 1) {
       const offset = (index - (count - 1) / 2) * 82;
       const x = clamp(this.player.x + offset + randomBetween(-18, 18), 24, ARENA.width - 24);
@@ -3999,7 +4255,7 @@ export class GameRuntime {
 
   fireBossLanternWall(enemy, profile) {
     const horizontal = enemy.attackPhase % 2 === 1;
-    const layers = 5 + Math.floor(profile.level / 3);
+    const layers = 4 + Math.floor(profile.level / 4);
     const spread = 88;
     if (horizontal) {
       const leftX = clamp(this.player.x - 540, 24, ARENA.width - 24);
@@ -4022,16 +4278,19 @@ export class GameRuntime {
 
   fireBossCataclysm(enemy, profile) {
     this.fireBossPetalFan(enemy, profile);
-    this.fireBossSpiralBloom(enemy, profile);
-    if (enemy.attackPhase % 2 === 0) {
+    if (enemy.attackPhase % 4 === 0) {
       this.fireBossLanternWall(enemy, profile);
+      return;
     }
-    if (enemy.attackPhase % 3 === 0) {
+    if (enemy.attackPhase % 4 === 1) {
+      this.fireBossSpiralBloom(enemy, profile);
+      return;
+    }
+    if (enemy.attackPhase % 4 === 2) {
       this.fireBossEclipseRain(enemy, profile);
+      return;
     }
-    if (enemy.attackPhase % 2 === 1) {
-      this.fireBossMothSwarm(enemy, profile);
-    }
+    this.fireBossMothSwarm(enemy, profile);
   }
 
   updateEnemyProjectiles(delta) {
@@ -4059,6 +4318,9 @@ export class GameRuntime {
       projectile.x += projectile.vx * delta;
       projectile.y += projectile.vy * delta;
       projectile.life -= delta;
+      if (this.specialState.frostBudZone) {
+        this.pushEnemyProjectileOutOfFrostBud(projectile, this.specialState.frostBudZone);
+      }
 
       if (circleDistance(projectile, this.player) <= projectile.radius + this.player.radius) {
         this.damagePlayer(projectile.damage);
@@ -4145,19 +4407,6 @@ export class GameRuntime {
     });
 
     this.spawnRegionalKinBurst(enemy);
-
-    if (this.hasSpecialBoon("timeDebt") && !this.specialState.timeDebtKillsPaused) {
-      this.specialState.timeDebtCredit = Math.min(100, this.specialState.timeDebtCredit + 0.2);
-      if (this.specialState.timeDebtCredit >= 100 && this.specialState.timeDebtActiveFor <= 0) {
-        this.specialState.timeDebtActiveFor = 5;
-        this.specialState.timeDebtCredit = 100;
-        this.specialState.timeDebtKillsPaused = true;
-      }
-    }
-
-    if (this.hasSpecialBoon("entropyShield")) {
-      this.player.entropyShield = Math.min(this.getEntropyShieldMax(), this.player.entropyShield + this.getEntropyShieldMax() * 0.02);
-    }
 
     if (this.hasSpecialBoon("emberSeed") && Math.random() < 0.3) {
       this.mines.push({
@@ -4302,7 +4551,52 @@ export class GameRuntime {
 
   damageEnemy(enemy, damage, source) {
     enemy.health -= damage;
+    const rollInfo = this.lastDamageRoll;
+    this.lastDamageRoll = null;
+    this.spawnDamageNumber(enemy, damage, Boolean(rollInfo?.crit));
+    this.recordKillingIntentHit();
     this.maybeTriggerEcho(enemy, this.normalizeDamageSource(source));
+  }
+
+  recordKillingIntentHit() {
+    if (!this.hasSpecialBoon("killingIntent") || this.specialState.killingIntentFor > 0 || this.specialState.killingIntentCooldown > 0) {
+      return;
+    }
+
+    this.specialState.killingIntentHits += 1;
+    if (this.specialState.killingIntentHits >= 100) {
+      this.specialState.killingIntentHits = 0;
+      this.specialState.killingIntentFor = 5;
+      this.callbacks.onToast?.("杀心");
+      this.spawnSkillEffect({
+        kind: "killingIntent",
+        x: this.player.x,
+        y: this.player.y,
+        radius: 90,
+        duration: 0.5,
+        color: "rgba(255, 92, 130, 0.34)",
+        accent: "rgba(255, 240, 246, 0.88)",
+      });
+    }
+  }
+
+  freezeAllEnemies(duration) {
+    for (const enemy of this.enemies) {
+      enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, duration);
+      enemy.slowTimer = Math.max(enemy.slowTimer || 0, duration);
+    }
+  }
+
+  recordFrostBudDamage(damage) {
+    if (!this.hasSpecialBoon("frostBud") || this.specialState.frostBudCooldown > 0 || this.specialState.frostBudZone) {
+      return;
+    }
+
+    this.specialState.frostBudDamageTaken += Math.max(0, damage);
+    if (this.specialState.frostBudDamageTaken >= this.player.maxHealth * 0.3) {
+      this.specialState.frostBudDamageTaken = 0;
+      this.spawnFrostBudZone();
+    }
   }
 
   damagePlayer(rawDamage) {
@@ -4318,17 +4612,21 @@ export class GameRuntime {
     }
 
     let damage = Math.max(1, rawDamage - this.player.armor);
-    if (this.hasSpecialBoon("entropyShield")) {
-      const absorbed = Math.min(this.player.entropyShield, damage);
-      if (absorbed > 0) {
-        this.player.entropyShield -= absorbed;
-        damage -= absorbed;
-        this.addEntropyStack();
-      }
-
-      if (this.player.entropyShield <= 0 && damage > 0) {
-        damage *= 1.3;
-      }
+    const iceThornLimit = this.player.maxHealth * 0.15;
+    if (this.hasSpecialBoon("iceThorn") && this.specialState.iceThornCooldown <= 0 && damage > iceThornLimit) {
+      damage = iceThornLimit;
+      this.specialState.iceThornCooldown = 50;
+      this.freezeAllEnemies(5);
+      this.callbacks.onToast?.("冰棘");
+      this.spawnSkillEffect({
+        kind: "iceThorn",
+        x: this.player.x,
+        y: this.player.y,
+        radius: 130,
+        duration: 0.5,
+        color: "rgba(155, 226, 255, 0.34)",
+        accent: "rgba(245, 253, 255, 0.92)",
+      });
     }
 
     if (this.player.barrier > 0) {
@@ -4337,6 +4635,7 @@ export class GameRuntime {
       damage -= absorbed;
     }
 
+    this.recordFrostBudDamage(damage);
     this.player.health -= damage;
     this.player.invulnerableFor = 0.55;
     if (this.player.health <= 0) {
@@ -4419,16 +4718,20 @@ export class GameRuntime {
       blink: `${this.player.blinkCharges} / ${this.player.blinkChargesMax}`,
       expPickupRange: `${Math.round(this.player.expPickupRange)}`,
       kills: `${this.session.kills}`,
-      entropyShield: this.hasSpecialBoon("entropyShield") ? `${Math.ceil(this.player.entropyShield)}` : null,
       skills,
     });
   }
 
   rollDamage(baseDamage) {
     const source = this.activeSkillTrigger?.snapshot || this.player;
-    const crit = Math.random() < source.critChance;
-    const entropyMultiplier = source.entropyDamageMultiplier ?? (this.hasSpecialBoon("entropyShield") ? 1 + this.specialState.entropyStacks.length * 0.05 : 1);
-    return baseDamage * source.attackMultiplier * entropyMultiplier * (crit ? source.critDamage : 1);
+    const killingIntentActive = this.specialState.killingIntentFor > 0;
+    const critChance = (source.critChance || 0) + (killingIntentActive ? 1 : 0);
+    const critDamage = (source.critDamage || 1.5) + (killingIntentActive ? 1 : 0);
+    const crit = Math.random() < critChance;
+    const frostMultiplier = source.frostBudDamageMultiplier ?? (this.isPointInsideFrostBudZone(this.player.x, this.player.y) ? 1.15 : 1);
+    const damage = baseDamage * source.attackMultiplier * frostMultiplier * (crit ? critDamage : 1);
+    this.lastDamageRoll = { crit, damage };
+    return damage;
   }
 
   findNearestEnemy(x, y) {

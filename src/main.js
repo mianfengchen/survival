@@ -7,6 +7,8 @@ import {
   getExclusiveDefinition,
   getSkillDefinition,
   getSkillForExclusive,
+  getTalentDescription,
+  getTalentValueText,
   getTalentCost,
 } from "./data.js";
 import {
@@ -256,6 +258,7 @@ const elements = {
   openSettingsButton: document.querySelector("#openSettingsButton"),
   openWarPrepButton: document.querySelector("#openWarPrepButton"),
   confirmWarButton: document.querySelector("#confirmWarButton"),
+  startBossTestButton: document.querySelector("#startBossTestButton"),
   storyEyebrow: document.querySelector("#storyEyebrow"),
   storyTitle: document.querySelector("#storyTitle"),
   storyBody: document.querySelector("#storyBody"),
@@ -629,6 +632,9 @@ function bindUi() {
   elements.confirmWarButton.addEventListener("click", () => {
     startSelectedWar();
   });
+  elements.startBossTestButton?.addEventListener("click", () => {
+    startSelectedBossTest();
+  });
 
   elements.storyPrimaryButton.addEventListener("click", () => {
     if (storyTypewriterActive) {
@@ -917,7 +923,7 @@ function setEyeComfortMode(enabled) {
 function renderHud(snapshot) {
   renderTouchPauseButton();
   elements.hudTimerText.textContent = snapshot.time === "Boss" ? "Boss 战" : `倒计时 ${snapshot.time}`;
-  elements.hudHealthText.textContent = snapshot.entropyShield ? `生命 ${snapshot.health}  熵盾 ${snapshot.entropyShield}` : `生命 ${snapshot.health}`;
+  elements.hudHealthText.textContent = `生命 ${snapshot.health}`;
   elements.hudLevelText.textContent = `LV ${snapshot.level}`;
   elements.hudExpText.textContent = snapshot.exp;
   elements.hudExpFill.style.width = `${Math.max(0, Math.min(100, (snapshot.expRatio || 0) * 100))}%`;
@@ -1368,7 +1374,8 @@ function renderLab() {
       <article class="talent-card">
         <div>
           <strong>${talent.name}</strong>
-          <p class="card-note">${talent.description}</p>
+          <p class="card-note">${getTalentDescription(talent)}</p>
+          <p class="card-note">${getTalentValueText(talent, currentLevel)}</p>
         </div>
         <footer>
           <span>Lv.${currentLevel} / ${talent.maxLevel}</span>
@@ -1662,12 +1669,55 @@ function startSelectedWar() {
   startRunConfig(config);
 }
 
-function handleRunEnd(result) {
-  progress = applyRunResult(progress, result);
-  renderPersistentPanels();
+function startSelectedBossTest() {
+  const region = getRegionDefinition(selectedRegionId) || GARDEN_REGIONS[0];
+  const config = buildRunConfig(region.id, selectedCharacterId, selectedWarDifficultyId, false);
+  config.options = {
+    ...config.options,
+    mode: "bossTest",
+    roundDurationSeconds: 30,
+    energyRewardScale: 0,
+  };
+  config.difficulty = {
+    ...config.difficulty,
+    name: `${config.difficulty.name} · Boss 模拟`,
+  };
+  startRunConfig(config);
+}
 
+function handleRunEnd(result) {
   const region = result.regionId ? getRegionDefinition(result.regionId) : null;
   const difficulty = activeRunConfig?.difficulty || getWarDifficulty(selectedWarDifficultyId);
+
+  if (result.mode === "bossTest") {
+    elements.resultTitle.textContent = result.victory ? "模拟完成" : result.abandoned ? "模拟中止" : "模拟失败";
+    elements.resultSummary.innerHTML = [
+      ["测试区域", region?.name || "模拟关卡"],
+      ["Boss 阶位", region?.bossTier ? `${region.bossTier}` : "-"],
+      ["测试难度", difficulty.name],
+      ["战斗时长", formatDuration(result.survivalTime)],
+      ["角色等级", `Lv.${result.level}`],
+      ["击败害虫", `${result.kills}`],
+      ["进度写入", "否"],
+    ]
+      .map(
+        ([label, value]) => `
+          <div class="result-item">
+            <span>${label}</span>
+            <strong>${value}</strong>
+          </div>
+        `,
+      )
+      .join("");
+
+    setActiveView("game");
+    showOverlay("resultScreen");
+    updateSessionLabel("Boss 模拟结算", "本次模拟不计入资源、图鉴或花园解放进度。");
+    return;
+  }
+
+  progress = applyRunResult(progress, result);
+  renderPersistentPanels();
 
   if (result.mode === "tutorial") {
     setActiveView("menu");

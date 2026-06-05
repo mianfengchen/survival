@@ -25,16 +25,16 @@ export function getDifficultyProfile(value) {
     level,
     monsterHealthMultiplier: Number((1 + bonus * 0.32).toFixed(2)),
     monsterDamageMultiplier: Number((1 + bonus * 0.18).toFixed(2)),
-    monsterSpeedMultiplier: Number((0.5 + bonus * 0.02).toFixed(2)),
-    spawnRateMultiplier: Number((0.34 + bonus * 0.06).toFixed(2)),
+    monsterSpeedMultiplier: Number((0.64 + bonus * 0.025).toFixed(2)),
+    spawnRateMultiplier: Number((0.42 + bonus * 0.055).toFixed(2)),
     expMultiplier: Number((1 + bonus * 0.16).toFixed(2)),
     coinMultiplier: Number((1 + bonus * 0.12).toFixed(2)),
     typeAdvanceSeconds: bonus * 80,
     eliteWeightMultiplier: Number((1 + bonus * 0.14).toFixed(2)),
     bossHealthMultiplier: Number((1 + bonus * 0.38).toFixed(2)),
     bossDamageMultiplier: Number((1 + bonus * 0.2).toFixed(2)),
-    bossSpeedMultiplier: Number((0.5 + bonus * 0.025).toFixed(2)),
-    bossBulletSpeedMultiplier: Number((0.25 + bonus * 0.02).toFixed(2)),
+    bossSpeedMultiplier: Number((0.62 + bonus * 0.025).toFixed(2)),
+    bossBulletSpeedMultiplier: Number((0.36 + bonus * 0.02).toFixed(2)),
     bossAttackRateMultiplier: Number((1 + bonus * 0.05).toFixed(2)),
   };
 }
@@ -65,6 +65,12 @@ export const PLAYER_BASE = {
   blinkRechargeSeconds: 10,
   barrier: 0,
 };
+
+export const TALENT_MAX_LEVEL = 100;
+
+function normalizeTalentLevel(level) {
+  return Math.max(0, Math.min(TALENT_MAX_LEVEL, Number(level) || 0));
+}
 
 export const MONSTER_LIBRARY = [
   {
@@ -193,7 +199,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#eff9c9",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 312500000,
+    health: 1850000,
     speed: 92,
     damage: 66,
     radius: 124,
@@ -212,7 +218,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#e3f5d6",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 50000,
+    health: 60000,
     speed: 58,
     damage: 16,
     radius: 56,
@@ -231,7 +237,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#ffe3a8",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1000000,
+    health: 135000,
     speed: 68,
     damage: 20,
     radius: 62,
@@ -250,7 +256,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#f3dcff",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1000000,
+    health: 220000,
     speed: 70,
     damage: 24,
     radius: 70,
@@ -269,7 +275,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#dff6ff",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1000000,
+    health: 340000,
     speed: 74,
     damage: 30,
     radius: 76,
@@ -288,7 +294,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#f0f5c9",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1000000,
+    health: 500000,
     speed: 78,
     damage: 36,
     radius: 86,
@@ -307,7 +313,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#ffe1d4",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1000000,
+    health: 700000,
     speed: 76,
     damage: 42,
     radius: 96,
@@ -326,7 +332,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#ffd5e4",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1000000,
+    health: 920000,
     speed: 82,
     damage: 48,
     radius: 104,
@@ -345,7 +351,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#dfe5ff",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1000000,
+    health: 1180000,
     speed: 86,
     damage: 54,
     radius: 110,
@@ -364,7 +370,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#ffd5c5",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1000000,
+    health: 1480000,
     speed: 90,
     damage: 60,
     radius: 116,
@@ -415,7 +421,7 @@ MONSTER_LIBRARY.push(
     detailColor,
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: Math.round(1200000 + index * 420000),
+    health: Math.round(2200000 + index * 500000),
     speed: 66 + (index % 9) * 3,
     damage: 22 + index * 2,
     radius: 64 + Math.min(62, index * 2),
@@ -447,10 +453,10 @@ export const GENERAL_UPGRADES = [
   {
     id: "attackGrowth",
     name: "攻击成长",
-    description: "伤害提高 14%。",
+    description: "总伤害 +9%。",
     maxLevel: 10,
     apply: (player, session) => {
-      player.attackMultiplier *= 1.14;
+      player.attackMultiplier += 0.09;
     },
   },
   {
@@ -474,10 +480,10 @@ export const GENERAL_UPGRADES = [
   {
     id: "cooldownReduction",
     name: "冷却缩减",
-    description: "技能冷却减少 6%。",
-    maxLevel: 8,
+    description: "技能冷却减少 5%。",
+    maxLevel: 7,
     apply: (player, session) => {
-      player.cooldownScale *= 0.94;
+      player.cooldownScale = Math.max(0.65, player.cooldownScale - 0.05);
     },
   },
   {
@@ -547,11 +553,11 @@ export const GENERAL_UPGRADES = [
   {
     id: "monsterPressure",
     name: "怪物数量增加",
-    description: "刷新速度提高 10%，但本局金币奖励额外提高 8%。",
+    description: "刷新速度提高 8%，但本局金币奖励额外提高 7%。",
     maxLevel: 6,
     apply: (player, session) => {
-      session.spawnRateMultiplier *= 1.1;
-      session.coinRewardMultiplier *= 1.08;
+      session.spawnRateMultiplier *= 1.08;
+      session.coinRewardMultiplier *= 1.07;
     },
   },
   {
@@ -588,19 +594,19 @@ export const GENERAL_UPGRADES = [
   {
     id: "critChance",
     name: "暴击几率成长",
-    description: "暴击率提高 6%。",
-    maxLevel: 7,
+    description: "暴击率提高 4%。",
+    maxLevel: 6,
     apply: (player, session) => {
-      player.critChance += 0.06;
+      player.critChance += 0.04;
     },
   },
   {
     id: "critDamage",
     name: "暴击伤害成长",
-    description: "暴击伤害倍率提高 0.18。",
-    maxLevel: 7,
+    description: "暴击伤害倍率提高 0.15。",
+    maxLevel: 6,
     apply: (player, session) => {
-      player.critDamage += 0.18;
+      player.critDamage += 0.15;
     },
   },
   {
@@ -648,7 +654,7 @@ export const SPECIAL_BOON_LIBRARY = [
   {
     id: "mirrorImage",
     name: "镜像",
-    description: "使用闪现或传送后，在原地留下持续 5 秒的镜像。镜像复制当时本体的技能与属性，会自动攻击，且不会被攻击。",
+    description: "使用闪现或传送后，在原地留下持续 10 秒的镜像。镜像复制当时本体的技能与属性，会自动攻击，且不会被攻击。",
   },
   {
     id: "echoSpiral",
@@ -656,19 +662,29 @@ export const SPECIAL_BOON_LIBRARY = [
     description: "投射物或技能命中敌人后有 5% 概率在命中点产生残响。残响沿原方向再次释放，初始伤害为 40%，最多连续残响 3 次，每次再衰减 20%，且不会触发其他概率效果。",
   },
   {
-    id: "timeDebt",
-    name: "时间债务",
-    description: "每击杀一个敌人获得 0.2 秒时间信贷。信贷累积到 100 秒时触发 5 秒时停，期间所有敌人和弹幕停止移动，只有你能自由行动。时停结束后信贷清空。",
-  },
-  {
     id: "emberSeed",
     name: "余烬之种",
     description: "击杀敌人时有 30% 概率留下种子。3 秒后爆炸；若你提前站在上面 1 秒，则成长为持续 8 秒的余烬之树，但自身移速永久降低 5%，最多叠加 5 次。",
   },
   {
-    id: "entropyShield",
-    name: "熵能护盾",
-    description: "获得一个等于最大生命值 50% 的护盾，护盾会衰减并优先吸收伤害。护盾吸伤时提供熵增层数增伤；护盾归零时受到伤害提高 30%，击杀敌人可回复护盾。",
+    id: "chargedStrike",
+    name: "蓄力",
+    description: "每次施放技能时，初始有 1% 概率触发蓄力一击；每次未触发概率 +1%，触发后重置为 1%。蓄力一击使本次技能伤害、范围和投射物体积均提高至 2 倍。",
+  },
+  {
+    id: "killingIntent",
+    name: "杀心",
+    description: "每造成 100 次伤害后进入杀心状态，持续 5 秒。状态内暴击率 +100%，暴击伤害 +100%。杀心结束后进入 15 秒冷却。",
+  },
+  {
+    id: "frostBud",
+    name: "冰霜花苞",
+    description: "累计受伤达到最大生命值 30% 时，在附近随机位置生成持续 10 秒、直径 200 的冰霜领域。领域内你的伤害 +15%，敌人与敌方投射物无法进入。领域消失后进入 60 秒冷却并触发一次安全传送；传送技能会优先传送到领域内。",
+  },
+  {
+    id: "iceThorn",
+    name: "冰棘",
+    description: "单次受到伤害超过最大生命值 15% 时，将该次伤害强制降低为最大生命值 15%，并冻结所有敌人 5 秒。该效果每 50 秒最多触发一次。",
   },
 ];
 
@@ -676,65 +692,112 @@ export const TALENT_LIBRARY = [
   {
     id: "sunheart",
     name: "向阳之心",
-    description: "每级额外获得 18 点生命上限。",
-    maxLevel: 5,
+    description: "生命上限每级 +5。",
+    maxLevel: TALENT_MAX_LEVEL,
     baseCost: 40,
     apply: (player, level) => {
-      player.maxHealth += level * 18;
-      player.health += level * 18;
+      const bonus = normalizeTalentLevel(level) * 5;
+      player.maxHealth += bonus;
+      player.health += bonus;
     },
   },
   {
     id: "verdantMend",
     name: "晨露回春",
-    description: "每级每秒恢复 0.1 生命。",
-    maxLevel: 5,
+    description: "生命恢复每级 +0.02/秒。",
+    maxLevel: TALENT_MAX_LEVEL,
     baseCost: 50,
     apply: (player, level) => {
-      player.healthRegen += level * 0.1;
+      player.healthRegen += normalizeTalentLevel(level) * 0.02;
     },
   },
   {
     id: "swiftLeaf",
     name: "疾风叶鞋",
-    description: "每级移动速度提升 5%。",
-    maxLevel: 5,
+    description: "移动速度每级 +0.5。",
+    maxLevel: TALENT_MAX_LEVEL,
     baseCost: 45,
     apply: (player, level) => {
-      player.speed *= 1 + level * 0.05;
+      player.speed += normalizeTalentLevel(level) * 0.5;
     },
   },
   {
     id: "shiningQuill",
     name: "晨光翎羽",
-    description: "每级伤害提升 6%。",
-    maxLevel: 5,
+    description: "总伤害每级 +2%。",
+    maxLevel: TALENT_MAX_LEVEL,
     baseCost: 55,
     apply: (player, level) => {
-      player.attackMultiplier *= 1 + level * 0.06;
+      player.attackMultiplier += normalizeTalentLevel(level) * 0.02;
     },
   },
   {
     id: "crystalDew",
     name: "露珠晶瓶",
-    description: "每级经验获取提升 10%。",
-    maxLevel: 5,
+    description: "经验获取每级 +3%。",
+    maxLevel: TALENT_MAX_LEVEL,
     baseCost: 60,
     apply: (player, level) => {
-      player.expMultiplier *= 1 + level * 0.1;
+      player.expMultiplier += normalizeTalentLevel(level) * 0.03;
     },
   },
   {
     id: "goldPouch",
     name: "松果钱袋",
-    description: "每级本局结算金币提升 8%。",
-    maxLevel: 5,
+    description: "结算金币每级 +1%。",
+    maxLevel: TALENT_MAX_LEVEL,
     baseCost: 65,
     apply: (player, level, session) => {
-      session.coinRewardMultiplier *= 1 + level * 0.08;
+      session.coinRewardMultiplier *= 1 + normalizeTalentLevel(level) * 0.01;
+    },
+  },
+  {
+    id: "barkArmor",
+    name: "树皮护甲",
+    description: "护甲每级 +0.2。",
+    maxLevel: TALENT_MAX_LEVEL,
+    baseCost: 55,
+    apply: (player, level) => {
+      player.armor += normalizeTalentLevel(level) * 0.2;
     },
   },
 ];
+
+const TALENT_DESCRIPTION_OVERRIDES = {
+  sunheart: "生命上限每级 +5，等级上限 100。",
+  verdantMend: "生命恢复每级 +0.02/秒，等级上限 100。",
+  swiftLeaf: "移动速度每级 +0.5，等级上限 100。",
+  shiningQuill: "总伤害每级 +2%，等级上限 100。",
+  crystalDew: "经验获取每级 +3%，等级上限 100。",
+  goldPouch: "结算金币每级 +1%，等级上限 100。",
+  barkArmor: "护甲每级 +0.2，等级上限 100。",
+};
+
+export function getTalentDescription(talent) {
+  return TALENT_DESCRIPTION_OVERRIDES[talent?.id] || talent?.description || "";
+}
+
+export function getTalentValueText(talent, level) {
+  const safeLevel = normalizeTalentLevel(level);
+  switch (talent?.id) {
+    case "sunheart":
+      return `当前：生命上限 +${safeLevel * 5}`;
+    case "verdantMend":
+      return `当前：生命恢复 +${(safeLevel * 0.02).toFixed(2)}/秒`;
+    case "swiftLeaf":
+      return `当前：移动速度 +${(safeLevel * 0.5).toFixed(1)}`;
+    case "shiningQuill":
+      return `当前：总伤害 +${safeLevel * 2}%`;
+    case "crystalDew":
+      return `当前：经验获取 +${safeLevel * 3}%`;
+    case "goldPouch":
+      return `当前：结算金币 +${safeLevel}%`;
+    case "barkArmor":
+      return `当前：护甲 +${(safeLevel * 0.2).toFixed(1)}`;
+    default:
+      return "当前：无";
+  }
+}
 
 export const BOOST_CODEX = [
   ...GENERAL_UPGRADES.map((item) => ({
@@ -752,13 +815,14 @@ export const BOOST_CODEX = [
   ...TALENT_LIBRARY.map((item) => ({
     id: item.id,
     name: item.name,
-    description: item.description,
+    description: getTalentDescription(item),
     type: "局外天赋",
   })),
 ];
 
 export function getTalentCost(talent, currentLevel) {
-  return talent.baseCost + currentLevel * Math.ceil(talent.baseCost * 0.55);
+  const level = Math.max(0, Number(currentLevel) || 0);
+  return Math.ceil(talent.baseCost * (1 + level * 0.22 + level * level * 0.018));
 }
 
 export function getSkillDefinition(skillId) {
