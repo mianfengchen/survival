@@ -2650,10 +2650,10 @@ h3 {
 /* 花园研究所 — bottom‑left greenhouse */
 .menu-entry--lab {
   position: absolute;
-  left: calc(50% + 26000vw / 2560);
+  left: calc(50% + 34000vw / 2560);
   bottom: 23%;
-  width: calc(40900vw / 2560 / 1.6);
-  height: calc(40900vw / 2560 / 1.6);
+  width: calc(40900vw / 2560);
+  height: calc(40900vw / 2560);
   background-image: url("../designs/home-sprite-lab.png");
   background-repeat: no-repeat;
   background-position: center;
@@ -2665,9 +2665,9 @@ h3 {
   position: absolute;
   left: 50%;
   bottom: 12%;
-  width: calc(61300vw / 2560 / 1.6);
-  height: calc(47500vw / 2560 / 1.6);
-  margin-left: calc(-61300vw / 2560 / 3.2);
+  width: calc(61300vw / 2560);
+  height: calc(47500vw / 2560);
+  margin-left: calc(-61300vw / 2 / 2560);
   background-image: url("../designs/home-sprite-war.png");
   background-repeat: no-repeat;
   background-position: center;
@@ -2677,10 +2677,10 @@ h3 {
 /* 花园图书馆 — bottom‑right library */
 .menu-entry--library {
   position: absolute;
-  left: calc(50% - 52000vw / 2560);
+  left: calc(50% - 78000vw / 2560);
   bottom: 18%;
-  width: calc(40900vw / 2560 / 1.6);
-  height: calc(40900vw / 2560 / 1.6);
+  width: calc(40900vw / 2560);
+  height: calc(40900vw / 2560);
   background-image: url("../designs/home-sprite-library.png");
   background-repeat: no-repeat;
   background-position: center;

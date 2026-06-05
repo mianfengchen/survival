@@ -884,15 +884,24 @@ export class GameRuntime {
       return spawnOrder;
     }
 
-    const cappedOrder = spawnOrder.slice(0, this.getMonsterVarietyCap(profile, spawnOrder.length));
-    if (cappedOrder.length <= 1) {
-      return cappedOrder;
+    const regionExclusive = spawnOrder.find((m) => m.regionExclusive);
+    const nonRegional = spawnOrder.filter((m) => !m.regionExclusive);
+
+    const cap = this.getMonsterVarietyCap(profile, nonRegional.length);
+    const available = [...nonRegional.slice(0, Math.max(1, cap))];
+
+    if (regionExclusive && elapsed >= regionExclusive.minTime) {
+      available.push(regionExclusive);
+    }
+
+    if (available.length <= 1) {
+      return available;
     }
 
     const roundDuration = Math.max(1, this.session?.roundDurationSeconds || ROUND_DURATION_SECONDS);
-    const unlockInterval = roundDuration / cappedOrder.length;
-    const unlockedCount = Math.min(cappedOrder.length, Math.floor(elapsed / unlockInterval) + 1);
-    return cappedOrder.slice(0, Math.max(1, unlockedCount));
+    const unlockInterval = roundDuration / available.length;
+    const unlockedCount = Math.min(available.length, Math.floor(elapsed / unlockInterval) + 1);
+    return available.slice(0, Math.max(1, unlockedCount));
   }
 
   loop(timestamp) {
@@ -1112,18 +1121,26 @@ export class GameRuntime {
     const elapsed = this.session.elapsed;
     const spawnCount = elapsed > 540 ? 4 : elapsed > 300 ? 3 : elapsed > 120 ? 2 : 1;
     const profile = this.session.difficultyProfile;
+    let aliveKinCount = this.enemies.filter((e) => e.regionExclusive).length;
     for (let index = 0; index < spawnCount; index += 1) {
       const eligible = this.getAvailableMonsters(elapsed, profile);
       if (eligible.length === 0) {
         continue;
       }
-      const totalWeight = eligible.reduce((sum, monster) => {
+      let filteredEligible = eligible;
+      if (aliveKinCount >= 1) {
+        filteredEligible = eligible.filter((m) => !m.regionExclusive);
+      }
+      if (filteredEligible.length === 0) {
+        filteredEligible = eligible;
+      }
+      const totalWeight = filteredEligible.reduce((sum, monster) => {
         const weight = monster.weight * (monster.minTime > elapsed ? profile.eliteWeightMultiplier : 1);
         return sum + weight;
       }, 0);
       let roll = Math.random() * totalWeight;
-      let picked = eligible[0];
-      for (const monster of eligible) {
+      let picked = filteredEligible[0];
+      for (const monster of filteredEligible) {
         roll -= monster.weight * (monster.minTime > elapsed ? profile.eliteWeightMultiplier : 1);
         if (roll <= 0) {
           picked = monster;
@@ -1131,6 +1148,9 @@ export class GameRuntime {
         }
       }
       this.enemies.push(this.createEnemy(picked));
+      if (picked.regionExclusive) {
+        aliveKinCount += 1;
+      }
       this.session.discoveries.monsters.add(picked.id);
     }
 
@@ -1150,8 +1170,8 @@ export class GameRuntime {
       typeId: definition.id,
       x: spawn.x,
       y: spawn.y,
-      health: Math.ceil(definition.health * healthMultiplier),
-      maxHealth: Math.ceil(definition.health * healthMultiplier),
+      health: Math.ceil(definition.health * healthMultiplier * (definition.boss ? 1 : 2)),
+      maxHealth: Math.ceil(definition.health * healthMultiplier * (definition.boss ? 1 : 2)),
       speed: definition.speed * speedMultiplier,
       damage: Math.ceil(definition.damage * damageMultiplier),
       contactDamage: Math.max(1, Math.ceil(definition.damage * damageMultiplier * MONSTER_CONTACT_DAMAGE_SCALE)),
@@ -1522,6 +1542,10 @@ export class GameRuntime {
       return;
     }
 
+    if (sourceContext.echoChecked) {
+      return;
+    }
+
     const nextDepth = (sourceContext.echoDepth || 0) + 1;
     if (nextDepth > 3 || Math.random() >= 0.05) {
       return;
@@ -1567,8 +1591,23 @@ export class GameRuntime {
     this.session.bossSpawned = true;
     const boss = this.createEnemy(definition);
     const camera = this.getCamera();
-    boss.x = clamp(camera.x + camera.width / 2, boss.radius + 26, ARENA.width - boss.radius - 26);
-    boss.y = clamp(camera.y + camera.height * 0.22, boss.radius + 26, ARENA.height - boss.radius - 26);
+    const margin = 130;
+    const side = Math.floor(Math.random() * 4);
+    if (side === 0) {
+      boss.x = camera.x - margin;
+      boss.y = randomBetween(camera.y + 60, camera.y + camera.height - 60);
+    } else if (side === 1) {
+      boss.x = camera.x + camera.width + margin;
+      boss.y = randomBetween(camera.y + 60, camera.y + camera.height - 60);
+    } else if (side === 2) {
+      boss.x = randomBetween(camera.x + 60, camera.x + camera.width - 60);
+      boss.y = camera.y - margin;
+    } else {
+      boss.x = randomBetween(camera.x + 60, camera.x + camera.width - 60);
+      boss.y = camera.y + camera.height + margin;
+    }
+    boss.x = clamp(boss.x, boss.radius + 26, ARENA.width - boss.radius - 26);
+    boss.y = clamp(boss.y, boss.radius + 26, ARENA.height - boss.radius - 26);
     this.enemies.push(boss);
     this.session.discoveries.monsters.add(definition.id);
     this.callbacks.onToast?.(`${definition.name} 出现`);
@@ -1696,6 +1735,34 @@ export class GameRuntime {
     if (!target) return;
     const totalCount = stats.count + this.getProjectileCountBonus(skillId);
     const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+
+    if (skillId === "auroraNeedle") {
+      const spread = 0.22 + (totalCount > 1 ? 0 : 0);
+      const baseAngle = Math.atan2(target.y - this.player.y, target.x - this.player.x);
+      for (let index = 0; index < totalCount; index += 1) {
+        const angle = baseAngle - spread * (totalCount - 1) / 2 + spread * index;
+        const speed = stats.speed * this.player.projectileSpeedMultiplier;
+        this.projectiles.push({
+          id: crypto.randomUUID(),
+          skillId,
+          sourceSkillId: skillId,
+          x: this.player.x,
+          y: this.player.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          speed,
+          radius: stats.size * this.player.projectileSizeMultiplier,
+          damage: this.rollDamage(stats.damage),
+          pierce: stats.pierce,
+          maxDistance: stats.range * this.player.rangeMultiplier,
+          distanceTravelled: 0,
+          color: definitionColor(skillId),
+          recentHits: {},
+        });
+      }
+      return;
+    }
+
     for (let index = 0; index < totalCount; index += 1) {
       const aim = this.getProjectileAim(target, index, totalCount, 0.09, assignedTargets);
       if (!aim) continue;
@@ -1711,11 +1778,14 @@ export class GameRuntime {
         speed,
         radius: stats.size * this.player.projectileSizeMultiplier,
         damage: this.rollDamage(stats.damage),
-        pierce: stats.pierce,
+        pierce: skillId === "antlerBolt" ? (stats.pierce + 1) : stats.pierce,
         maxDistance: stats.range * this.player.rangeMultiplier,
         distanceTravelled: 0,
         color: definitionColor(skillId),
         recentHits: {},
+        ...(skillId === "glassPrismRay" ? { refractCount: 2 } : {}),
+        ...(skillId === "lanternSpark" ? { markEnemy: true } : {}),
+        ...(skillId === "antlerBolt" ? { splitSide: 1 } : {}),
       });
     }
   }
@@ -2091,6 +2161,7 @@ export class GameRuntime {
         slowLevel: rootLevel,
         burstLevel,
         hasBurst: false,
+        recentHits: {},
       });
     }
   }
@@ -2413,6 +2484,7 @@ export class GameRuntime {
       burnLevel: config.burnLevel || 0,
       color: config.color || "rgba(255,255,255,0.18)",
       edgeColor: config.edgeColor || "rgba(255,255,255,0.68)",
+      echoChecked: false,
     });
   }
 
@@ -2433,7 +2505,7 @@ export class GameRuntime {
         vy: Math.sin(angle) * shardSpeed,
         speed: shardSpeed,
         radius: Math.max(4, projectile.radius * 0.6),
-        damage: projectile.damage * 0.42,
+        damage: Math.ceil(projectile.damage * 0.42),
         pierce: 0,
         maxDistance: 120,
         distanceTravelled: 0,
@@ -2441,6 +2513,7 @@ export class GameRuntime {
         slowLevel: Math.max(0, projectile.slowLevel - 1),
         burstLevel: 0,
         hasBurst: true,
+        recentHits: {},
       });
     }
   }
@@ -2530,6 +2603,10 @@ export class GameRuntime {
           enemy.slowTimer = Math.max(enemy.slowTimer, 0.55 + projectile.slowLevel * 0.38);
         }
 
+        if (projectile.refractCount > 0 || projectile.splitSide > 0) {
+          enemy.refractOnDeath = (enemy.refractOnDeath || 0) + 1;
+        }
+
         if (projectile.burstLevel > 0 && !projectile.hasBurst) {
           projectile.hasBurst = true;
           this.spawnThornBurst(projectile);
@@ -2537,6 +2614,66 @@ export class GameRuntime {
 
         if (boomerangProjectile && projectile.frayLevel > 0) {
           this.spawnRibbonFray(projectile);
+        }
+
+        if (projectile.refractCount > 0) {
+          projectile.refractCount -= 1;
+          const nearTargets = this.findNearestEnemies(enemy.x, enemy.y, 3);
+          for (let ri = 0; ri < nearTargets.length; ri += 1) {
+            const near = nearTargets[ri];
+            if (near.id === enemy.id) continue;
+            const dx = near.x - projectile.x;
+            const dy = near.y - projectile.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const refSpeed = projectile.speed * 0.85;
+            this.projectiles.push({
+              id: crypto.randomUUID(),
+              skillId: projectile.skillId,
+              sourceSkillId: projectile.sourceSkillId,
+              x: projectile.x,
+              y: projectile.y,
+              vx: (dx / dist) * refSpeed,
+              vy: (dy / dist) * refSpeed,
+              speed: refSpeed,
+              radius: projectile.radius * 0.8,
+              damage: Math.ceil(projectile.damage * 0.55),
+              pierce: 0,
+              maxDistance: projectile.maxDistance * 0.7,
+              distanceTravelled: 0,
+              color: projectile.color,
+              recentHits: {},
+              refractCount: 0,
+            });
+          }
+        }
+
+        if (projectile.markEnemy) {
+          enemy.markedForExplosion = (enemy.markedForExplosion || 0) + 1;
+        }
+
+        if (projectile.splitSide > 0) {
+          for (let si = 0; si < 2; si += 1) {
+            const splitAngle = (si === 0 ? -0.4 : 0.4);
+            const angle = Math.atan2(projectile.vy, projectile.vx) + splitAngle;
+            const splitSpeed = projectile.speed * 0.7;
+            this.projectiles.push({
+              id: crypto.randomUUID(),
+              skillId: projectile.skillId,
+              sourceSkillId: projectile.sourceSkillId,
+              x: projectile.x,
+              y: projectile.y,
+              vx: Math.cos(angle) * splitSpeed,
+              vy: Math.sin(angle) * splitSpeed,
+              speed: splitSpeed,
+              radius: projectile.radius * 0.7,
+              damage: Math.ceil(projectile.damage * 0.4),
+              pierce: 0,
+              maxDistance: projectile.maxDistance * 0.5,
+              distanceTravelled: 0,
+              color: projectile.color,
+              recentHits: {},
+            });
+          }
         }
 
         projectile.pierce -= 1;
@@ -2664,13 +2801,26 @@ export class GameRuntime {
 
       if (field.tickClock <= 0) {
         field.tickClock += field.tickInterval;
+        const isFirstTick = !field.echoChecked;
         let hitCount = 0;
         for (const enemy of this.enemies) {
           if (circleDistance(field, enemy) > field.radius + enemy.radius) {
             continue;
           }
           hitCount += 1;
-          this.damageEnemy(enemy, field.damage, field);
+          if (isFirstTick && field.sourceSkillId) {
+            this.damageEnemy(enemy, field.damage, {
+              sourceSkillId: field.sourceSkillId,
+              castOriginX: field.castOriginX || this.player.x,
+              castOriginY: field.castOriginY || this.player.y,
+              skillRecord: field.skillRecord,
+              echoDepth: field.echoDepth || 0,
+              echoDamageScale: field.echoDamageScale || 1,
+              echoChecked: false,
+            });
+          } else {
+            this.damageEnemy(enemy, field.damage, field);
+          }
           if (field.slowLevel > 0) {
             enemy.slowTimer = Math.max(enemy.slowTimer, 0.45 + field.slowLevel * 0.35);
           }
@@ -2683,6 +2833,7 @@ export class GameRuntime {
         if (hitCount > 0 && field.healLevel > 0) {
           this.player.health = Math.min(this.player.maxHealth, this.player.health + hitCount * 0.3 * field.healLevel);
         }
+        field.echoChecked = true;
       }
 
       if (field.duration > 0) {
@@ -3935,6 +4086,53 @@ export class GameRuntime {
   }
 
   handleEnemyDefeat(enemy) {
+    if (enemy.refractOnDeath > 0) {
+      const refTargets = this.findNearestEnemies(enemy.x, enemy.y, 3);
+      for (const refTarget of refTargets) {
+        if (refTarget.id === enemy.id) continue;
+        const dx = refTarget.x - enemy.x;
+        const dy = refTarget.y - enemy.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const deathSpeed = 280 + Math.random() * 40;
+        this.projectiles.push({
+          id: crypto.randomUUID(),
+          skillId: "glassPrismRay",
+          sourceSkillId: "glassPrismRay",
+          x: enemy.x,
+          y: enemy.y,
+          vx: (dx / dist) * deathSpeed,
+          vy: (dy / dist) * deathSpeed,
+          speed: deathSpeed,
+          radius: 6,
+          damage: Math.ceil(6 + enemy.refractOnDeath * 3),
+          pierce: 0,
+          maxDistance: 250 + Math.random() * 60,
+          distanceTravelled: 0,
+          color: "#7fd8ff",
+          recentHits: {},
+          refractCount: 0,
+        });
+      }
+    }
+
+    if (enemy.markedForExplosion > 0) {
+      const markDamage = Math.ceil(18 + enemy.markedForExplosion * 6);
+      for (const other of this.enemies) {
+        if (other !== enemy && circleDistance(enemy, other) <= 100 + other.radius) {
+          this.damageEnemy(other, markDamage, "lanternSpark");
+        }
+      }
+      this.spawnSkillEffect({
+        kind: "meteorBurst",
+        x: enemy.x,
+        y: enemy.y,
+        radius: 50,
+        duration: 0.2,
+        color: "#f4c86d",
+        accent: "#ffeedd",
+      });
+    }
+
     this.session.kills += 1;
     this.pickups.push({
       x: enemy.x,

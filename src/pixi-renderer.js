@@ -1112,6 +1112,77 @@ export class PixiRenderer {
       case "ribbonBlade":
       case "ribbonShard":
         return this.getExternalTexture("projectileRibbon");
+      case "glassPrismRay":
+        return this.getCachedTexture("proj-glassPrism", 96, 14, (g, x, y, r) => {
+          setLine(g, 4, "rgba(255,255,255,0.9)");
+          g.moveTo(x - r, y); g.lineTo(x + r, y);
+          setLine(g, 2, "rgba(200,230,255,0.5)");
+          g.moveTo(x - r * 0.6, y - r * 0.3); g.lineTo(x + r * 0.6, y - r * 0.3);
+          g.moveTo(x - r * 0.6, y + r * 0.3); g.lineTo(x + r * 0.6, y + r * 0.3);
+        });
+      case "honeyBomb":
+        return this.getCachedTexture("proj-honey", 96, 18, (g, x, y, r) => {
+          beginFill(g, "#f0b95f");
+          g.drawCircle(x, y, r * 0.7);
+          g.endFill();
+          beginFill(g, "rgba(255,240,200,0.4)");
+          g.drawCircle(x - r * 0.2, y - r * 0.2, r * 0.3);
+          g.endFill();
+        });
+      case "lanternSpark":
+        return this.getCachedTexture("proj-lantern", 96, 12, (g, x, y, r) => {
+          beginFill(g, "#f4c86d");
+          g.drawCircle(x, y, r * 0.45);
+          g.endFill();
+          beginFill(g, "rgba(255,220,150,0.3)");
+          g.drawCircle(x, y, r * 0.8);
+          g.endFill();
+        });
+      case "antlerBolt":
+        return this.getCachedTexture("proj-antler", 96, 16, (g, x, y, r) => {
+          beginFill(g, "#73d1ff");
+          g.moveTo(x - r, y); g.lineTo(x + r * 0.2, y - r * 0.6); g.lineTo(x + r * 0.2, y + r * 0.6); g.closePath();
+          g.endFill();
+          beginFill(g, "rgba(200,240,255,0.3)");
+          g.drawRect(x - r * 0.6, y - r * 0.15, r * 1.2, r * 0.3);
+          g.endFill();
+        });
+      case "auroraNeedle":
+        return this.getCachedTexture("proj-aurora", 96, 10, (g, x, y, r) => {
+          beginFill(g, "#c9a9ff");
+          g.moveTo(x - r * 0.3, y - r); g.lineTo(x, y + r); g.lineTo(x + r * 0.3, y - r); g.closePath();
+          g.endFill();
+        });
+      case "brambleBoomerang":
+      case "harvestCrescent":
+      case "operaMothBlade":
+        return this.getCachedTexture("proj-boomerang", 96, 16, (g, x, y, r) => {
+          setLine(g, 3, "rgba(255,255,255,0.9)");
+          g.arc(x, y, r * 0.6, -0.6, 0.6);
+          g.arc(x, y, r * 0.6, Math.PI - 0.6, Math.PI + 0.6);
+          setLine(g, 0, "rgba(0,0,0,0)");
+        });
+      case "pearlBubble":
+        return this.getCachedTexture("proj-pearl", 96, 18, (g, x, y, r) => {
+          beginFill(g, "rgba(241,209,138,0.7)");
+          g.drawCircle(x, y, r * 0.7);
+          g.endFill();
+          beginFill(g, "rgba(255,255,255,0.35)");
+          g.drawCircle(x - r * 0.15, y - r * 0.2, r * 0.25);
+          g.endFill();
+        });
+      case "amberGearBurst":
+        return this.getCachedTexture("proj-gear", 96, 18, (g, x, y, r) => {
+          beginFill(g, "#f1b86b");
+          g.drawCircle(x, y, r * 0.55);
+          g.endFill();
+          for (let i = 0; i < 8; i++) {
+            const a = (Math.PI * 2 * i) / 8;
+            beginFill(g, "#d4944a");
+            g.drawRect(x + Math.cos(a) * r * 0.5 - r * 0.08, y + Math.sin(a) * r * 0.5 - r * 0.08, r * 0.16, r * 0.3);
+            g.endFill();
+          }
+        });
       default:
         {
           const definition = getSkillDefinition(projectile.sourceSkillId || projectile.skillId);

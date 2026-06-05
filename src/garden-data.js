@@ -530,7 +530,7 @@ function createRegionalSpecialMonster(regionIndex) {
     accent: mixHex(family.accent, theme.accent, 0.38),
     detailColor: mixHex(family.detailColor, theme.detail, 0.46),
     minTime: 300,
-    weight: Number((family.weight + (regionIndex % 3) * 0.16).toFixed(2)),
+    weight: Number(((family.weight + (regionIndex % 3) * 0.16) / 5).toFixed(2)),
     health: Math.round(family.health * statScale),
     speed: Math.round(family.speed + speedBonus + regionIndex * 0.25),
     damage: Math.round(family.damage + damageBonus),
