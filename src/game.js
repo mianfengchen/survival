@@ -239,6 +239,8 @@ export class GameRuntime {
       x: 0,
       y: 0,
       active: false,
+      lastX: 0,
+      lastY: -1,
     };
 
     this.player = createPlayer();
@@ -317,6 +319,11 @@ export class GameRuntime {
     this.touchInput.x = active ? nextX : 0;
     this.touchInput.y = active ? nextY : 0;
     this.touchInput.active = active;
+    if (active) {
+      const length = Math.hypot(nextX, nextY) || 1;
+      this.touchInput.lastX = nextX / length;
+      this.touchInput.lastY = nextY / length;
+    }
   }
 
   clearTouchMovement() {
@@ -341,6 +348,22 @@ export class GameRuntime {
       x: clamp(dx, -1, 1),
       y: clamp(dy, -1, 1),
     };
+  }
+
+  getBlinkDirection() {
+    const movement = this.getMovementVector();
+    if (movement.x !== 0 || movement.y !== 0) {
+      return movement;
+    }
+
+    if (this.touchInput.active || Math.hypot(this.touchInput.lastX, this.touchInput.lastY) > 0.08) {
+      return {
+        x: this.touchInput.lastX || 0,
+        y: this.touchInput.lastY || -1,
+      };
+    }
+
+    return { x: 0, y: -1 };
   }
 
   bindKeys() {
@@ -1043,7 +1066,7 @@ export class GameRuntime {
     const previousX = this.player.x;
     const previousY = this.player.y;
 
-    const movement = this.getMovementVector();
+    const movement = this.getBlinkDirection();
     let dx = movement.x;
     let dy = movement.y;
     if (dx === 0 && dy === 0) {
@@ -1163,7 +1186,9 @@ export class GameRuntime {
   createEnemy(definition) {
     const spawn = this.getSpawnPoint();
     const profile = this.session?.difficultyProfile || getDifficultyProfile(1);
-    const healthMultiplier = definition.boss ? profile.bossHealthMultiplier : profile.monsterHealthMultiplier;
+    const baseHealthMultiplier = definition.boss ? profile.bossHealthMultiplier : profile.monsterHealthMultiplier;
+    const healthGrowthScale = definition.boss ? 1 : definition.healthGrowthScale ?? 1;
+    const healthMultiplier = 1 + (baseHealthMultiplier - 1) * healthGrowthScale;
     const speedMultiplier = definition.boss ? profile.bossSpeedMultiplier : profile.monsterSpeedMultiplier;
     const damageMultiplier = definition.boss ? profile.bossDamageMultiplier : profile.monsterDamageMultiplier;
 
@@ -1325,13 +1350,35 @@ export class GameRuntime {
 
   spawnFrostBudZone() {
     const camera = this.getCamera();
-    const angle = randomBetween(0, Math.PI * 2);
-    const distance = randomBetween(70, 180);
-    const x = clamp(this.player.x + Math.cos(angle) * distance, camera.x + 80, camera.x + camera.width - 80);
-    const y = clamp(this.player.y + Math.sin(angle) * distance, camera.y + 80, camera.y + camera.height - 80);
+    const margin = 118;
+    const minX = Math.max(margin, camera.x + margin);
+    const maxX = Math.min(ARENA.width - margin, camera.x + Math.max(margin, camera.width - margin));
+    const minY = Math.max(margin, camera.y + margin);
+    const maxY = Math.min(ARENA.height - margin, camera.y + Math.max(margin, camera.height - margin));
+    const samples = [];
+    for (let index = 0; index < 20; index += 1) {
+      const angle = randomBetween(0, Math.PI * 2);
+      const distance = randomBetween(80, 220);
+      samples.push({
+        x: clamp(this.player.x + Math.cos(angle) * distance, minX, maxX),
+        y: clamp(this.player.y + Math.sin(angle) * distance, minY, maxY),
+      });
+    }
+    let point = samples[0] || { x: this.player.x, y: this.player.y };
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const sample of samples) {
+      const enemyDistance = this.enemies.reduce((closest, enemy) => Math.min(closest, circleDistance(sample, enemy) - enemy.radius), Number.POSITIVE_INFINITY);
+      const projectileDistance = this.enemyProjectiles.reduce((closest, projectile) => Math.min(closest, circleDistance(sample, projectile) - projectile.radius), Number.POSITIVE_INFINITY);
+      const playerDistance = Math.abs(circleDistance(sample, this.player) - 140);
+      const score = enemyDistance * 1.15 + projectileDistance * 0.85 - playerDistance * 0.18;
+      if (score > bestScore) {
+        bestScore = score;
+        point = sample;
+      }
+    }
     this.specialState.frostBudZone = {
-      x: clamp(x, 100, ARENA.width - 100),
-      y: clamp(y, 100, ARENA.height - 100),
+      x: clamp(point.x, margin, ARENA.width - margin),
+      y: clamp(point.y, margin, ARENA.height - margin),
       radius: 100,
       duration: 10,
       maxDuration: 10,
@@ -1430,6 +1477,7 @@ export class GameRuntime {
         attackMultiplier: snapshot.attackMultiplier * 2,
         rangeMultiplier: snapshot.rangeMultiplier * 2,
         projectileSizeMultiplier: snapshot.projectileSizeMultiplier * 2,
+        chargedStrikeActive: true,
       };
     }
 
@@ -1499,6 +1547,9 @@ export class GameRuntime {
   stampTriggeredObjects(record, countsBefore, context) {
     const stampEntry = (entry, skillId = record.skillId) => {
       entry.sourceSkillId = entry.sourceSkillId || skillId;
+      if (record.snapshot?.chargedStrikeActive && typeof entry.pierce === "number") {
+        entry.pierce = Math.max(entry.pierce, Math.ceil((entry.pierce + 1) * 2) - 1);
+      }
       entry.castOriginX = context.origin.x;
       entry.castOriginY = context.origin.y;
       entry.skillRecord = {
@@ -2170,10 +2221,11 @@ export class GameRuntime {
       });
       const bloomRadius = stats.bloomRadius * (1 + focus * 0.16);
       if (focus > 0) {
+        const bloomEchoSource = this.normalizeDamageSource(skillId);
         this.spawnSkillEffect({ kind: "vineBloom", x: target.x, y: target.y, radius: bloomRadius, duration: 0.28, color: definitionColor(skillId), accent: "#fff6df" });
         for (const enemy of this.enemies) {
           if (enemy.id !== target.id && circleDistance(enemy, target) <= bloomRadius + enemy.radius) {
-            this.damageEnemy(enemy, damage * (0.28 + focus * 0.1), skillId);
+            this.damageEnemy(enemy, damage * (0.28 + focus * 0.1), bloomEchoSource || skillId);
           }
         }
       }
@@ -2470,6 +2522,7 @@ export class GameRuntime {
 
       if (bloomLevel > 0) {
         const bloomRadius = stats.bloomRadius * (1 + bloomLevel * 0.18);
+        const bloomEchoSource = this.normalizeDamageSource("vineSnare");
         this.spawnSkillEffect({
           kind: "vineBloom",
           x: target.x,
@@ -2484,7 +2537,7 @@ export class GameRuntime {
             continue;
           }
           if (circleDistance(enemy, target) <= bloomRadius + enemy.radius) {
-            this.damageEnemy(enemy, damage * (0.34 + bloomLevel * 0.12), "vineSnare");
+            this.damageEnemy(enemy, damage * (0.34 + bloomLevel * 0.12), bloomEchoSource || "vineSnare");
             enemy.slowTimer = Math.max(enemy.slowTimer, 0.4 + bloomLevel * 0.28);
           }
         }
@@ -3154,6 +3207,8 @@ export class GameRuntime {
     for (const number of this.damageNumbers) {
       number.age += delta;
       number.duration -= delta;
+      const stackEase = Math.min(1, delta * 14);
+      number.y += ((number.targetY ?? number.y) - number.y) * stackEase;
       number.y -= number.floatSpeed * delta;
       number.x += number.drift * delta;
       if (number.duration > 0) {
@@ -3168,17 +3223,32 @@ export class GameRuntime {
       return;
     }
 
+    const baseY = enemy.y - enemy.radius - 54 + randomBetween(-6, 4);
+    const stackGap = crit ? 38 : 31;
+    for (const number of this.damageNumbers) {
+      number.stackSlot = (number.stackSlot || 0) + 1;
+      number.targetY = (number.targetY ?? number.y) - stackGap;
+      number.floatSpeed *= 0.72;
+      if (number.stackSlot >= 5) {
+        number.duration = Math.min(number.duration, 0.28);
+        number.fadeOut = true;
+      }
+    }
+
     this.damageNumbers.push({
       id: crypto.randomUUID(),
-      x: enemy.x + randomBetween(-enemy.radius * 0.45, enemy.radius * 0.45),
-      y: enemy.y - enemy.radius * 0.72 + randomBetween(-12, 8),
+      x: enemy.x + randomBetween(-enemy.radius * 0.34, enemy.radius * 0.34),
+      y: baseY + 16,
+      targetY: baseY,
       value: Math.max(1, Math.round(damage)),
       crit,
       age: 0,
-      duration: crit ? 0.92 : 0.72,
-      maxDuration: crit ? 0.92 : 0.72,
-      floatSpeed: crit ? 78 : 58,
-      drift: randomBetween(-18, 18),
+      duration: crit ? 1.05 : 0.88,
+      maxDuration: crit ? 1.05 : 0.88,
+      floatSpeed: crit ? 12 : 8,
+      drift: randomBetween(-7, 7),
+      stackSlot: 0,
+      fadeOut: false,
     });
 
     if (this.damageNumbers.length > 90) {
@@ -4550,10 +4620,16 @@ export class GameRuntime {
   }
 
   damageEnemy(enemy, damage, source) {
-    enemy.health -= damage;
     const rollInfo = this.lastDamageRoll;
     this.lastDamageRoll = null;
-    this.spawnDamageNumber(enemy, damage, Boolean(rollInfo?.crit));
+    let finalDamage = damage;
+    let crit = Boolean(rollInfo?.crit);
+    if (this.specialState.killingIntentFor > 0 && !rollInfo?.killingIntentActive) {
+      finalDamage *= (this.player.critDamage || 1.5) + 1;
+      crit = true;
+    }
+    enemy.health -= finalDamage;
+    this.spawnDamageNumber(enemy, finalDamage, crit);
     this.recordKillingIntentHit();
     this.maybeTriggerEcho(enemy, this.normalizeDamageSource(source));
   }
@@ -4730,7 +4806,7 @@ export class GameRuntime {
     const crit = Math.random() < critChance;
     const frostMultiplier = source.frostBudDamageMultiplier ?? (this.isPointInsideFrostBudZone(this.player.x, this.player.y) ? 1.15 : 1);
     const damage = baseDamage * source.attackMultiplier * frostMultiplier * (crit ? critDamage : 1);
-    this.lastDamageRoll = { crit, damage };
+    this.lastDamageRoll = { crit, damage, killingIntentActive };
     return damage;
   }
 
@@ -5387,6 +5463,46 @@ export class GameRuntime {
   drawSkillEffects(ctx) {
     for (const effect of this.skillEffects) {
       const progress = 1 - effect.duration / Math.max(0.001, effect.maxDuration || effect.duration || 1);
+
+      if (effect.kind === "frostBudZone") {
+        ctx.save();
+        ctx.translate(effect.x, effect.y);
+        const pulse = Math.sin(performance.now() * 0.004 + effect.x * 0.01) * 0.04;
+        const radius = effect.radius * (1 + pulse);
+        ctx.fillStyle = "rgba(178, 238, 255, 0.13)";
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = effect.color || "rgba(150, 226, 255, 0.72)";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 0.96, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255,0.76)";
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 0.68, 0, Math.PI * 2);
+        ctx.stroke();
+        for (let index = 0; index < 10; index += 1) {
+          const angle = (Math.PI * 2 * index) / 10 + progress * 1.2;
+          ctx.save();
+          ctx.rotate(angle);
+          ctx.strokeStyle = index % 2 === 0 ? "rgba(232, 252, 255, 0.86)" : "rgba(142, 226, 255, 0.72)";
+          ctx.beginPath();
+          ctx.moveTo(radius * 0.24, 0);
+          ctx.lineTo(radius * 0.82, 0);
+          ctx.stroke();
+          ctx.fillStyle = ctx.strokeStyle;
+          tracePetal(ctx, radius * 0.24, radius * 0.07);
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.fillStyle = effect.accent || "rgba(245,253,255,0.92)";
+        traceStar(ctx, radius * 0.22, radius * 0.09, 6);
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
 
       if (effect.kind === "vineWhip") {
         const controlX = (effect.x + effect.targetX) / 2 + (effect.targetY - effect.y) * 0.12;

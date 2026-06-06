@@ -1935,6 +1935,9 @@ export class PixiRenderer {
       const visual = this.acquireFromPool("damageNumbers", this.spriteLayers.damageNumbers, () => this.createDamageNumberVisual());
       const progress = clamp(number.age / Math.max(0.001, number.maxDuration || 1), 0, 1);
       const crit = Boolean(number.crit);
+      const stackSlot = number.stackSlot || 0;
+      const stackScale = stackSlot >= 5 ? 0.52 : Math.max(0.7, 1 - stackSlot * 0.08);
+      const stackAlpha = stackSlot >= 5 ? 0.18 : Math.max(0.42, 1 - stackSlot * 0.14);
       const pop = crit
         ? 1 + Math.sin(Math.min(1, progress * 2.4) * Math.PI) * 0.28
         : 1 + Math.sin(Math.min(1, progress * 2.2) * Math.PI) * 0.12;
@@ -1945,9 +1948,10 @@ export class PixiRenderer {
       visual.style.stroke = crit ? "#b44773" : "#6d4a8d";
       visual.style.strokeThickness = crit ? 7 : 5;
       visual.position.set(number.x, number.y);
-      visual.scale.set(pop);
+      visual.scale.set(pop * stackScale);
       visual.rotation = Math.sin((number.age + number.x * 0.001) * 8) * (crit ? 0.08 : 0.04);
-      visual.alpha = clamp(1 - Math.max(0, progress - 0.62) / 0.38, 0, 1);
+      const fadeStart = number.fadeOut ? 0 : 0.62;
+      visual.alpha = stackAlpha * clamp(1 - Math.max(0, progress - fadeStart) / Math.max(0.001, 1 - fadeStart), 0, 1);
     }
   }
 
@@ -1991,7 +1995,53 @@ export class PixiRenderer {
     const graphics = this.layers.skillEffects;
     for (const effect of effects) {
       const progress = getProgress(effect);
-      if (effect.kind === "mirrorClone") {
+      if (effect.kind === "frostBudZone") {
+        const pulse = Math.sin(this.getMotionTime(0.006) + effect.x * 0.004) * 0.04;
+        const radius = effect.radius * (1 + pulse);
+        beginFill(graphics, "rgba(178, 238, 255, 0.13)");
+        graphics.drawCircle(effect.x, effect.y, radius);
+        graphics.endFill();
+        setLine(graphics, 8, "rgba(217, 250, 255, 0.18)");
+        graphics.drawCircle(effect.x, effect.y, radius * (0.9 + progress * 0.05));
+        setLine(graphics, 3.5, effect.color || "rgba(150, 226, 255, 0.72)");
+        graphics.drawCircle(effect.x, effect.y, radius * 0.96);
+        setLine(graphics, 1.6, "rgba(255,255,255,0.78)");
+        graphics.drawCircle(effect.x, effect.y, radius * 0.68);
+        for (let index = 0; index < 10; index += 1) {
+          const angle = (Math.PI * 2 * index) / 10 + this.getMotionTime(0.0014);
+          const inner = radius * 0.26;
+          const outer = radius * (0.78 + (index % 2) * 0.08);
+          graphics.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner);
+          graphics.lineTo(effect.x + Math.cos(angle) * outer, effect.y + Math.sin(angle) * outer);
+          drawLeaf(
+            graphics,
+            effect.x + Math.cos(angle) * radius * 0.42,
+            effect.y + Math.sin(angle) * radius * 0.42,
+            radius * 0.28,
+            radius * 0.075,
+            angle + Math.PI / 2,
+            index % 2 === 0 ? "rgba(232, 252, 255, 0.9)" : "rgba(142, 226, 255, 0.82)",
+          );
+        }
+        beginFill(graphics, effect.accent || "rgba(245,253,255,0.92)", 0.8);
+        drawStar(graphics, effect.x, effect.y, radius * 0.22, radius * 0.09, 6);
+        graphics.endFill();
+        if (Math.random() < delta * this.getSpawnRate(34)) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = radius * (0.18 + Math.random() * 0.74);
+          this.spawnParticle({
+            x: effect.x + Math.cos(angle) * dist,
+            y: effect.y + Math.sin(angle) * dist,
+            vx: Math.cos(angle) * 12,
+            vy: Math.sin(angle) * 12 - 12,
+            life: 0.56,
+            scale: 0.26,
+            color: "#e8fbff",
+            alpha: 0.44,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "mirrorClone") {
         const bob = Math.sin(this.getMotionTime(0.01) + effect.x * 0.01) * 2;
         beginFill(graphics, effect.color, 0.36 * (1 - progress * 0.4));
         graphics.drawEllipse(effect.x, effect.y + effect.radius * 0.18 + bob, effect.radius * 0.34, effect.radius * 0.48);

@@ -74,6 +74,22 @@ function normalizeTalentLevel(level) {
 
 export const MONSTER_LIBRARY = [
   {
+    id: "dewling",
+    name: "露珠软虫",
+    description: "最早出现的轻量基础怪，移动慢、血量低，在高关卡开局也能稳定提供经验节奏。",
+    color: "#9eeec6",
+    accent: "#58a87b",
+    detailColor: "#eafff4",
+    minTime: 0,
+    weight: 12,
+    health: 14,
+    healthGrowthScale: 0.38,
+    speed: 38,
+    damage: 5,
+    radius: 13,
+    exp: 3,
+  },
+  {
     id: "sproutSlime",
     name: "芽芽史莱姆",
     description: "从草地缝隙钻出的圆润小怪，移动慢但数量最多。",
@@ -669,7 +685,7 @@ export const SPECIAL_BOON_LIBRARY = [
   {
     id: "chargedStrike",
     name: "蓄力",
-    description: "每次施放技能时，初始有 1% 概率触发蓄力一击；每次未触发概率 +1%，触发后重置为 1%。蓄力一击使本次技能伤害、范围和投射物体积均提高至 2 倍。",
+    description: "每次施放技能时，初始有 1% 概率触发蓄力一击；每次未触发概率 +1%，触发后重置为 1%。蓄力一击使本次技能伤害、范围、射程、投射物体积和穿透能力均提高至 2 倍。",
   },
   {
     id: "killingIntent",

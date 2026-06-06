@@ -805,7 +805,23 @@ function bindBattleTouchControls() {
     });
   }
 
+  let touchBlinkHandled = false;
+  elements.touchBlinkButton.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch" || game.state !== "running") {
+      return;
+    }
+    event.preventDefault();
+    touchBlinkHandled = true;
+    window.setTimeout(() => {
+      touchBlinkHandled = false;
+    }, 320);
+    game.tryBlink();
+  });
   elements.touchBlinkButton.addEventListener("click", () => {
+    if (touchBlinkHandled) {
+      touchBlinkHandled = false;
+      return;
+    }
     game.tryBlink();
   });
 
