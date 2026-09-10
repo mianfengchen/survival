@@ -902,6 +902,7 @@ export class PixiRenderer {
     this.drawPulses(runtime.pulses || [], delta);
     this.drawProjectiles(runtime.projectiles || [], delta);
     this.drawOrbitals(runtime, delta);
+    this.drawThunderSprites(runtime, delta);
     this.drawEnemies(runtime.enemies || [], delta);
     this.drawSkillEffects(runtime.skillEffects || [], delta);
     this.drawEnemyProjectiles(runtime.enemyProjectiles || [], delta);
@@ -1159,6 +1160,19 @@ export class PixiRenderer {
           g.endFill();
         });
       case "brambleBoomerang":
+      case "brambleBoomerangShard":
+        return this.getCachedTexture("proj-thornseed", 96, 10, (g, x, y, r) => {
+          beginFill(g, "#9bcf63");
+          g.moveTo(x, y - r * 0.9);
+          g.lineTo(x + r * 0.5, y);
+          g.lineTo(x, y + r * 0.9);
+          g.lineTo(x - r * 0.5, y);
+          g.closePath();
+          g.endFill();
+          beginFill(g, "rgba(255,255,255,0.4)");
+          g.drawCircle(x - r * 0.1, y, r * 0.16);
+          g.endFill();
+        });
       case "harvestCrescent":
       case "operaMothBlade":
         return this.getCachedTexture("proj-boomerang", 96, 16, (g, x, y, r) => {
@@ -1166,6 +1180,23 @@ export class PixiRenderer {
           g.arc(x, y, r * 0.6, -0.6, 0.6);
           g.arc(x, y, r * 0.6, Math.PI - 0.6, Math.PI + 0.6);
           setLine(g, 0, "rgba(0,0,0,0)");
+        });
+      case "cometPlow":
+        return this.getCachedTexture("proj-comet", 96, 20, (g, x, y, r) => {
+          setLine(g, 4, "rgba(255, 220, 170, 0.28)");
+          g.moveTo(x - r * 1.1, y);
+          g.lineTo(x + r * 0.5, y);
+          setLine(g, 2, "rgba(255, 190, 120, 0.5)");
+          g.moveTo(x - r * 0.9, y - r * 0.2);
+          g.lineTo(x + r * 0.2, y - r * 0.2);
+          g.moveTo(x - r * 0.9, y + r * 0.2);
+          g.lineTo(x + r * 0.2, y + r * 0.2);
+          beginFill(g, "#fff3dd");
+          g.drawCircle(x + r * 0.4, y, r * 0.34);
+          g.endFill();
+          beginFill(g, "rgba(255, 150, 90, 0.9)");
+          g.drawCircle(x - r * 0.1, y, r * 0.22);
+          g.endFill();
         });
       case "pearlBubble":
         return this.getCachedTexture("proj-pearl", 96, 18, (g, x, y, r) => {
@@ -1235,8 +1266,23 @@ export class PixiRenderer {
     });
   }
 
-  getMeteorTexture(color) {
-    return this.getExternalTexture("projectileMeteor");
+  getMeteorTexture() {
+    return this.getCachedTexture("proj-meteor", 128, 28, (g, x, y, r) => {
+      beginFill(g, "rgba(255, 214, 150, 0.5)");
+      g.moveTo(x - r * 1.05, y);
+      g.lineTo(x - r * 0.1, y - r * 0.5);
+      g.lineTo(x + r * 0.32, y - r * 0.12);
+      g.lineTo(x + r * 0.32, y + r * 0.12);
+      g.lineTo(x - r * 0.1, y + r * 0.5);
+      g.closePath();
+      g.endFill();
+      beginFill(g, "#fff4dc");
+      g.drawCircle(x + r * 0.18, y, r * 0.42);
+      g.endFill();
+      beginFill(g, "rgba(255,255,255,0.95)");
+      g.drawCircle(x + r * 0.34, y, r * 0.22);
+      g.endFill();
+    });
   }
 
   getFieldTexture(field) {
@@ -1819,6 +1865,8 @@ export class PixiRenderer {
         "sporeShard",
         "ribbonBlade",
         "ribbonShard",
+        "cometPlow",
+        "brambleBoomerang",
       ].includes(projectile.skillId) || advancedProjectile;
 
       if (!supported) {
@@ -2120,6 +2168,92 @@ export class PixiRenderer {
           graphics.moveTo(effect.x, effect.y);
           graphics.lineTo(effect.x + Math.cos(angle) * effect.radius * (0.58 + progress * 0.36), effect.y + Math.sin(angle) * effect.radius * (0.58 + progress * 0.36));
         }
+      } else if (effect.kind === "thunderArc") {
+        const startX = effect.x;
+        const startY = effect.y;
+        const endX = effect.targetX;
+        const endY = effect.targetY;
+        const length = Math.hypot(endX - startX, endY - startY) || 1;
+        const perpX = -(endY - startY) / length;
+        const perpY = (endX - startX) / length;
+        const drawArc = (width, color) => {
+          setLine(graphics, width, color);
+          graphics.moveTo(startX, startY);
+          const segments = 7;
+          for (let index = 1; index <= segments; index += 1) {
+            const ratio = index / segments;
+            const jitter = (Math.random() - 0.5) * 14;
+            graphics.lineTo(
+              startX + (endX - startX) * ratio + perpX * jitter,
+              startY + (endY - startY) * ratio + perpY * jitter,
+            );
+          }
+          graphics.lineTo(endX, endY);
+        };
+        drawArc(effect.thickness * 2.6, "rgba(210, 190, 255, 0.18)");
+        drawArc(effect.thickness, effect.color);
+        drawArc(Math.max(1.5, effect.thickness * 0.4), "rgba(255,255,255,0.85)");
+      } else if (effect.kind === "thunderBurst") {
+        setLine(graphics, 12, "rgba(210, 190, 255, 0.12)");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.35 + progress * 0.5));
+        setLine(graphics, 3, effect.color);
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.4 + progress * 0.44));
+        beginFill(graphics, effect.accent);
+        drawStar(graphics, effect.x, effect.y, effect.radius * (0.5 + progress * 0.12), effect.radius * 0.2, 8);
+        graphics.endFill();
+        for (let index = 0; index < 8; index += 1) {
+          const angle = (Math.PI * 2 * index) / 8 + progress * 0.3;
+          graphics.moveTo(effect.x, effect.y);
+          graphics.lineTo(effect.x + Math.cos(angle) * effect.radius * (0.55 + progress * 0.34), effect.y + Math.sin(angle) * effect.radius * (0.55 + progress * 0.34));
+        }
+      } else if (effect.kind === "dewPop") {
+        const popRadius = effect.radius * (0.3 + progress * 0.7);
+        setLine(graphics, 8 * (1 - progress * 0.4), "rgba(170, 240, 230, 0.16)");
+        graphics.drawCircle(effect.x, effect.y, popRadius);
+        setLine(graphics, 2.6, effect.color);
+        graphics.drawCircle(effect.x, effect.y, popRadius * 0.8);
+        beginFill(graphics, effect.accent, 0.3 * (1 - progress));
+        graphics.drawCircle(effect.x, effect.y, popRadius * 0.5);
+        graphics.endFill();
+        for (let index = 0; index < 6; index += 1) {
+          const angle = (Math.PI * 2 * index) / 6 + progress * 0.5;
+          graphics.moveTo(effect.x + Math.cos(angle) * popRadius * 0.2, effect.y + Math.sin(angle) * popRadius * 0.2);
+          graphics.lineTo(effect.x + Math.cos(angle) * popRadius * 0.9, effect.y + Math.sin(angle) * popRadius * 0.9);
+        }
+      } else if (effect.kind === "brambleBurst") {
+        beginFill(graphics, "rgba(150, 220, 70, 0.1)");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.35 + progress * 0.5));
+        graphics.endFill();
+        for (let index = 0; index < 10; index += 1) {
+          const angle = (Math.PI * 2 * index) / 10 + progress * 0.5;
+          const dist = effect.radius * (0.3 + progress * 0.55);
+          drawLeaf(graphics, effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, effect.radius * 0.34, effect.radius * 0.12, angle, index % 2 === 0 ? "#9bcf63" : "#c7e88a");
+        }
+      } else if (effect.kind === "orchidBloom") {
+        beginFill(graphics, "rgba(214, 156, 255, 0.1)");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.3 + progress * 0.55));
+        graphics.endFill();
+        const petalCount = 8;
+        for (let index = 0; index < petalCount; index += 1) {
+          const angle = (Math.PI * 2 * index) / petalCount + progress * 0.6;
+          const dist = effect.radius * (0.4 + progress * 0.5);
+          drawLeaf(graphics, effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, effect.radius * 0.42, effect.radius * 0.15, angle, index % 2 === 0 ? effect.color : "#f0ccff");
+        }
+        if (Math.random() < delta * 30) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = effect.radius * (0.3 + Math.random() * 0.7);
+          this.spawnParticle({
+            x: effect.x + Math.cos(angle) * dist,
+            y: effect.y + Math.sin(angle) * dist,
+            vx: Math.cos(angle) * 60,
+            vy: Math.sin(angle) * 60,
+            life: 0.4,
+            scale: 0.2,
+            color: "#e2b8ff",
+            alpha: 0.4,
+            blendMode: SCREEN_BLEND,
+          });
+        }
       } else if (effect.kind === "bubblePop") {
         const burstRadius = effect.radius * (0.28 + progress * 0.72);
         setLine(graphics, 9 * (1 - progress * 0.45), "rgba(171, 235, 255, 0.12)");
@@ -2308,6 +2442,18 @@ export class PixiRenderer {
   drawMines(mines) {
     const graphics = this.layers.mines;
     for (const mine of mines) {
+      if (mine.kind === "dewChain") {
+        const ready = mine.armTime <= 0;
+        beginFill(graphics, ready ? "#c6fff2" : "#8adfd6", ready ? 0.95 : 0.78);
+        graphics.drawCircle(mine.x, mine.y, mine.radius * 0.85);
+        graphics.endFill();
+        beginFill(graphics, "rgba(255,255,255,0.9)", 0.85);
+        graphics.drawCircle(mine.x - mine.radius * 0.22, mine.y - mine.radius * 0.22, mine.radius * 0.26);
+        graphics.endFill();
+        setLine(graphics, 2, ready ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)");
+        graphics.drawCircle(mine.x, mine.y, mine.radius * (0.85 + (ready ? 0.25 : 0)));
+        continue;
+      }
       if (mine.kind === "emberSeed") {
         beginFill(graphics, "rgba(255, 156, 102, 0.88)");
         graphics.drawCircle(mine.x, mine.y, mine.radius);
@@ -2342,10 +2488,12 @@ export class PixiRenderer {
       const textureData = this.getMeteorTexture(meteor.color);
       const scale = meteor.radius / textureData.baseRadius;
 
+      const fallAngle = Math.atan2(meteor.targetY - meteor.startY, meteor.targetX - meteor.startX);
       visual.position.set(x, y);
       visual.mainSprite.texture = textureData.texture;
-      visual.mainSprite.scale.set(scale * 1.1);
-      visual.mainSprite.rotation = meteor.spin || 0;
+      visual.mainSprite.tint = parseColor(meteor.color).color;
+      visual.mainSprite.scale.set(scale * 1.15);
+      visual.mainSprite.rotation = fallAngle + Math.sin(this.getMotionTime(0.004) + meteor.x * 0.001) * 0.05;
       visual.glowSprite.tint = parseColor(meteor.color).color;
       visual.glowSprite.scale.set(scale * 2.1);
       visual.glowSprite.alpha = 0.26;
@@ -2355,16 +2503,31 @@ export class PixiRenderer {
       setLine(glowGraphics, 3, meteor.color);
       glowGraphics.drawCircle(meteor.targetX, meteor.targetY, meteor.radius * (0.62 + progress * 0.12));
 
-      if (Math.random() < delta * 26) {
+      const backX = x - Math.cos(fallAngle) * meteor.radius * 1.1;
+      const backY = y - Math.sin(fallAngle) * meteor.radius * 1.1;
+      if (Math.random() < delta * 36) {
+        this.spawnParticle({
+          x: backX + (Math.random() - 0.5) * 8,
+          y: backY + (Math.random() - 0.5) * 8,
+          vx: -Math.cos(fallAngle) * 26 + (Math.random() - 0.5) * 10,
+          vy: -Math.sin(fallAngle) * 26 + (Math.random() - 0.5) * 10,
+          life: 0.45,
+          scale: 0.3,
+          color: meteor.color,
+          alpha: 0.4,
+          blendMode: SCREEN_BLEND,
+        });
+      }
+      if (Math.random() < delta * 14) {
         this.spawnParticle({
           x,
           y,
-          vx: (Math.random() - 0.5) * 14,
-          vy: 10 + Math.random() * 20,
-          life: 0.38,
-          scale: 0.32,
-          color: "#ffca96",
-          alpha: 0.38,
+          vx: (Math.random() - 0.5) * 10,
+          vy: -8 - Math.random() * 8,
+          life: 0.3,
+          scale: 0.2,
+          color: "#fff1d8",
+          alpha: 0.3,
         });
       }
     }
@@ -2494,6 +2657,39 @@ export class PixiRenderer {
           scale: 0.16,
           color: definition.color,
           alpha: 0.2,
+          blendMode: SCREEN_BLEND,
+        });
+      }
+    }
+  }
+
+  drawThunderSprites(runtime, delta) {
+    const companions = runtime.companions || [];
+    if (companions.length === 0) {
+      return;
+    }
+    const graphics = this.layers.skillEffects;
+    for (const companion of companions) {
+      const bob = Math.sin(this.getMotionTime(0.011) + companion.orbitAngle) * 2;
+      const y = companion.y + bob;
+      setLine(graphics, 6, "rgba(195, 178, 255, 0.14)");
+      graphics.drawCircle(companion.x, y, 11);
+      beginFill(graphics, companion.color || "#c3b2ff", 0.3);
+      graphics.drawCircle(companion.x, y, 7);
+      graphics.endFill();
+      beginFill(graphics, "rgba(255,255,255,0.9)", 0.55);
+      drawStar(graphics, companion.x, y, 5, 2.2, 4);
+      graphics.endFill();
+      if (Math.random() < delta * 10) {
+        this.spawnParticle({
+          x: companion.x + (Math.random() - 0.5) * 4,
+          y: y + (Math.random() - 0.5) * 4,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.5) * 8,
+          life: 0.3,
+          scale: 0.18,
+          color: companion.color || "#c3b2ff",
+          alpha: 0.3,
           blendMode: SCREEN_BLEND,
         });
       }

@@ -1,5 +1,5 @@
-const STATIC_CACHE = "garden-survivor-static-v2";
-const RUNTIME_CACHE = "garden-survivor-runtime-v2";
+const STATIC_CACHE = "garden-survivor-static-v3";
+const RUNTIME_CACHE = "garden-survivor-runtime-v3";
 const APP_SHELL = [
   "./",
   "./index.html",

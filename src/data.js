@@ -469,10 +469,10 @@ export const GENERAL_UPGRADES = [
   {
     id: "attackGrowth",
     name: "攻击成长",
-    description: "总伤害 +9%。",
+    description: "总伤害 +5%。",
     maxLevel: 10,
     apply: (player, session) => {
-      player.attackMultiplier += 0.09;
+      player.attackMultiplier *= 1.05;
     },
   },
   {
@@ -695,7 +695,7 @@ export const SPECIAL_BOON_LIBRARY = [
   {
     id: "frostBud",
     name: "冰霜花苞",
-    description: "累计受伤达到最大生命值 30% 时，在附近随机位置生成持续 10 秒、直径 200 的冰霜领域。领域内你的伤害 +15%，敌人与敌方投射物无法进入。领域消失后进入 60 秒冷却并触发一次安全传送；传送技能会优先传送到领域内。",
+    description: "累计受伤达到最大生命值 30% 时，在附近随机位置生成持续 10 秒、直径 200 的冰霜领域。领域内你的伤害 +100%，敌人与敌方投射物无法进入。领域消失后进入 60 秒冷却并触发一次安全传送；传送技能会优先传送到领域内。",
   },
   {
     id: "iceThorn",

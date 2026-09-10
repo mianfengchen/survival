@@ -293,6 +293,7 @@ const elements = {
   hudFields: document.querySelectorAll("#hudStats [data-field]"),
   hudTimerText: document.querySelector("#hudTimerText"),
   hudHealthText: document.querySelector("#hudHealthText"),
+  hudBlinkCharges: document.querySelector("#hudBlinkCharges"),
   hudLevelText: document.querySelector("#hudLevelText"),
   hudExpFill: document.querySelector("#hudExpFill"),
   hudExpText: document.querySelector("#hudExpText"),
@@ -445,6 +446,9 @@ async function bootApp() {
     healthRegen: "0.0 / 秒",
     cooldown: "0%",
     blink: "1 / 1",
+    blinkCharges: 1,
+    blinkChargesMax: 1,
+    blinkRechargeProgress: 1,
     expPickupRange: "96",
     kills: "0",
     skills: [],
@@ -940,6 +944,7 @@ function renderHud(snapshot) {
   renderTouchPauseButton();
   elements.hudTimerText.textContent = snapshot.time === "Boss" ? "Boss 战" : `倒计时 ${snapshot.time}`;
   elements.hudHealthText.textContent = `生命 ${snapshot.health}`;
+  renderBlinkCharges(snapshot);
   elements.hudLevelText.textContent = `LV ${snapshot.level}`;
   elements.hudExpText.textContent = snapshot.exp;
   elements.hudExpFill.style.width = `${Math.max(0, Math.min(100, (snapshot.expRatio || 0) * 100))}%`;
@@ -975,6 +980,46 @@ function renderHud(snapshot) {
     .join("");
 }
 
+function renderBlinkCharges(snapshot) {
+  const container = elements.hudBlinkCharges;
+  if (!container) {
+    return;
+  }
+
+  const total = Math.max(1, Number(snapshot.blinkChargesMax) || 1);
+  const ready = Math.max(0, Number(snapshot.blinkCharges) || 0);
+  const progress = Math.max(0, Math.min(1, Number(snapshot.blinkRechargeProgress) || 0));
+
+  if (container.children.length !== total) {
+    container.replaceChildren();
+    for (let index = 0; index < total; index += 1) {
+      const icon = document.createElement("span");
+      icon.className = "hud-blink-charge";
+      const fill = document.createElement("span");
+      fill.className = "hud-blink-charge__fill";
+      icon.append(fill);
+      container.append(icon);
+    }
+  }
+
+  container.querySelectorAll(".hud-blink-charge").forEach((icon, index) => {
+    const fill = icon.querySelector(".hud-blink-charge__fill");
+    if (index < ready) {
+      icon.classList.add("is-ready");
+      icon.classList.remove("is-recharging", "is-empty");
+      fill.style.height = "100%";
+    } else if (index === ready) {
+      icon.classList.add("is-recharging");
+      icon.classList.remove("is-ready", "is-empty");
+      fill.style.height = `${progress * 100}%`;
+    } else {
+      icon.classList.add("is-empty");
+      icon.classList.remove("is-ready", "is-recharging");
+      fill.style.height = "0%";
+    }
+  });
+}
+
 function renderLevelChoices(choices) {
   elements.levelChoices.innerHTML = choices
     .map(
@@ -992,6 +1037,18 @@ function renderLevelChoices(choices) {
     button.addEventListener("click", () => {
       game.chooseUpgrade(button.dataset.choiceKey);
     });
+  }
+
+  const allNewSkills = choices.length > 0 && choices.every((choice) => choice.type === "skill-unlock");
+  if (allNewSkills) {
+    const fallbackButton = document.createElement("button");
+    fallbackButton.className = "choice-button choice-button--passive-fallback";
+    fallbackButton.type = "button";
+    fallbackButton.textContent = "替换为被动技能 / 技能增益";
+    fallbackButton.addEventListener("click", () => {
+      game.rerollLevelChoicesToPassives();
+    });
+    elements.levelChoices.append(fallbackButton);
   }
 }
 
@@ -1425,12 +1482,20 @@ function renderLab() {
   elements.skillUnlockShop.innerHTML = unlockedCharacters
     .map((character) => {
       const skill = getSkillDefinition(character.skillId);
+      const signature = (skill?.exclusiveUpgrades || []).find((exclusive) =>
+        (exclusive.description || "").includes("【专属】"),
+      );
+      const signatureUnlocked = signature ? progress.unlocks.exclusives[signature.id] : false;
+      const signatureLine = signature
+        ? `<p class="card-note">签名专属：${signature.name}${signatureUnlocked ? "（已研究）" : "（待研究）"}</p>`
+        : "";
       return `
         <article class="shop-card">
           <div>
             <strong>${character.name}</strong>
             <p class="card-note">${character.description}</p>
             <p class="card-note">专属技能：${skill?.name || "未知技能"}</p>
+            ${signatureLine}
           </div>
           <footer>
             <span>共享已解锁技能池</span>

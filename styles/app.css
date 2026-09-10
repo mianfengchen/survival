@@ -442,6 +442,34 @@ h3 {
   --card-shadow: rgba(55, 32, 95, 0.18);
 }
 
+.level-choice-grid .choice-button--passive-fallback {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  min-height: 0;
+  padding: 14px 20px;
+  grid-template-rows: auto;
+  border-style: dashed;
+  border-width: 2px;
+  border-color: rgba(214, 154, 60, 0.75);
+  background:
+    linear-gradient(180deg, rgba(255, 231, 168, 0.22), rgba(214, 154, 60, 0.08)) padding-box,
+    linear-gradient(160deg, rgba(236, 205, 145, 0.9), #c7923b) border-box;
+  box-shadow: 0 10px 22px rgba(78, 57, 22, 0.16);
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: rgba(90, 62, 20, 0.95);
+}
+
+.level-choice-grid .choice-button--passive-fallback::before,
+.level-choice-grid .choice-button--passive-fallback::after {
+  display: none;
+}
+
+.level-choice-grid .choice-button--passive-fallback:hover {
+  border-color: rgba(240, 180, 80, 0.95);
+  filter: brightness(1.04);
+}
+
 .campaign-shell {
   padding-bottom: 18px;
 }
@@ -1135,6 +1163,48 @@ h3 {
 .hud-top-left {
   text-align: left;
   align-self: flex-start;
+}
+
+.hud-blink-charges {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.hud-blink-charge {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(35, 26, 10, 0.92), rgba(18, 12, 4, 0.92));
+  border: 1px solid rgba(255, 231, 168, 0.28);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.hud-blink-charge__fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0%;
+  background: linear-gradient(180deg, rgba(255, 241, 180, 0.95), rgba(255, 205, 96, 0.9));
+  transition: height 0.1s linear;
+}
+
+.hud-blink-charge.is-ready {
+  border-color: rgba(255, 224, 140, 0.85);
+  box-shadow: 0 0 8px rgba(255, 209, 95, 0.55), inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.hud-blink-charge.is-ready .hud-blink-charge__fill {
+  background: linear-gradient(180deg, #fff3cf, #ffd15f);
+}
+
+.hud-blink-charge.is-empty {
+  border-color: rgba(255, 231, 168, 0.18);
+  opacity: 0.55;
 }
 
 .hud-top-right {
