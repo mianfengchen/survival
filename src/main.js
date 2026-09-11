@@ -298,6 +298,8 @@ const elements = {
   hudExpFill: document.querySelector("#hudExpFill"),
   hudExpText: document.querySelector("#hudExpText"),
   eyeComfortButton: document.querySelector("#eyeComfortButton"),
+  muteButton: document.querySelector("#muteButton"),
+  reducedMotionButton: document.querySelector("#reducedMotionButton"),
   speedToggleButton: document.querySelector("#speedToggleButton"),
   touchControls: document.querySelector("#touchControls"),
   touchJoystick: document.querySelector("#touchJoystick"),
@@ -368,6 +370,17 @@ const game = new GameRuntime({
   },
 });
 game.setEyeComfortMode(progress.settings?.eyeComfortMode ?? false);
+game.setMuted(progress.settings?.muted ?? false);
+game.setReducedMotion(progress.settings?.reducedMotion ?? false);
+
+// Browsers block audio until a user gesture; resume the context on the first interaction.
+function primeAudioOnGesture() {
+  game.resumeAudio();
+  window.removeEventListener("pointerdown", primeAudioOnGesture);
+  window.removeEventListener("keydown", primeAudioOnGesture);
+}
+window.addEventListener("pointerdown", primeAudioOnGesture);
+window.addEventListener("keydown", primeAudioOnGesture);
 
 bindUi();
 bindBattleTouchControls();
@@ -455,6 +468,8 @@ async function bootApp() {
   });
   renderSpeedButton(1);
   renderEyeComfortButton(progress.settings?.eyeComfortMode ?? false);
+  renderMuteButton(progress.settings?.muted ?? false);
+  renderReducedMotionButton(progress.settings?.reducedMotion ?? false);
 
   if (!progress.world.tutorialCompleted) {
     openIntroStory();
@@ -674,6 +689,14 @@ function bindUi() {
 
   elements.eyeComfortButton.addEventListener("click", () => {
     setEyeComfortMode(!(progress.settings?.eyeComfortMode ?? false));
+  });
+
+  elements.muteButton?.addEventListener("click", () => {
+    setMuted(!(progress.settings?.muted ?? false));
+  });
+
+  elements.reducedMotionButton?.addEventListener("click", () => {
+    setReducedMotion(!(progress.settings?.reducedMotion ?? false));
   });
 
   elements.giveUpButton.addEventListener("click", () => {
@@ -938,6 +961,34 @@ function setEyeComfortMode(enabled) {
   saveProgress(progress);
   game.setEyeComfortMode(enabled);
   renderEyeComfortButton(enabled);
+}
+
+function renderMuteButton(muted) {
+  if (!elements.muteButton) return;
+  elements.muteButton.textContent = muted ? "音效 关" : "音效 开";
+  elements.muteButton.dataset.active = muted ? "false" : "true";
+}
+
+function setMuted(muted) {
+  progress = updateSettings(progress, { muted });
+  saveProgress(progress);
+  game.resumeAudio();
+  game.setMuted(muted);
+  renderMuteButton(muted);
+}
+
+function renderReducedMotionButton(reduced) {
+  if (!elements.reducedMotionButton) return;
+  // Button reflects screen-shake state: 开 = shake on (reducedMotion off).
+  elements.reducedMotionButton.textContent = reduced ? "震屏 关" : "震屏 开";
+  elements.reducedMotionButton.dataset.active = reduced ? "false" : "true";
+}
+
+function setReducedMotion(reduced) {
+  progress = updateSettings(progress, { reducedMotion: reduced });
+  saveProgress(progress);
+  game.setReducedMotion(reduced);
+  renderReducedMotionButton(reduced);
 }
 
 function renderHud(snapshot) {

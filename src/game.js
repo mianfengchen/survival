@@ -20,6 +20,7 @@ import {
 } from "./data.js";
 import { getRegionDefinition } from "./garden-data.js";
 import { PixiRenderer } from "./pixi-renderer.js";
+import { AudioManager } from "./audio.js";
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -119,6 +120,14 @@ function scaleProfile(baseProfile, scales = {}) {
 }
 
 const SWORD_GLOW_COLORS = ["#ffe58f", "#8fe9ff", "#ffb4f6", "#b7ff84", "#ffd2a8", "#d7b7ff"];
+
+// Rainbow palette for 棱镜折射 refraction: each bounce shifts to the next spectrum color.
+const PRISM_SPECTRUM = ["#7fd8ff", "#8affc4", "#fff27f", "#ffb37f", "#ff7fa8", "#d67fff", "#7f9dff"];
+function nextPrismColor(currentColor) {
+  const index = PRISM_SPECTRUM.indexOf(currentColor);
+  if (index === -1) return PRISM_SPECTRUM[0];
+  return PRISM_SPECTRUM[(index + 1) % PRISM_SPECTRUM.length];
+}
 const PROJECTILE_COUNT_SKILLS = new Set([
   "elfArrow", "flyingSword", "bubbleBurst", "thornVolley", "ribbonBlade", "cometPlow",
   "glassPrismRay", "honeyBomb", "orchidComet", "brambleBoomerang", "lanternSpark", "harvestCrescent",
@@ -227,6 +236,7 @@ export class GameRuntime {
   constructor({ canvas, callbacks = {} }) {
     this.canvas = canvas;
     this.renderer = new PixiRenderer({ canvas });
+    this.audio = new AudioManager();
     this.callbacks = callbacks;
 
     this.state = "menu";
@@ -271,6 +281,10 @@ export class GameRuntime {
     this.lastTimestamp = 0;
     this.hudClock = 0;
     this.gameSpeedMultiplier = 1;
+    // Game feel: screen shake magnitude (decays in renderer) and hit-stop timer (freezes sim briefly).
+    this.screenShake = 0;
+    this.hitStopTimer = 0;
+    this.reducedMotion = false;
     this.pendingChoices = [];
     this.keysBound = false;
     this.metaUnlocks = createDefaultUnlockState();
@@ -510,6 +524,8 @@ export class GameRuntime {
     this.pickups = [];
     this.orbitAngle = 0;
     this.pendingChoices = [];
+    this.screenShake = 0;
+    this.hitStopTimer = 0;
     this.setGameSpeed(1);
 
     this.applyTalents(progress?.talents || {});
@@ -996,8 +1012,14 @@ export class GameRuntime {
       this.lastTimestamp = timestamp;
     }
 
-    const delta = Math.min(0.033, (timestamp - this.lastTimestamp) / 1000);
+    const rawDelta = Math.min(0.033, (timestamp - this.lastTimestamp) / 1000);
     this.lastTimestamp = timestamp;
+    // Hit-stop: briefly slow the whole simulation to sell heavy impacts. Render still runs each frame.
+    let delta = rawDelta;
+    if (this.hitStopTimer > 0) {
+      this.hitStopTimer = Math.max(0, this.hitStopTimer - rawDelta);
+      delta = rawDelta * 0.12;
+    }
     const steps = this.gameSpeedMultiplier === 2 ? 2 : 1;
     for (let step = 0; step < steps && this.state === "running"; step += 1) {
       this.update(delta);
@@ -1088,10 +1110,15 @@ export class GameRuntime {
     const movement = this.getMovementVector();
     const dx = movement.x;
     const dy = movement.y;
+    // 镰月回旋 "断魂裂割": momentum from returning scythes briefly boosts move speed, then decays.
+    if (this.player.harvestMomentum && this.player.harvestMomentum > 1) {
+      this.player.harvestMomentum = Math.max(1, this.player.harvestMomentum - delta * 0.35);
+    }
+    const momentum = this.player.harvestMomentum || 1;
     if (dx !== 0 || dy !== 0) {
       const length = magnitude(dx, dy);
-      this.player.x += (dx / length) * this.player.speed * delta;
-      this.player.y += (dy / length) * this.player.speed * delta;
+      this.player.x += (dx / length) * this.player.speed * momentum * delta;
+      this.player.y += (dy / length) * this.player.speed * momentum * delta;
     }
     this.player.x = clamp(this.player.x, 22, ARENA.width - 22);
     this.player.y = clamp(this.player.y, 22, ARENA.height - 22);
@@ -1991,6 +2018,13 @@ export class GameRuntime {
   }
 
   castAdvancedSkill(skillId, state, stats, definition) {
+    // Reworked signature skills use dedicated handlers with distinctive mechanics + visuals.
+    if (skillId === "stormRibbon") return this.castStormRibbon(state, stats);
+    if (skillId === "harvestCrescent") return this.castHarvestCrescent(state, stats);
+    if (skillId === "operaMothBlade") return this.castOperaMothBlade(state, stats);
+    if (skillId === "clockIvyLash") return this.castClockIvyLash(state, stats);
+    if (skillId === "moonwellSnare") return this.castMoonwellSnare(state, stats);
+
     const behavior = definition.advancedBehavior;
     if (behavior === "beam") this.castAdvancedBeam(skillId, state, stats);
     if (behavior === "lobbedBomb") this.castAdvancedBomb(skillId, state, stats);
@@ -2171,6 +2205,7 @@ export class GameRuntime {
         bloom: skillId === "orchidComet" ? "orchid" : null,
         vulnLevel,
         slowLevel: pollenLevel,
+        pollenLevel,
         color: definitionColor(skillId),
       });
     }
@@ -2409,6 +2444,239 @@ export class GameRuntime {
         delay: waveIndex * Math.max(0.1, 0.18 - tempo * 0.03),
         hitSet: new Set(),
         color: definitionColor(skillId),
+      });
+    }
+  }
+
+  // ── 风暴绫带: a lightning ribbon that sweeps across the battlefield along a line ──
+  castStormRibbon(state, stats) {
+    const skillId = "stormRibbon";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const webLevel = state?.exclusives?.stormRibbonWeb || 0;
+    const totalCount = stats.count;
+    const color = definitionColor(skillId);
+    for (let index = 0; index < totalCount; index += 1) {
+      const anchor = this.findNearestEnemy(this.player.x, this.player.y) || this.player;
+      // Sweep origin sits to one side of the target; the ribbon travels through it in a straight line.
+      const heading = Math.atan2(anchor.y - this.player.y, anchor.x - this.player.x) + randomBetween(-0.5, 0.5);
+      const sweepDir = heading + Math.PI / 2; // travel perpendicular to aim so the ribbon scythes across the group
+      const span = 190 + stats.radius * 2.4;
+      const originX = clamp(anchor.x - Math.cos(sweepDir) * span * 0.5, 30, ARENA.width - 30);
+      const originY = clamp(anchor.y - Math.sin(sweepDir) * span * 0.5, 30, ARENA.height - 30);
+      const travel = 320 + stats.radius * 3;
+      this.strikes.push({
+        id: crypto.randomUUID(),
+        kind: "stormSweep",
+        sourceSkillId: skillId,
+        x: originX,
+        y: originY,
+        dirX: Math.cos(sweepDir),
+        dirY: Math.sin(sweepDir),
+        halfWidth: stats.radius * 0.9 + 14,
+        ribbonLength: span,
+        angle: heading,
+        speed: 640 + focus * 60,
+        travelLeft: travel,
+        delay: Math.max(0.12, stats.delay * 0.5 - tempo * 0.03),
+        damage: this.rollDamage(stats.damage),
+        chainLevel: webLevel,
+        tickClock: 0,
+        hitCooldowns: {},
+        color,
+      });
+    }
+  }
+
+  // ── 镰月回旋: a wide crescent scythe that carves an arc outward and reels back ──
+  castHarvestCrescent(state, stats) {
+    const skillId = "harvestCrescent";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const reapLevel = state?.exclusives?.harvestCrescentReap || 0;
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!target) return;
+    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    for (let index = 0; index < totalCount; index += 1) {
+      const aim = this.getProjectileAim(target, index, totalCount, 0.3, assignedTargets);
+      if (!aim) continue;
+      const speed = stats.speed * this.player.projectileSpeedMultiplier;
+      const baseAngle = Math.atan2(aim.direction.y, aim.direction.x);
+      this.projectiles.push({
+        id: crypto.randomUUID(),
+        skillId,
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        vx: aim.direction.x * speed,
+        vy: aim.direction.y * speed,
+        speed,
+        baseSpeed: speed,
+        radius: (stats.size + 4) * this.player.projectileSizeMultiplier,
+        damage: this.rollDamage(stats.damage),
+        pierce: stats.pierce + 2 + tempo,
+        maxDistance: stats.range * this.player.rangeMultiplier,
+        distanceTravelled: 0,
+        color: definitionColor(skillId),
+        returnLevel: tempo + reapLevel,
+        frayLevel: focus + reapLevel,
+        returning: false,
+        advancedBoomerang: true,
+        crescentBlade: true,
+        reapLevel,
+        arcSpin: baseAngle,
+        arcSweep: 0,
+        recentHits: {},
+      });
+      // The scythe swing itself is a lingering arc effect anchored to the player.
+      this.spawnSkillEffect({
+        kind: "crescentSlash",
+        x: this.player.x,
+        y: this.player.y,
+        angle: baseAngle,
+        radius: 74 + stats.size * 2,
+        duration: 0.32,
+        color: definitionColor(skillId),
+        accent: "#fff2f0",
+      });
+    }
+    if (reapLevel > 0) {
+      this.player.harvestMomentum = Math.min(1.6, (this.player.harvestMomentum || 1) + 0.08 * reapLevel);
+    }
+  }
+
+  // ── 蛾刃回旋: moth blades that spiral outward shedding drifting scale-dust clouds ──
+  castOperaMothBlade(state, stats) {
+    const skillId = "operaMothBlade";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const scaleLevel = state?.exclusives?.operaMothBladeScale || 0;
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!target) return;
+    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    for (let index = 0; index < totalCount; index += 1) {
+      const aim = this.getProjectileAim(target, index, totalCount, 0.36, assignedTargets);
+      if (!aim) continue;
+      const speed = stats.speed * this.player.projectileSpeedMultiplier;
+      this.projectiles.push({
+        id: crypto.randomUUID(),
+        skillId,
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        vx: aim.direction.x * speed,
+        vy: aim.direction.y * speed,
+        speed,
+        baseSpeed: speed,
+        radius: stats.size * this.player.projectileSizeMultiplier,
+        damage: this.rollDamage(stats.damage),
+        pierce: stats.pierce + tempo + 1,
+        maxDistance: stats.range * this.player.rangeMultiplier,
+        distanceTravelled: 0,
+        color: definitionColor(skillId),
+        returnLevel: tempo,
+        frayLevel: focus,
+        scaleLevel,
+        returning: false,
+        advancedBoomerang: true,
+        mothBlade: true,
+        spiralDir: index % 2 === 0 ? 1 : -1,
+        spiralPhase: 0,
+        dustClock: 0,
+        recentHits: {},
+      });
+    }
+  }
+
+  // ── 时藤鞭击: the whip lashes a zone, locks it in time, then snaps back and detonates ──
+  castClockIvyLash(state, stats) {
+    const skillId = "clockIvyLash";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const freezeLevel = state?.exclusives?.clockIvyLashFreeze || 0;
+    const totalCount = stats.count;
+    const maxRange = stats.range * this.player.rangeMultiplier;
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount * 2)
+      .filter((enemy) => circleDistance(enemy, this.player) <= maxRange + enemy.radius)
+      .slice(0, totalCount);
+    const color = definitionColor(skillId);
+    const spots = anchors.length ? anchors : [{ x: this.player.x + randomBetween(-60, 60), y: this.player.y + randomBetween(-60, 60) }];
+    for (const spot of spots) {
+      const zoneX = clamp(spot.x, 26, ARENA.width - 26);
+      const zoneY = clamp(spot.y, 26, ARENA.height - 26);
+      const zoneRadius = stats.bloomRadius * (1 + focus * 0.16) + 12;
+      // Initial lash: whip + immediate slow so the target is caught before the rewind.
+      this.spawnSkillEffect({
+        kind: "vineWhip",
+        x: this.player.x,
+        y: this.player.y,
+        targetX: zoneX,
+        targetY: zoneY,
+        duration: 0.2,
+        color,
+        accent: "#e7ffe0",
+        thickness: 5 + focus,
+      });
+      // A time-locked clock zone: builds up, then snaps shut for a burst.
+      this.strikes.push({
+        id: crypto.randomUUID(),
+        kind: "clockRewind",
+        sourceSkillId: skillId,
+        x: zoneX,
+        y: zoneY,
+        radius: zoneRadius,
+        windup: Math.max(0.5, 0.95 - tempo * 0.06),
+        elapsed: 0,
+        damage: this.rollDamage(stats.damage),
+        freezeLevel,
+        focusLevel: focus,
+        tickClock: 0,
+        color,
+      });
+    }
+  }
+
+  // ── 月泉缠缚: summon a moon well that reels enemies in and pins them under a moon ring ──
+  castMoonwellSnare(state, stats) {
+    const skillId = "moonwellSnare";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const moonmarkLevel = state?.exclusives?.moonwellSnareMoonmark || 0;
+    const totalCount = stats.count;
+    const maxRange = stats.range * this.player.rangeMultiplier;
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount * 2)
+      .filter((enemy) => circleDistance(enemy, this.player) <= maxRange + enemy.radius)
+      .slice(0, totalCount);
+    const color = definitionColor(skillId);
+    const spots = anchors.length ? anchors : [{ x: this.player.x + randomBetween(-80, 80), y: this.player.y + randomBetween(-80, 80) }];
+    for (const spot of spots) {
+      const wellX = clamp(spot.x, 30, ARENA.width - 30);
+      const wellY = clamp(spot.y, 30, ARENA.height - 30);
+      this.strikes.push({
+        id: crypto.randomUUID(),
+        kind: "moonWell",
+        sourceSkillId: skillId,
+        x: wellX,
+        y: wellY,
+        radius: stats.bloomRadius * (1 + focus * 0.14) + 20,
+        pullRadius: (stats.bloomRadius + 70) * (1 + focus * 0.1),
+        pull: 190 + focus * 40,
+        root: stats.root + tempo * 0.36,
+        duration: 1.4 + tempo * 0.3,
+        elapsed: 0,
+        tickClock: 0,
+        damage: this.rollDamage(stats.damage),
+        moonmarkLevel,
+        focusLevel: focus,
+        color,
+      });
+      this.spawnSkillEffect({
+        kind: "moonTether",
+        x: this.player.x,
+        y: this.player.y,
+        targetX: wellX,
+        targetY: wellY,
+        duration: 0.26,
+        color,
+        accent: "#fff0f8",
+        thickness: 4 + focus,
       });
     }
   }
@@ -2934,9 +3202,37 @@ export class GameRuntime {
     });
   }
 
+  // Small white impact flash where a hit lands — cheap, throttled by hit rate itself.
+  spawnImpactSpark(enemy, crit) {
+    this.spawnSkillEffect({
+      kind: "impactSpark",
+      x: enemy.x + randomBetween(-enemy.radius * 0.3, enemy.radius * 0.3),
+      y: enemy.y + randomBetween(-enemy.radius * 0.3, enemy.radius * 0.3),
+      radius: (crit ? 20 : 12) + enemy.radius * 0.3,
+      duration: crit ? 0.24 : 0.16,
+      color: crit ? "#fff2a8" : "#ffffff",
+      accent: "#ffffff",
+    });
+  }
+
+  // A burst of debris + ring when an enemy dies.
+  spawnKillBurst(enemy) {
+    this.spawnSkillEffect({
+      kind: "killBurst",
+      x: enemy.x,
+      y: enemy.y,
+      radius: enemy.radius * (enemy.boss ? 2.6 : enemy.elite ? 1.8 : 1.3),
+      duration: enemy.boss ? 0.6 : 0.34,
+      color: enemy.color || "#ffffff",
+      accent: "#fff6e0",
+      boss: Boolean(enemy.boss),
+    });
+  }
+
   spawnMeteorShards(meteor) {
     const count = 4 + meteor.shardLevel * 2;
     const speed = 210 + meteor.shardLevel * 32;
+    const pollenLevel = meteor.pollenLevel || 0;
     for (let index = 0; index < count; index += 1) {
       const angle = (Math.PI * 2 * index) / count;
       this.projectiles.push({
@@ -2948,12 +3244,14 @@ export class GameRuntime {
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         speed,
-        radius: 6,
+        radius: 6 + pollenLevel,
         damage: meteor.damage * 0.28,
         pierce: 0,
         maxDistance: 120 + meteor.shardLevel * 20,
         distanceTravelled: 0,
         color: meteor.color || "#ffd4b2",
+        // 醉兰花粉 shards carry the slow + vulnerability onto whatever they hit.
+        scaleLevel: pollenLevel,
         recentHits: {},
       });
     }
@@ -3144,6 +3442,32 @@ export class GameRuntime {
         projectile.speed = returnSpeed;
       }
 
+      // 蛾刃回旋: curve the blade into a spiral while it flies out, and shed scale dust.
+      if (projectile.mothBlade && !projectile.returning) {
+        const turn = projectile.spiralDir * 3.4 * delta;
+        const cos = Math.cos(turn);
+        const sin = Math.sin(turn);
+        const nvx = projectile.vx * cos - projectile.vy * sin;
+        const nvy = projectile.vx * sin + projectile.vy * cos;
+        projectile.vx = nvx;
+        projectile.vy = nvy;
+      }
+      if (projectile.mothBlade) {
+        projectile.dustClock -= delta;
+        if (projectile.dustClock <= 0) {
+          projectile.dustClock = 0.12;
+          this.spawnSkillEffect({
+            kind: "mothDust",
+            x: projectile.x,
+            y: projectile.y,
+            radius: projectile.radius * 2.2,
+            duration: 0.5,
+            color: projectile.color,
+            accent: "#f3e6ff",
+          });
+        }
+      }
+
       const previousX = projectile.x;
       const previousY = projectile.y;
       projectile.x += projectile.vx * delta;
@@ -3245,10 +3569,6 @@ export class GameRuntime {
           enemy.slowTimer = Math.max(enemy.slowTimer, 0.55 + projectile.slowLevel * 0.38);
         }
 
-        if (projectile.refractCount > 0 || projectile.splitSide > 0) {
-          enemy.refractOnDeath = (enemy.refractOnDeath || 0) + 1;
-        }
-
         if (projectile.burstLevel > 0 && !projectile.hasBurst) {
           projectile.hasBurst = true;
           this.spawnThornBurst(projectile);
@@ -3263,16 +3583,25 @@ export class GameRuntime {
           this.applyVulnerable(enemy, 0.16 + projectile.scaleLevel * 0.12, 3.0 + projectile.scaleLevel * 0.6);
         }
 
+        if (projectile.crescentBlade) {
+          // Each reap builds move-speed momentum, more so with the signature exclusive.
+          this.player.harvestMomentum = Math.min(1.7, (this.player.harvestMomentum || 1) + 0.03 + (projectile.reapLevel || 0) * 0.02);
+        }
+
         if (projectile.refractCount > 0) {
-          projectile.refractCount -= 1;
-          const nearTargets = this.findNearestEnemies(enemy.x, enemy.y, 3);
-          for (let ri = 0; ri < nearTargets.length; ri += 1) {
-            const near = nearTargets[ri];
-            if (near.id === enemy.id) continue;
+          const splinter = projectile.prismSplinter || 0;
+          // Base refraction no longer decays; with 万花折镜 each bounce grows stronger and shifts color.
+          const damageScale = splinter > 0 ? 1 + splinter * 0.15 : 1;
+          const sizeScale = splinter > 0 ? 1.08 : 1;
+          const childColor = splinter > 0 ? nextPrismColor(projectile.color) : projectile.color;
+          // Only spawn one forward-refracted beam per hop so bounces chain instead of fanning out and dying.
+          const nearTargets = this.findNearestEnemies(enemy.x, enemy.y, 4).filter((near) => near.id !== enemy.id);
+          const near = nearTargets[0];
+          if (near) {
             const dx = near.x - projectile.x;
             const dy = near.y - projectile.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-            const refSpeed = projectile.speed * 0.85;
+            const refSpeed = projectile.speed;
             this.projectiles.push({
               id: crypto.randomUUID(),
               skillId: projectile.skillId,
@@ -3282,16 +3611,18 @@ export class GameRuntime {
               vx: (dx / dist) * refSpeed,
               vy: (dy / dist) * refSpeed,
               speed: refSpeed,
-              radius: projectile.radius * 0.8,
-              damage: Math.ceil(projectile.damage * 0.55),
+              radius: projectile.radius * sizeScale,
+              damage: Math.ceil(projectile.damage * damageScale),
               pierce: 0,
-              maxDistance: projectile.maxDistance * 0.7,
+              maxDistance: projectile.maxDistance,
               distanceTravelled: 0,
-              color: projectile.color,
-              recentHits: {},
-              refractCount: 0,
+              color: childColor,
+              recentHits: { [enemy.id]: 0.2 },
+              refractCount: projectile.refractCount - 1,
+              prismSplinter: splinter,
             });
           }
+          projectile.refractCount = 0;
         }
 
         if (projectile.markEnemy) {
@@ -3547,6 +3878,19 @@ export class GameRuntime {
   updateStrikes(delta) {
     const next = [];
     for (const strike of this.strikes) {
+      if (strike.kind === "stormSweep") {
+        if (this.updateStormSweep(strike, delta)) next.push(strike);
+        continue;
+      }
+      if (strike.kind === "clockRewind") {
+        if (this.updateClockRewind(strike, delta)) next.push(strike);
+        continue;
+      }
+      if (strike.kind === "moonWell") {
+        if (this.updateMoonWell(strike, delta)) next.push(strike);
+        continue;
+      }
+
       strike.delay -= delta;
       if (strike.delay > 0) {
         next.push(strike);
@@ -3591,6 +3935,170 @@ export class GameRuntime {
     }
 
     this.strikes = next;
+  }
+
+  // Lightning ribbon travels along dirX/dirY, damaging enemies within halfWidth of the ribbon line.
+  updateStormSweep(strike, delta) {
+    if (strike.delay > 0) {
+      strike.delay -= delta;
+      return true;
+    }
+    const step = strike.speed * delta;
+    strike.x += strike.dirX * step;
+    strike.y += strike.dirY * step;
+    strike.travelLeft -= step;
+    strike.tickClock -= delta;
+
+    // Ribbon axis is perpendicular to travel; enemies near that line segment take damage.
+    const axisX = -strike.dirY;
+    const axisY = strike.dirX;
+    const doDamage = strike.tickClock <= 0;
+    if (doDamage) strike.tickClock = 0.09;
+    for (const enemy of this.enemies) {
+      const relX = enemy.x - strike.x;
+      const relY = enemy.y - strike.y;
+      const along = relX * axisX + relY * axisY; // position along the ribbon
+      const off = relX * strike.dirX + relY * strike.dirY; // distance ahead/behind ribbon front
+      if (Math.abs(along) > strike.ribbonLength * 0.5 + enemy.radius) continue;
+      if (Math.abs(off) > strike.halfWidth + enemy.radius) continue;
+      if (strike.hitCooldowns[enemy.id] > 0) {
+        continue;
+      }
+      strike.hitCooldowns[enemy.id] = 0.24;
+      this.damageEnemy(enemy, strike.damage, strike);
+      enemy.slowTimer = Math.max(enemy.slowTimer, 0.3);
+      if (strike.chainLevel > 0) {
+        enemy.burnTimer = Math.max(enemy.burnTimer, 0.6 + strike.chainLevel * 0.2);
+        const arcs = this.findNearestEnemies(enemy.x, enemy.y, strike.chainLevel + 1)
+          .filter((other) => other.id !== enemy.id)
+          .slice(0, strike.chainLevel);
+        for (const other of arcs) {
+          this.damageEnemy(other, strike.damage * 0.5, strike);
+          other.slowTimer = Math.max(other.slowTimer, 0.4);
+          this.spawnSkillEffect({
+            kind: "thunderArc",
+            x: enemy.x,
+            y: enemy.y,
+            targetX: other.x,
+            targetY: other.y,
+            duration: 0.16,
+            color: strike.color,
+            accent: "#ffffff",
+            thickness: 2.4,
+          });
+        }
+      }
+    }
+    for (const id of Object.keys(strike.hitCooldowns)) {
+      strike.hitCooldowns[id] -= delta;
+      if (strike.hitCooldowns[id] <= 0) delete strike.hitCooldowns[id];
+    }
+    // Continuously refresh the visual so it tracks the moving ribbon.
+    this.spawnSkillEffect({
+      kind: "stormSweep",
+      x: strike.x,
+      y: strike.y,
+      dirX: strike.dirX,
+      dirY: strike.dirY,
+      ribbonLength: strike.ribbonLength,
+      halfWidth: strike.halfWidth,
+      duration: 0.12,
+      color: strike.color,
+      accent: "#f2f4ff",
+    });
+    return strike.travelLeft > 0;
+  }
+
+  // Clock zone winds up (slowing enemies), then snaps time shut for a burst detonation.
+  updateClockRewind(strike, delta) {
+    strike.elapsed += delta;
+    strike.tickClock -= delta;
+    const t = strike.elapsed / strike.windup;
+    // While winding up, drag enemies to a crawl inside the zone.
+    if (strike.tickClock <= 0) {
+      strike.tickClock = 0.12;
+      for (const enemy of this.enemies) {
+        if (circleDistance(strike, enemy) <= strike.radius + enemy.radius) {
+          enemy.slowTimer = Math.max(enemy.slowTimer, 0.3);
+          if (strike.freezeLevel > 0 && t > 0.4) {
+            enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, 0.2);
+          }
+        }
+      }
+    }
+    // Pulsing rewind ring visual.
+    this.spawnSkillEffect({
+      kind: "clockRewind",
+      x: strike.x,
+      y: strike.y,
+      radius: strike.radius,
+      progress: Math.min(1, t),
+      duration: 0.1,
+      color: strike.color,
+      accent: "#eaffe2",
+    });
+    if (strike.elapsed < strike.windup) {
+      return true;
+    }
+    // Snap: time collapses inward, dealing a heavy burst and freezing survivors.
+    const burstDamage = strike.damage * (1.7 + strike.focusLevel * 0.35);
+    for (const enemy of this.enemies) {
+      if (circleDistance(strike, enemy) <= strike.radius + enemy.radius) {
+        this.damageEnemy(enemy, burstDamage, strike);
+        if (strike.freezeLevel > 0) {
+          enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, 0.6 + strike.freezeLevel * 0.45);
+        }
+        enemy.slowTimer = Math.max(enemy.slowTimer, 1.2);
+      }
+    }
+    this.spawnSkillEffect({
+      kind: "timeSnap",
+      x: strike.x,
+      y: strike.y,
+      radius: strike.radius,
+      duration: 0.3,
+      color: strike.color,
+      accent: "#ffffff",
+    });
+    return false;
+  }
+
+  // Moon well reels enemies inward, pins them, and marks them for extra damage.
+  updateMoonWell(strike, delta) {
+    strike.elapsed += delta;
+    strike.tickClock -= delta;
+    const doDamage = strike.tickClock <= 0;
+    if (doDamage) strike.tickClock = 0.3;
+    for (const enemy of this.enemies) {
+      const dist = circleDistance(strike, enemy);
+      if (dist > strike.pullRadius + enemy.radius) continue;
+      // Reel toward the well.
+      const dir = this.getDirectionVector(strike.x - enemy.x, strike.y - enemy.y);
+      const pullStrength = strike.pull * delta;
+      enemy.x = clamp(enemy.x + dir.x * pullStrength, 16, ARENA.width - 16);
+      enemy.y = clamp(enemy.y + dir.y * pullStrength, 16, ARENA.height - 16);
+      if (dist <= strike.radius + enemy.radius) {
+        enemy.slowTimer = Math.max(enemy.slowTimer, strike.root);
+        if (strike.moonmarkLevel > 0) {
+          this.applyVulnerable(enemy, 0.2 + strike.moonmarkLevel * 0.16, 2.4 + strike.moonmarkLevel * 0.6);
+        }
+        if (doDamage) {
+          this.damageEnemy(enemy, strike.damage * 0.5, strike);
+        }
+      }
+    }
+    this.spawnSkillEffect({
+      kind: "moonWell",
+      x: strike.x,
+      y: strike.y,
+      radius: strike.radius,
+      pullRadius: strike.pullRadius,
+      progress: Math.min(1, strike.elapsed / strike.duration),
+      duration: 0.1,
+      color: strike.color,
+      accent: "#fff0f8",
+    });
+    return strike.elapsed < strike.duration;
   }
 
   updateMines(delta) {
@@ -3847,6 +4355,19 @@ export class GameRuntime {
           y: meteor.targetY,
           radius: meteor.radius * 1.5,
           duration: 0.55,
+          color: meteor.color || definitionColor("orchidComet"),
+          accent: "#f0ccff",
+        });
+      }
+
+      // 醉兰花粉: a visible lingering pollen haze marks the debuffed zone.
+      if (meteor.pollenLevel > 0) {
+        this.spawnSkillEffect({
+          kind: "orchidPollen",
+          x: meteor.targetX,
+          y: meteor.targetY,
+          radius: meteor.radius * (1.3 + meteor.pollenLevel * 0.25),
+          duration: 1.1 + meteor.pollenLevel * 0.3,
           color: meteor.color || definitionColor("orchidComet"),
           accent: "#f0ccff",
         });
@@ -4196,6 +4717,10 @@ export class GameRuntime {
       if (enemy.burnTimer > 0) {
         enemy.burnTimer -= delta;
         enemy.health -= enemy.burnDamage * delta;
+      }
+
+      if (enemy.hitFlash > 0) {
+        enemy.hitFlash = Math.max(0, enemy.hitFlash - delta);
       }
 
       if (enemy.vulnerableTimer > 0) {
@@ -4967,34 +5492,21 @@ export class GameRuntime {
   }
 
   handleEnemyDefeat(enemy) {
-    if (enemy.refractOnDeath > 0) {
-      const refTargets = this.findNearestEnemies(enemy.x, enemy.y, 3);
-      for (const refTarget of refTargets) {
-        if (refTarget.id === enemy.id) continue;
-        const dx = refTarget.x - enemy.x;
-        const dy = refTarget.y - enemy.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const deathSpeed = 280 + Math.random() * 40;
-        this.projectiles.push({
-          id: crypto.randomUUID(),
-          skillId: "glassPrismRay",
-          sourceSkillId: "glassPrismRay",
-          x: enemy.x,
-          y: enemy.y,
-          vx: (dx / dist) * deathSpeed,
-          vy: (dy / dist) * deathSpeed,
-          speed: deathSpeed,
-          radius: 6,
-          damage: Math.ceil(6 + enemy.refractOnDeath * 3),
-          pierce: 0,
-          maxDistance: 250 + Math.random() * 60,
-          distanceTravelled: 0,
-          color: "#7fd8ff",
-          recentHits: {},
-          refractCount: 0,
-        });
-      }
+    // Game feel: kills punch. Bosses land a heavier freeze + shake.
+    if (enemy.boss) {
+      this.triggerHitStop(0.11);
+      this.addScreenShake(22);
+      this.audio?.playBossDown();
+    } else if (enemy.elite) {
+      this.triggerHitStop(0.06);
+      this.addScreenShake(10);
+      this.audio?.playKill(true);
+    } else {
+      this.triggerHitStop(0.028);
+      this.addScreenShake(4.5);
+      this.audio?.playKill(false);
     }
+    this.spawnKillBurst(enemy);
 
     if (enemy.markedForExplosion > 0) {
       const pyre = enemy.markPyreLevel || 0;
@@ -5154,6 +5666,7 @@ export class GameRuntime {
     }
 
     this.state = "levelup";
+    this.audio?.playLevelUp();
     this.callbacks.onLevelChoices?.(this.pendingChoices);
     this.callbacks.onOverlayChange?.("levelScreen");
     this.callbacks.onSessionLabel?.("升级中", "从三项成长中选择其一");
@@ -5187,6 +5700,16 @@ export class GameRuntime {
       finalDamage *= 1 + enemy.vulnerableMult;
     }
     enemy.health -= finalDamage;
+    // Game feel: flash the enemy white and kick a tiny bit of screen shake per hit.
+    // Only spawn a fresh spark/shake if this enemy wasn't already flashing, so rapid
+    // multi-hit sources (fields, chains) don't spam sparks or over-shake.
+    const alreadyFlashing = (enemy.hitFlash || 0) > 0.04;
+    enemy.hitFlash = crit ? 0.14 : 0.09;
+    if (!alreadyFlashing) {
+      this.addScreenShake(crit ? 6 : 2.4);
+      this.spawnImpactSpark(enemy, crit);
+      this.audio?.playHit(crit);
+    }
     this.spawnDamageNumber(enemy, finalDamage, crit);
     this.recordKillingIntentHit();
     this.maybeTriggerEcho(enemy, this.normalizeDamageSource(source));
@@ -5225,6 +5748,35 @@ export class GameRuntime {
     if (!enemy || amount <= 0) return;
     enemy.vulnerableMult = Math.max(enemy.vulnerableMult || 0, amount);
     enemy.vulnerableTimer = Math.max(enemy.vulnerableTimer || 0, duration);
+  }
+
+  // Game-feel helpers ------------------------------------------------------
+  addScreenShake(magnitude) {
+    if (this.reducedMotion) return;
+    // Take the strongest recent impulse rather than stacking, and cap it.
+    this.screenShake = Math.min(26, Math.max(this.screenShake, magnitude));
+  }
+
+  triggerHitStop(duration) {
+    if (this.reducedMotion) return;
+    this.hitStopTimer = Math.min(0.12, Math.max(this.hitStopTimer, duration));
+  }
+
+  setMuted(muted) {
+    this.audio?.setMuted(Boolean(muted));
+  }
+
+  setReducedMotion(enabled) {
+    this.reducedMotion = Boolean(enabled);
+    if (this.reducedMotion) {
+      this.screenShake = 0;
+      this.hitStopTimer = 0;
+    }
+  }
+
+  // Resume the audio context on a user gesture (browsers block autoplay otherwise).
+  resumeAudio() {
+    this.audio?.ensureContext();
   }
 
   recordFrostBudDamage(damage) {
@@ -5278,9 +5830,14 @@ export class GameRuntime {
     this.recordFrostBudDamage(damage);
     this.player.health -= damage;
     this.player.invulnerableFor = 1;
+    // Taking a hit shakes the screen harder than dealing one, and plays a hurt cue.
+    this.addScreenShake(9);
     if (this.player.health <= 0) {
       this.player.health = 0;
+      this.audio?.playDeath();
       this.finishRun(false, false);
+    } else {
+      this.audio?.playPlayerHurt();
     }
   }
 

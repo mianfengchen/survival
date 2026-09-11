@@ -21,6 +21,8 @@ export function createDefaultProgress() {
       difficultyLevel: 1,
       initialSkillId: "flyingSword",
       eyeComfortMode: false,
+      muted: false,
+      reducedMotion: false,
     },
     talents: createTalentState(),
     unlocks: createDefaultUnlockState(),
@@ -52,6 +54,8 @@ function mergeProgress(raw) {
     difficultyLevel: normalizeDifficultyLevel(raw.settings?.difficultyLevel ?? fallback.settings.difficultyLevel),
     initialSkillId: normalizeInitialSkillId(raw.settings?.initialSkillId ?? fallback.settings.initialSkillId, unlocks),
     eyeComfortMode: Boolean(raw.settings?.eyeComfortMode ?? fallback.settings.eyeComfortMode),
+    muted: Boolean(raw.settings?.muted ?? fallback.settings.muted),
+    reducedMotion: Boolean(raw.settings?.reducedMotion ?? fallback.settings.reducedMotion),
   };
   const codex = {
     monsters: Array.isArray(raw.codex?.monsters) ? [...new Set(raw.codex.monsters)] : [],
@@ -141,6 +145,8 @@ export function updateSettings(progress, partialSettings) {
     difficultyLevel: normalizeDifficultyLevel(partialSettings?.difficultyLevel ?? next.settings.difficultyLevel),
     initialSkillId: normalizeInitialSkillId(partialSettings?.initialSkillId ?? next.settings.initialSkillId, next.unlocks),
     eyeComfortMode: Boolean(partialSettings?.eyeComfortMode ?? next.settings.eyeComfortMode),
+    muted: Boolean(partialSettings?.muted ?? next.settings.muted),
+    reducedMotion: Boolean(partialSettings?.reducedMotion ?? next.settings.reducedMotion),
   };
   return next;
 }

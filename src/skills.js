@@ -542,17 +542,17 @@ export const SKILL_LIBRARY = [
   {
     id: "glassPrismRay",
     name: "棱镜折射",
-    description: "射出棱镜光束，命中后分裂折射至附近目标。",
+    description: "射出粗亮的棱镜光束，命中后不衰减地折射至附近目标，可连续反射多次。",
     color: "#7fd8ff",
     advancedBehavior: "beam",
     unlockCost: 420,
     maxLevel: 5,
     statsByLevel: [
-      { cooldown: 1.9, damage: 48, count: 1, speed: 580, pierce: 0, size: 7, range: 400 },
-      { cooldown: 1.7, damage: 60, count: 1, speed: 610, pierce: 0, size: 8, range: 430 },
-      { cooldown: 1.55, damage: 76, count: 2, speed: 640, pierce: 1, size: 9, range: 460 },
-      { cooldown: 1.4, damage: 94, count: 2, speed: 670, pierce: 1, size: 10, range: 490 },
-      { cooldown: 1.25, damage: 116, count: 3, speed: 700, pierce: 2, size: 11, range: 520 },
+      { cooldown: 1.9, damage: 38, count: 1, speed: 580, pierce: 0, size: 12, range: 400 },
+      { cooldown: 1.7, damage: 48, count: 1, speed: 610, pierce: 0, size: 14, range: 430 },
+      { cooldown: 1.55, damage: 61, count: 2, speed: 640, pierce: 1, size: 15, range: 460 },
+      { cooldown: 1.4, damage: 75, count: 2, speed: 670, pierce: 1, size: 17, range: 490 },
+      { cooldown: 1.25, damage: 93, count: 3, speed: 700, pierce: 2, size: 18, range: 520 },
     ],
     exclusiveUpgrades: [
       {
@@ -572,7 +572,7 @@ export const SKILL_LIBRARY = [
       {
         id: "glassPrismRaySplinter",
         name: "万花折镜",
-        description: "【专属】光束每级额外多折射 2 次，且每次折射都换一种色光，越折越亮。",
+        description: "【专属】光束每级额外多折射 2 次，每次折射都换一种色光、且伤害与体积不降反增，越折越亮越强。",
         maxLevel: 2,
         unlockCost: 168,
       },
@@ -777,7 +777,7 @@ export const SKILL_LIBRARY = [
   {
     id: "stormRibbon",
     name: "风暴绫带",
-    description: "召来雷暴绫带横扫战场路径上的所有敌人。",
+    description: "抛出一条雷电绫带横扫战场，沿直线飞掠并持续电击触及的所有敌人。",
     color: "#9fb8ff",
     advancedBehavior: "strike",
     unlockCost: 588,
@@ -807,7 +807,7 @@ export const SKILL_LIBRARY = [
       {
         id: "stormRibbonWeb",
         name: "雷网蔓延",
-        description: "【专属】落雷会顺着敌群跳跃形成雷网，每级追加更多连锁目标并短暂麻痹。",
+        description: "【专属】绫带扫中的敌人会向邻近目标激射电弧结成雷网，每级追加更多连锁并附加灼伤。",
         maxLevel: 2,
         unlockCost: 192,
       },
@@ -816,7 +816,7 @@ export const SKILL_LIBRARY = [
   {
     id: "moonwellSnare",
     name: "月泉缠缚",
-    description: "召唤月泉之藤缠绕并拖拽敌人。",
+    description: "在敌群中央引出一口月泉，持续将周围敌人吸向井心并缠住、拖拽、碾磨。",
     color: "#ef91c2",
     advancedBehavior: "snare",
     unlockCost: 616,
@@ -894,7 +894,7 @@ export const SKILL_LIBRARY = [
   {
     id: "harvestCrescent",
     name: "镰月回旋",
-    description: "掷出新月镰刀贯穿敌人，返回时提升移速。",
+    description: "挥出巨大的新月镰刃划开一道弧形斩击贯穿敌群，飞至尽头折返回收，收割越多移速越快。",
     color: "#ee7778",
     advancedBehavior: "boomerang",
     unlockCost: 672,
@@ -1011,7 +1011,7 @@ export const SKILL_LIBRARY = [
   {
     id: "clockIvyLash",
     name: "时藤鞭击",
-    description: "甩出时间蔓藤抽打区域，延时引爆。",
+    description: "甩出时藤锁定一片区域将其困在时间里，缓速蓄力后猛地倒转时针，把积攒的时光一并炸开。",
     color: "#7bc489",
     advancedBehavior: "snare",
     unlockCost: 756,
@@ -1050,7 +1050,7 @@ export const SKILL_LIBRARY = [
   {
     id: "operaMothBlade",
     name: "蛾刃回旋",
-    description: "放出蛾形飞刃沿螺旋轨迹切割敌人。",
+    description: "放出蛾形飞刃沿螺旋轨迹盘旋切割，沿途洒落致幻鳞粉，飞远后折返归巢。",
     color: "#c6a0f2",
     advancedBehavior: "boomerang",
     unlockCost: 784,

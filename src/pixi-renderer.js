@@ -879,7 +879,21 @@ export class PixiRenderer {
     this.frameParticleBudget = this.visualProfile.particleBudget;
 
     const camera = runtime.getCamera();
-    this.world.position.set(-camera.x, -camera.y);
+    // Screen shake: read magnitude from the runtime, apply a random offset, and decay over wall-clock time.
+    let shakeX = 0;
+    let shakeY = 0;
+    const shakeMag = runtime.screenShake || 0;
+    if (shakeMag > 0.2) {
+      const angle = Math.random() * Math.PI * 2;
+      shakeX = Math.cos(angle) * shakeMag;
+      shakeY = Math.sin(angle) * shakeMag;
+      // Exponential-ish decay, framerate independent.
+      runtime.screenShake = shakeMag * Math.max(0, 1 - delta * 12) - delta * 8;
+      if (runtime.screenShake < 0.2) runtime.screenShake = 0;
+    } else if (shakeMag) {
+      runtime.screenShake = 0;
+    }
+    this.world.position.set(-camera.x + shakeX, -camera.y + shakeY);
 
     this.updateParticles(delta);
     this.drawArena(camera);
@@ -1119,12 +1133,18 @@ export class PixiRenderer {
       case "ribbonShard":
         return this.getExternalTexture("projectileRibbon");
       case "glassPrismRay":
-        return this.getCachedTexture("proj-glassPrism", 96, 14, (g, x, y, r) => {
-          setLine(g, 4, "rgba(255,255,255,0.9)");
-          g.moveTo(x - r, y); g.lineTo(x + r, y);
-          setLine(g, 2, "rgba(200,230,255,0.5)");
-          g.moveTo(x - r * 0.6, y - r * 0.3); g.lineTo(x + r * 0.6, y - r * 0.3);
-          g.moveTo(x - r * 0.6, y + r * 0.3); g.lineTo(x + r * 0.6, y + r * 0.3);
+        // A bold elongated crystal lens with a bright core so it reads clearly and tints to any refracted color.
+        return this.getCachedTexture("proj-glassPrism", 128, 20, (g, x, y, r) => {
+          beginFill(g, "rgba(255,255,255,0.9)");
+          g.moveTo(x - r * 1.35, y);
+          g.lineTo(x, y - r * 0.62);
+          g.lineTo(x + r * 1.35, y);
+          g.lineTo(x, y + r * 0.62);
+          g.closePath();
+          g.endFill();
+          beginFill(g, "#ffffff");
+          g.drawEllipse(x, y, r * 0.55, r * 0.34);
+          g.endFill();
         });
       case "honeyBomb":
         return this.getCachedTexture("proj-honey", 96, 18, (g, x, y, r) => {
@@ -1174,12 +1194,39 @@ export class PixiRenderer {
           g.endFill();
         });
       case "harvestCrescent":
+      case "harvestCrescentShard":
+        // A bold crimson crescent-moon scythe blade.
+        return this.getCachedTexture("proj-crescent", 96, 18, (g, x, y, r) => {
+          beginFill(g, "#ee7778");
+          g.arc(x, y, r, -1.15, 1.15);
+          g.arc(x + r * 0.55, y, r * 0.92, 1.05, -1.05, true);
+          g.closePath();
+          g.endFill();
+          beginFill(g, "rgba(255,240,238,0.85)");
+          g.arc(x, y, r * 0.96, -1.0, 1.0);
+          g.arc(x + r * 0.5, y, r * 0.9, 0.9, -0.9, true);
+          g.closePath();
+          g.endFill();
+        });
       case "operaMothBlade":
-        return this.getCachedTexture("proj-boomerang", 96, 16, (g, x, y, r) => {
-          setLine(g, 3, "rgba(255,255,255,0.9)");
-          g.arc(x, y, r * 0.6, -0.6, 0.6);
-          g.arc(x, y, r * 0.6, Math.PI - 0.6, Math.PI + 0.6);
-          setLine(g, 0, "rgba(0,0,0,0)");
+      case "operaMothBladeShard":
+        // A winged moth blade: two swept wings around a slim body.
+        return this.getCachedTexture("proj-moth", 96, 16, (g, x, y, r) => {
+          beginFill(g, "#c6a0f2");
+          g.moveTo(x, y);
+          g.lineTo(x - r, y - r * 0.9);
+          g.lineTo(x - r * 0.3, y);
+          g.lineTo(x - r, y + r * 0.9);
+          g.closePath();
+          g.moveTo(x, y);
+          g.lineTo(x + r, y - r * 0.9);
+          g.lineTo(x + r * 0.3, y);
+          g.lineTo(x + r, y + r * 0.9);
+          g.closePath();
+          g.endFill();
+          beginFill(g, "rgba(247,235,255,0.9)");
+          g.drawEllipse(x, y, r * 0.18, r * 0.5);
+          g.endFill();
         });
       case "cometPlow":
         return this.getCachedTexture("proj-comet", 96, 20, (g, x, y, r) => {
@@ -1268,19 +1315,20 @@ export class PixiRenderer {
 
   getMeteorTexture() {
     return this.getCachedTexture("proj-meteor", 128, 28, (g, x, y, r) => {
-      beginFill(g, "rgba(255, 214, 150, 0.5)");
-      g.moveTo(x - r * 1.05, y);
-      g.lineTo(x - r * 0.1, y - r * 0.5);
-      g.lineTo(x + r * 0.32, y - r * 0.12);
-      g.lineTo(x + r * 0.32, y + r * 0.12);
-      g.lineTo(x - r * 0.1, y + r * 0.5);
+      // Opaque comet head + tail so the sprite tint reads strongly for any skill color.
+      beginFill(g, "rgba(255, 236, 205, 0.92)");
+      g.moveTo(x - r * 1.1, y);
+      g.lineTo(x - r * 0.1, y - r * 0.52);
+      g.lineTo(x + r * 0.32, y - r * 0.14);
+      g.lineTo(x + r * 0.32, y + r * 0.14);
+      g.lineTo(x - r * 0.1, y + r * 0.52);
       g.closePath();
       g.endFill();
-      beginFill(g, "#fff4dc");
-      g.drawCircle(x + r * 0.18, y, r * 0.42);
+      beginFill(g, "#ffffff");
+      g.drawCircle(x + r * 0.18, y, r * 0.5);
       g.endFill();
-      beginFill(g, "rgba(255,255,255,0.95)");
-      g.drawCircle(x + r * 0.34, y, r * 0.22);
+      beginFill(g, "rgba(255,255,255,0.98)");
+      g.drawCircle(x + r * 0.36, y, r * 0.26);
       g.endFill();
     });
   }
@@ -1367,12 +1415,19 @@ export class PixiRenderer {
     glow.blendMode = SCREEN_BLEND;
     glow.scale.set(1.2);
 
+    // Dark silhouette halo behind the body so enemies read as hostile "others"
+    // against the green field and pastel allied units.
+    const rim = new PIXI.Sprite(this.getSoftDiscTexture().texture);
+    rim.anchor.set(0.5);
+    rim.alpha = 0.55;
+
     const sprite = new PIXI.Sprite(PIXI.Texture.WHITE);
     sprite.anchor.set(0.5);
 
-    container.addChild(shadow, glow, sprite);
+    container.addChild(shadow, glow, rim, sprite);
     container.shadowSprite = shadow;
     container.glowSprite = glow;
+    container.rimSprite = rim;
     container.mainSprite = sprite;
     return container;
   }
@@ -1732,14 +1787,39 @@ export class PixiRenderer {
 
       visual.position.set(enemy.x, enemy.y);
       visual.mainSprite.texture = textureData.texture;
-      visual.mainSprite.tint = mixColors(enemy.color, 0xffffff, enemy.boss ? 0.15 : enemy.elite ? 0.08 : 0.22);
+      // Faction readability: keep each enemy's hue, but ground it toward its own darker
+      // accent (rather than brightening toward white) so pale/warm bugs still read as
+      // saturated threats against the green field + pastel allies.
+      const enemyAccent = enemy.accent || enemy.color;
+      const baseTint = enemy.boss
+        ? mixColors(enemy.color, 0xffffff, 0.1)
+        : enemy.elite
+          ? mixColors(enemy.color, enemyAccent, 0.32)
+          : mixColors(enemy.color, enemyAccent, 0.5);
+      // Hit flash: briefly blend the sprite toward white when recently damaged.
+      const flash = enemy.hitFlash > 0 ? Math.min(1, enemy.hitFlash / 0.09) : 0;
+      visual.mainSprite.tint = flash > 0 ? mixColors(baseTint, 0xffffff, 0.7 * flash) : baseTint;
       visual.mainSprite.alpha = enemy.boss ? 0.98 : enemy.elite ? 1 : enemy.regionExclusive ? 0.98 : 0.96;
       visual.mainSprite.scale.set(mainScale);
-      visual.mainSprite.rotation = enemy.boss && enemy.shapeId === "twilightMower"
+      const enemyRotation = enemy.boss && enemy.shapeId === "twilightMower"
         ? (enemy.attackPhase || 0) * 0.18
         : enemy.regionExclusive && (enemy.shapeId === "serpentKin" || enemy.shapeId === "tempestKin" || enemy.shapeId === "twilightKin")
           ? Math.sin(this.getMotionTime(0.002) + enemy.specialPhase) * 0.16
           : 0;
+      visual.mainSprite.rotation = enemyRotation;
+
+      // Dark hostile silhouette rim behind the body (a scaled-up copy of the sprite);
+      // tiered so higher ranks look more menacing. Aligned to the body's rotation.
+      const rimColor = enemy.boss || enemy.regionExclusive
+        ? 0x2a0d24
+        : enemy.elite
+          ? 0x3a1410
+          : parseColor(enemyAccent).color;
+      visual.rimSprite.texture = textureData.texture;
+      visual.rimSprite.tint = flash > 0 ? 0xffffff : rimColor;
+      visual.rimSprite.scale.set(mainScale * (enemy.boss ? 1.16 : enemy.elite ? 1.2 : 1.22));
+      visual.rimSprite.rotation = enemyRotation;
+      visual.rimSprite.alpha = (enemy.boss || enemy.elite || enemy.regionExclusive ? 0.72 : 0.5) * (flash > 0 ? 0.4 : 1);
       visual.shadowSprite.scale.set(mainScale * 1.4, mainScale * 0.82);
       visual.shadowSprite.alpha = enemy.boss ? 0.28 : enemy.elite ? 0.26 : enemy.regionExclusive ? 0.22 : 0.18;
       visual.glowSprite.tint = glowTint;
@@ -1852,6 +1932,7 @@ export class PixiRenderer {
     const fallbackGraphics = this.layers.projectileFallbacks;
     for (const projectile of projectiles) {
       const isBubble = projectile.skillId === "bubbleBurst" || projectile.skillId === "bubbleShard";
+      const isPrism = projectile.skillId === "glassPrismRay";
       const definition = getSkillDefinition(projectile.sourceSkillId || projectile.skillId);
       const advancedProjectile = Boolean(definition?.advancedBehavior || projectile.advancedBomb || projectile.advancedBoomerang || projectile.skillId.endsWith("Shard"));
       const supported = [
@@ -1892,14 +1973,16 @@ export class PixiRenderer {
       visual.mainSprite.alpha = isBubble ? 0.84 : 1;
       visual.mainSprite.rotation = isBubble ? this.getMotionTime(0.0018) + projectile.x * 0.0006 : angle;
       visual.glowSprite.tint = isBubble ? 0xe6fbff : glowTint;
-      visual.glowSprite.scale.set(mainScale * (projectile.skillId === "meteorShard" ? 1.75 : projectile.skillId === "flyingSword" ? 1.92 : isBubble ? 1.72 : 1.38));
+      visual.glowSprite.scale.set(mainScale * (projectile.skillId === "meteorShard" ? 1.75 : projectile.skillId === "flyingSword" ? 1.92 : isPrism ? 2.2 : isBubble ? 1.72 : 1.38));
       visual.glowSprite.alpha = (isBubble
         ? 0.18
-        : projectile.skillId === "flyingSword"
-          ? (projectile.giant ? 0.34 : 0.22)
-          : projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard"
-            ? 0.18
-            : 0.15) * this.visualProfile.effectLayerAlpha;
+        : isPrism
+          ? 0.42
+          : projectile.skillId === "flyingSword"
+            ? (projectile.giant ? 0.34 : 0.22)
+            : projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard"
+              ? 0.18
+              : 0.15) * this.visualProfile.effectLayerAlpha;
       visual.ringSprite.visible = Boolean(projectile.tracking) || isBubble;
       if (projectile.tracking || isBubble) {
         visual.ringSprite.tint = 0xdff6ff;
@@ -1908,16 +1991,16 @@ export class PixiRenderer {
         visual.ringSprite.rotation = isBubble ? -this.getMotionTime(0.0026) : angle + this.getMotionTime(0.002);
       }
 
-      if (Math.random() < delta * this.getSpawnRate(projectile.skillId === "flyingSword" ? 22 : projectile.skillId === "meteorShard" ? 26 : 14)) {
+      if (Math.random() < delta * this.getSpawnRate(projectile.skillId === "flyingSword" ? 22 : projectile.skillId === "meteorShard" ? 26 : isPrism ? 30 : 14)) {
         this.spawnParticle({
           x: projectile.x - Math.cos(angle) * projectile.radius * 0.8,
           y: projectile.y - Math.sin(angle) * projectile.radius * 0.8,
           vx: -Math.cos(angle) * (isBubble ? 11 : 16) + (Math.random() - 0.5) * 8,
           vy: -Math.sin(angle) * (isBubble ? 11 : 16) + (Math.random() - 0.5) * 8,
-          life: projectile.skillId === "meteorShard" ? 0.42 : isBubble ? 0.28 : 0.34,
-          scale: projectile.skillId === "flyingSword" ? 0.36 : isBubble ? 0.22 : 0.28,
+          life: projectile.skillId === "meteorShard" ? 0.42 : isBubble ? 0.28 : isPrism ? 0.4 : 0.34,
+          scale: projectile.skillId === "flyingSword" ? 0.36 : isBubble ? 0.22 : isPrism ? 0.34 : 0.28,
           color: projectile.skillId === "meteorShard" ? "#ffba87" : projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard" ? "#f2ecff" : isBubble ? "#c8f7ff" : projectile.color,
-          alpha: 0.42,
+          alpha: isPrism ? 0.6 : 0.42,
           blendMode: projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard" || isBubble ? SCREEN_BLEND : PIXI.BLEND_MODES.ADD,
         });
       }
@@ -2230,27 +2313,64 @@ export class PixiRenderer {
           drawLeaf(graphics, effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, effect.radius * 0.34, effect.radius * 0.12, angle, index % 2 === 0 ? "#9bcf63" : "#c7e88a");
         }
       } else if (effect.kind === "orchidBloom") {
-        beginFill(graphics, "rgba(214, 156, 255, 0.1)");
-        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.3 + progress * 0.55));
+        const fade = 1 - progress * 0.7;
+        // Bold saturated core + expanding ring so the orchid impact is clearly visible.
+        beginFill(graphics, effect.color, 0.42 * fade);
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.32 + progress * 0.5));
         graphics.endFill();
-        const petalCount = 8;
+        setLine(graphics, 5 * fade, effect.color);
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.4 + progress * 0.62));
+        setLine(graphics, 2, "rgba(255,255,255,0.9)");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.34 + progress * 0.5));
+        const petalCount = 10;
         for (let index = 0; index < petalCount; index += 1) {
           const angle = (Math.PI * 2 * index) / petalCount + progress * 0.6;
-          const dist = effect.radius * (0.4 + progress * 0.5);
-          drawLeaf(graphics, effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, effect.radius * 0.42, effect.radius * 0.15, angle, index % 2 === 0 ? effect.color : "#f0ccff");
+          const dist = effect.radius * (0.42 + progress * 0.52);
+          drawLeaf(graphics, effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, effect.radius * 0.6, effect.radius * 0.24, angle, index % 2 === 0 ? effect.color : "#f0ccff");
         }
-        if (Math.random() < delta * 30) {
+        beginFill(graphics, "rgba(255,255,255,0.92)", fade);
+        drawStar(graphics, effect.x, effect.y, effect.radius * 0.22, effect.radius * 0.09, 6);
+        graphics.endFill();
+        if (Math.random() < delta * 46) {
           const angle = Math.random() * Math.PI * 2;
           const dist = effect.radius * (0.3 + Math.random() * 0.7);
           this.spawnParticle({
             x: effect.x + Math.cos(angle) * dist,
             y: effect.y + Math.sin(angle) * dist,
-            vx: Math.cos(angle) * 60,
-            vy: Math.sin(angle) * 60,
-            life: 0.4,
-            scale: 0.2,
+            vx: Math.cos(angle) * 70,
+            vy: Math.sin(angle) * 70,
+            life: 0.45,
+            scale: 0.28,
             color: "#e2b8ff",
-            alpha: 0.4,
+            alpha: 0.66,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "orchidPollen") {
+        // 醉兰花粉: a drifting lavender pollen haze that lingers where the comet burst.
+        const fade = 1 - progress;
+        beginFill(graphics, effect.color, 0.2 * fade);
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.55 + progress * 0.6));
+        graphics.endFill();
+        setLine(graphics, 2.4 * fade, effect.accent || "#f0ccff");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.6 + progress * 0.55));
+        for (let index = 0; index < 6; index += 1) {
+          const angle = (Math.PI * 2 * index) / 6 + this.getMotionTime(0.001);
+          const dist = effect.radius * (0.4 + progress * 0.5);
+          drawLeaf(graphics, effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, effect.radius * 0.34, effect.radius * 0.14, angle, "#e9c8ff");
+        }
+        if (Math.random() < delta * 30) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = effect.radius * (0.2 + Math.random() * 0.7);
+          this.spawnParticle({
+            x: effect.x + Math.cos(angle) * dist,
+            y: effect.y + Math.sin(angle) * dist,
+            vx: Math.cos(angle) * 12,
+            vy: Math.sin(angle) * 12 - 8,
+            life: 0.6,
+            scale: 0.22,
+            color: "#e9c8ff",
+            alpha: 0.5,
             blendMode: SCREEN_BLEND,
           });
         }
@@ -2373,6 +2493,237 @@ export class PixiRenderer {
             blendMode: SCREEN_BLEND,
           });
         }
+      } else if (effect.kind === "stormSweep") {
+        // A crackling lightning ribbon oriented perpendicular to its travel direction.
+        const dirX = effect.dirX || 1;
+        const dirY = effect.dirY || 0;
+        const axisX = -dirY;
+        const axisY = dirX;
+        const half = effect.ribbonLength * 0.5;
+        const ax = effect.x - axisX * half;
+        const ay = effect.y - axisY * half;
+        const bx = effect.x + axisX * half;
+        const by = effect.y + axisY * half;
+        setLine(graphics, (effect.halfWidth || 20) * 1.6, "rgba(159, 184, 255, 0.12)");
+        graphics.moveTo(ax, ay);
+        graphics.lineTo(bx, by);
+        // Jagged bright core.
+        const drawBolt = (width, color) => {
+          setLine(graphics, width, color);
+          graphics.moveTo(ax, ay);
+          const segments = 8;
+          for (let index = 1; index < segments; index += 1) {
+            const ratio = index / segments;
+            const jitter = (Math.random() - 0.5) * (effect.halfWidth || 20) * 0.9;
+            graphics.lineTo(
+              ax + (bx - ax) * ratio + dirX * jitter,
+              ay + (by - ay) * ratio + dirY * jitter,
+            );
+          }
+          graphics.lineTo(bx, by);
+        };
+        drawBolt(4.4, effect.color);
+        drawBolt(1.8, "rgba(255,255,255,0.9)");
+        if (Math.random() < delta * 40) {
+          const ratio = Math.random();
+          this.spawnParticle({
+            x: lerp(ax, bx, ratio),
+            y: lerp(ay, by, ratio),
+            vx: dirX * (40 + Math.random() * 40),
+            vy: dirY * (40 + Math.random() * 40),
+            life: 0.26,
+            scale: 0.24,
+            color: "#dfe6ff",
+            alpha: 0.5,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "crescentSlash") {
+        // A sweeping moon-blade arc anchored at the caster, drawn as an explicit polyline.
+        const baseAngle = effect.angle || 0;
+        const arcSpan = 1.7;
+        const radius = effect.radius * (0.7 + progress * 0.7);
+        const drawArcBand = (bandRadius, width, color) => {
+          setLine(graphics, width, color);
+          const segments = 14;
+          for (let index = 0; index <= segments; index += 1) {
+            const a = baseAngle - arcSpan / 2 + (arcSpan * index) / segments;
+            const px = effect.x + Math.cos(a) * bandRadius;
+            const py = effect.y + Math.sin(a) * bandRadius;
+            if (index === 0) graphics.moveTo(px, py);
+            else graphics.lineTo(px, py);
+          }
+        };
+        drawArcBand(radius, 9 * (1 - progress * 0.5), "rgba(255, 190, 190, 0.16)");
+        drawArcBand(radius * 0.94, 4 * (1 - progress * 0.4), effect.color);
+        drawArcBand(radius * 0.88, 1.8, effect.accent || "rgba(255,255,255,0.85)");
+        if (Math.random() < delta * 34) {
+          const a = baseAngle - arcSpan / 2 + Math.random() * arcSpan;
+          this.spawnParticle({
+            x: effect.x + Math.cos(a) * radius,
+            y: effect.y + Math.sin(a) * radius,
+            vx: Math.cos(a) * 30,
+            vy: Math.sin(a) * 30,
+            life: 0.3,
+            scale: 0.24,
+            color: "#ffd3d0",
+            alpha: 0.4,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "clockRewind") {
+        // A clock face whose hand winds toward "midnight" as the zone charges up.
+        const p = effect.progress ?? progress;
+        const r = effect.radius;
+        setLine(graphics, 3, `${effect.color}`);
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, 1.5, "rgba(255,255,255,0.5)");
+        graphics.drawCircle(effect.x, effect.y, r * 0.72);
+        // Tick marks.
+        for (let index = 0; index < 12; index += 1) {
+          const a = (Math.PI * 2 * index) / 12;
+          const inner = r * 0.82;
+          const outer = r * 0.96;
+          graphics.moveTo(effect.x + Math.cos(a) * inner, effect.y + Math.sin(a) * inner);
+          graphics.lineTo(effect.x + Math.cos(a) * outer, effect.y + Math.sin(a) * outer);
+        }
+        // Sweeping hand + shrinking charge ring.
+        const handAngle = -Math.PI / 2 + p * Math.PI * 2;
+        setLine(graphics, 3, effect.accent || "rgba(255,255,255,0.9)");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(effect.x + Math.cos(handAngle) * r * 0.66, effect.y + Math.sin(handAngle) * r * 0.66);
+        setLine(graphics, 4 * (0.4 + p * 0.6), effect.color);
+        graphics.drawCircle(effect.x, effect.y, r * (1 - p) * 0.9 + r * 0.08);
+      } else if (effect.kind === "timeSnap") {
+        // Time collapses inward: rings rush toward the center.
+        const r = effect.radius;
+        setLine(graphics, 14 * (1 - progress), "rgba(123, 196, 137, 0.18)");
+        graphics.drawCircle(effect.x, effect.y, r * (1 - progress) + r * 0.1);
+        setLine(graphics, 4, effect.color);
+        graphics.drawCircle(effect.x, effect.y, r * (1 - progress) * 0.7 + r * 0.06);
+        beginFill(graphics, effect.accent || "rgba(255,255,255,0.9)", 0.5 * (1 - progress));
+        drawStar(graphics, effect.x, effect.y, r * 0.3 * (1 - progress) + 6, r * 0.12, 12);
+        graphics.endFill();
+        for (let index = 0; index < 12; index += 1) {
+          const a = (Math.PI * 2 * index) / 12;
+          const outer = r * (1 - progress) + r * 0.14;
+          graphics.moveTo(effect.x + Math.cos(a) * outer, effect.y + Math.sin(a) * outer);
+          graphics.lineTo(effect.x + Math.cos(a) * r * 0.08, effect.y + Math.sin(a) * r * 0.08);
+        }
+      } else if (effect.kind === "mothDust") {
+        // Soft drifting scale-dust puff.
+        beginFill(graphics, effect.color, 0.16 * (1 - progress));
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.6 + progress * 0.8));
+        graphics.endFill();
+        beginFill(graphics, effect.accent || "rgba(243,230,255,0.8)", 0.22 * (1 - progress));
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.3 + progress * 0.4));
+        graphics.endFill();
+        if (Math.random() < delta * 24) {
+          const a = Math.random() * Math.PI * 2;
+          this.spawnParticle({
+            x: effect.x + Math.cos(a) * effect.radius * 0.4,
+            y: effect.y + Math.sin(a) * effect.radius * 0.4,
+            vx: Math.cos(a) * 8,
+            vy: Math.sin(a) * 8 - 6,
+            life: 0.5,
+            scale: 0.2,
+            color: "#e7d4ff",
+            alpha: 0.36,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "moonTether") {
+        // A luminous moon thread from caster to the summoned well.
+        setLine(graphics, (effect.thickness || 4) * 2, "rgba(239, 145, 194, 0.14)");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(effect.targetX, effect.targetY);
+        setLine(graphics, effect.thickness || 4, effect.color);
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(effect.targetX, effect.targetY);
+        setLine(graphics, 1.6, effect.accent || "rgba(255,255,255,0.85)");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(effect.targetX, effect.targetY);
+      } else if (effect.kind === "moonWell") {
+        // A pulling well: outer pull ring + inner moon disc, with inward-drawn crescents.
+        const r = effect.radius;
+        const pr = effect.pullRadius || r * 1.6;
+        const spin = this.getMotionTime(0.0018);
+        setLine(graphics, 2.4, "rgba(239, 145, 194, 0.3)");
+        graphics.drawCircle(effect.x, effect.y, pr * (0.98 - (effect.progress ?? 0) * 0.1));
+        beginFill(graphics, effect.color, 0.14);
+        graphics.drawCircle(effect.x, effect.y, r);
+        graphics.endFill();
+        setLine(graphics, 3, effect.accent || "rgba(255,240,248,0.9)");
+        graphics.drawCircle(effect.x, effect.y, r * 0.7);
+        for (let index = 0; index < 8; index += 1) {
+          const a = (Math.PI * 2 * index) / 8 + spin;
+          const outer = pr * 0.9;
+          const inner = r * 0.75;
+          graphics.moveTo(effect.x + Math.cos(a) * outer, effect.y + Math.sin(a) * outer);
+          graphics.lineTo(effect.x + Math.cos(a) * inner, effect.y + Math.sin(a) * inner);
+        }
+        if (Math.random() < delta * 30) {
+          const a = Math.random() * Math.PI * 2;
+          const dist = pr * (0.6 + Math.random() * 0.4);
+          this.spawnParticle({
+            x: effect.x + Math.cos(a) * dist,
+            y: effect.y + Math.sin(a) * dist,
+            vx: -Math.cos(a) * 40,
+            vy: -Math.sin(a) * 40,
+            life: 0.4,
+            scale: 0.22,
+            color: "#ffd9ee",
+            alpha: 0.4,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "impactSpark") {
+        // A quick bright flash + a few radial spark lines at the point of impact.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.5 + progress * 0.7);
+        beginFill(graphics, effect.accent || "#ffffff", 0.7 * fade);
+        graphics.drawCircle(effect.x, effect.y, r * 0.45);
+        graphics.endFill();
+        setLine(graphics, 2.2 * fade, effect.color || "#ffffff");
+        for (let index = 0; index < 5; index += 1) {
+          const a = (Math.PI * 2 * index) / 5 + effect.x * 0.03;
+          graphics.moveTo(effect.x + Math.cos(a) * r * 0.3, effect.y + Math.sin(a) * r * 0.3);
+          graphics.lineTo(effect.x + Math.cos(a) * r, effect.y + Math.sin(a) * r);
+        }
+      } else if (effect.kind === "killBurst") {
+        // Expanding ring + scattered debris marking a kill; bosses get an extra shockwave.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.35 + progress * 0.85);
+        setLine(graphics, (effect.boss ? 8 : 4) * fade, effect.accent || "#fff6e0");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, (effect.boss ? 4 : 2) * fade, effect.color || "#ffffff");
+        graphics.drawCircle(effect.x, effect.y, r * 0.7);
+        if (effect.boss) {
+          setLine(graphics, 3 * fade, "rgba(255,255,255,0.8)");
+          graphics.drawCircle(effect.x, effect.y, r * 1.25);
+        }
+        const debris = effect.boss ? 12 : 6;
+        for (let index = 0; index < debris; index += 1) {
+          const a = (Math.PI * 2 * index) / debris + effect.y * 0.02;
+          const inner = r * 0.55;
+          const outer = r * (0.95 + (index % 2) * 0.12);
+          graphics.moveTo(effect.x + Math.cos(a) * inner, effect.y + Math.sin(a) * inner);
+          graphics.lineTo(effect.x + Math.cos(a) * outer, effect.y + Math.sin(a) * outer);
+        }
+        if (progress < 0.25 && Math.random() < delta * (effect.boss ? 120 : 50)) {
+          const a = Math.random() * Math.PI * 2;
+          this.spawnParticle({
+            x: effect.x,
+            y: effect.y,
+            vx: Math.cos(a) * (effect.boss ? 120 : 70),
+            vy: Math.sin(a) * (effect.boss ? 120 : 70),
+            life: 0.4,
+            scale: effect.boss ? 0.34 : 0.24,
+            color: effect.color || "#fff6e0",
+            alpha: 0.6,
+            blendMode: SCREEN_BLEND,
+          });
+        }
       }
     }
   }
@@ -2416,6 +2767,10 @@ export class PixiRenderer {
   drawStrikes(strikes, delta) {
     const graphics = this.layers.strikes;
     for (const strike of strikes) {
+      // Reworked skills carry their own spawnSkillEffect visuals; skip the generic diamond stamp.
+      if (strike.kind === "stormSweep" || strike.kind === "clockRewind" || strike.kind === "moonWell") {
+        continue;
+      }
       setLine(graphics, 7, "rgba(255, 227, 173, 0.12)");
       drawRotatedDiamond(graphics, strike.x, strike.y, strike.radius * 1.22, strike.radius * 1.68);
       setLine(graphics, 3, strike.color);
@@ -2489,32 +2844,37 @@ export class PixiRenderer {
       const scale = meteor.radius / textureData.baseRadius;
 
       const fallAngle = Math.atan2(meteor.targetY - meteor.startY, meteor.targetX - meteor.startX);
+      const meteorColor = parseColor(meteor.color).color;
       visual.position.set(x, y);
       visual.mainSprite.texture = textureData.texture;
-      visual.mainSprite.tint = parseColor(meteor.color).color;
-      visual.mainSprite.scale.set(scale * 1.15);
+      // Deepen the tint (mix toward the pure hue) so light-colored comets like the orchid stay vivid.
+      visual.mainSprite.tint = mixColors(meteorColor, 0x000000, 0.12);
+      visual.mainSprite.scale.set(scale * 1.28);
       visual.mainSprite.rotation = fallAngle + Math.sin(this.getMotionTime(0.004) + meteor.x * 0.001) * 0.05;
-      visual.glowSprite.tint = parseColor(meteor.color).color;
-      visual.glowSprite.scale.set(scale * 2.1);
-      visual.glowSprite.alpha = 0.26;
+      visual.glowSprite.tint = meteorColor;
+      visual.glowSprite.scale.set(scale * 2.35);
+      visual.glowSprite.alpha = 0.5;
 
-      setLine(glowGraphics, 8, "rgba(255, 194, 142, 0.14)");
-      glowGraphics.drawCircle(meteor.targetX, meteor.targetY, meteor.radius * (0.74 + progress * 0.16));
-      setLine(glowGraphics, 3, meteor.color);
+      // Bright, saturated target marker so the impact point is clearly telegraphed.
+      setLine(glowGraphics, 10, `${meteor.color}55`);
+      glowGraphics.drawCircle(meteor.targetX, meteor.targetY, meteor.radius * (0.78 + progress * 0.18));
+      setLine(glowGraphics, 4, meteor.color);
       glowGraphics.drawCircle(meteor.targetX, meteor.targetY, meteor.radius * (0.62 + progress * 0.12));
+      setLine(glowGraphics, 2, "rgba(255,255,255,0.85)");
+      glowGraphics.drawCircle(meteor.targetX, meteor.targetY, meteor.radius * (0.5 + progress * 0.1));
 
       const backX = x - Math.cos(fallAngle) * meteor.radius * 1.1;
       const backY = y - Math.sin(fallAngle) * meteor.radius * 1.1;
-      if (Math.random() < delta * 36) {
+      if (Math.random() < delta * 48) {
         this.spawnParticle({
           x: backX + (Math.random() - 0.5) * 8,
           y: backY + (Math.random() - 0.5) * 8,
           vx: -Math.cos(fallAngle) * 26 + (Math.random() - 0.5) * 10,
           vy: -Math.sin(fallAngle) * 26 + (Math.random() - 0.5) * 10,
-          life: 0.45,
-          scale: 0.3,
+          life: 0.5,
+          scale: 0.36,
           color: meteor.color,
-          alpha: 0.4,
+          alpha: 0.62,
           blendMode: SCREEN_BLEND,
         });
       }
