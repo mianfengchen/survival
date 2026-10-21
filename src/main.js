@@ -300,6 +300,7 @@ const elements = {
   eyeComfortButton: document.querySelector("#eyeComfortButton"),
   muteButton: document.querySelector("#muteButton"),
   reducedMotionButton: document.querySelector("#reducedMotionButton"),
+  perspectiveButton: document.querySelector("#perspectiveButton"),
   speedToggleButton: document.querySelector("#speedToggleButton"),
   touchControls: document.querySelector("#touchControls"),
   touchJoystick: document.querySelector("#touchJoystick"),
@@ -372,6 +373,7 @@ const game = new GameRuntime({
 game.setEyeComfortMode(progress.settings?.eyeComfortMode ?? false);
 game.setMuted(progress.settings?.muted ?? false);
 game.setReducedMotion(progress.settings?.reducedMotion ?? false);
+game.setPerspectiveMode(progress.settings?.perspectiveMode ?? false);
 
 // Browsers block audio until a user gesture; resume the context on the first interaction.
 function primeAudioOnGesture() {
@@ -470,6 +472,7 @@ async function bootApp() {
   renderEyeComfortButton(progress.settings?.eyeComfortMode ?? false);
   renderMuteButton(progress.settings?.muted ?? false);
   renderReducedMotionButton(progress.settings?.reducedMotion ?? false);
+  renderPerspectiveButton(progress.settings?.perspectiveMode ?? false);
 
   if (!progress.world.tutorialCompleted) {
     openIntroStory();
@@ -697,6 +700,10 @@ function bindUi() {
 
   elements.reducedMotionButton?.addEventListener("click", () => {
     setReducedMotion(!(progress.settings?.reducedMotion ?? false));
+  });
+
+  elements.perspectiveButton?.addEventListener("click", () => {
+    setPerspectiveMode(!(progress.settings?.perspectiveMode ?? false));
   });
 
   elements.giveUpButton.addEventListener("click", () => {
@@ -991,9 +998,22 @@ function setReducedMotion(reduced) {
   renderReducedMotionButton(reduced);
 }
 
+function renderPerspectiveButton(enabled) {
+  if (!elements.perspectiveButton) return;
+  elements.perspectiveButton.textContent = enabled ? "立体 开" : "立体 关";
+  elements.perspectiveButton.dataset.active = enabled ? "true" : "false";
+}
+
+function setPerspectiveMode(enabled) {
+  progress = updateSettings(progress, { perspectiveMode: enabled });
+  saveProgress(progress);
+  game.setPerspectiveMode(enabled);
+  renderPerspectiveButton(enabled);
+}
+
 function renderHud(snapshot) {
   renderTouchPauseButton();
-  elements.hudTimerText.textContent = snapshot.time === "Boss" ? "Boss 战" : `倒计时 ${snapshot.time}`;
+  elements.hudTimerText.textContent = snapshot.waveText || (snapshot.time === "Boss" ? "Boss 战" : `倒计时 ${snapshot.time}`);
   elements.hudHealthText.textContent = `生命 ${snapshot.health}`;
   renderBlinkCharges(snapshot);
   elements.hudLevelText.textContent = `LV ${snapshot.level}`;

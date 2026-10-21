@@ -121,6 +121,10 @@ function scaleProfile(baseProfile, scales = {}) {
 
 const SWORD_GLOW_COLORS = ["#ffe58f", "#8fe9ff", "#ffb4f6", "#b7ff84", "#ffd2a8", "#d7b7ff"];
 
+// 灵魂剥离: how far behind the body the stripped soul replays its movement.
+const SOUL_FOLLOW_DELAY = 2;
+const SOUL_TRAIL_RETENTION = SOUL_FOLLOW_DELAY + 0.6;
+
 // Rainbow palette for 棱镜折射 refraction: each bounce shifts to the next spectrum color.
 const PRISM_SPECTRUM = ["#7fd8ff", "#8affc4", "#fff27f", "#ffb37f", "#ff7fa8", "#d67fff", "#7f9dff"];
 function nextPrismColor(currentColor) {
@@ -131,7 +135,7 @@ function nextPrismColor(currentColor) {
 const PROJECTILE_COUNT_SKILLS = new Set([
   "elfArrow", "flyingSword", "bubbleBurst", "thornVolley", "ribbonBlade", "cometPlow",
   "glassPrismRay", "honeyBomb", "orchidComet", "brambleBoomerang", "lanternSpark", "harvestCrescent",
-  "pearlBubble", "operaMothBlade", "antlerBolt", "eclipsePetalRain", "amberGearBurst", "auroraNeedle", "grandPrismMeteor",
+  "pearlRoll", "operaMothBlade", "antlerBolt", "eclipsePetalRain", "amberGearBurst", "auroraNeedle", "grandPrismMeteor",
 ]);
 const SUMMON_COUNT_SKILLS = new Set([
   "petalOrbit", "dewGarden", "mushroomMine", "lotusBeacon",
@@ -141,12 +145,79 @@ const PROJECTILE_GENERAL_UPGRADES = new Set(["projectileSpeed", "projectileSize"
 const SUMMON_GENERAL_UPGRADES = new Set(["summonOverload"]);
 const UPGRADE_CHOICE_COUNT = 3;
 const SPECIAL_BOON_CHOICE_COUNT = 3;
-const ELITE_SPAWN_INTERVAL_SECONDS = 180;
 const MONSTER_CONTACT_DAMAGE_SCALE = 0.58;
 const ENEMY_PROJECTILE_BASE_LIFE_SCALE = 1.18;
 const ENEMY_PROJECTILE_MIN_LIFE = 3.2;
 const ENEMY_PROJECTILE_MAX_LIFE = 8.6;
 const BOSS_ATTACK_MIN_INTERVAL = 0.72;
+// Boss fight pacing: telegraphed specials and the shield/break/vulnerable cycle.
+const BOSS_SPECIAL_FIRST_DELAY = 5;
+const BOSS_SPECIAL_INTERVAL = 7.5;
+const BOSS_SHIELD_FIRST_DELAY = 16;
+const BOSS_SHIELD_INTERVAL = 26;
+const BOSS_SHIELD_HP_RATIO = 0.03;
+// If the player can't break it in time the shield just fades — it must never hard-stall
+// the fight, it is a burst check rather than a damage wall.
+const BOSS_SHIELD_DURATION = 8;
+const BOSS_VULNERABLE_DURATION = 4.5;
+const BOSS_VULNERABLE_DAMAGE_BONUS = 1.6;
+const BOSS_SLAM_TELEGRAPH = 1.15;
+const BOSS_CHARGE_TELEGRAPH = 0.95;
+
+// ── Wave pacing ───────────────────────────────────────────────────────────────
+// The run is split into waves separated by short intermissions so the 15 minutes
+// has an actual rhythm (pressure -> relief -> decision) instead of one flat ramp.
+const WAVE_COUNT = 5;
+const WAVE_INTERMISSION_SECONDS = 20;
+const WAVE_INTERMISSION_HEAL_RATIO = 0.15;
+
+const WAVE_TYPE_LIBRARY = Object.freeze({
+  cull: {
+    id: "cull",
+    name: "歼灭",
+    objective: "击杀足够数量的害虫",
+    duration: 165,
+    densityScale: 1,
+    killGoalBase: 55,
+    eliteGoal: 0,
+  },
+  hunt: {
+    id: "hunt",
+    name: "猎杀",
+    objective: "击杀全部标记精英即可提前结束",
+    duration: 165,
+    densityScale: 0.72,
+    killGoalBase: 0,
+    eliteGoal: 2,
+  },
+  surge: {
+    id: "surge",
+    name: "潮汐",
+    objective: "顶住短时间的高密度虫潮",
+    duration: 60,
+    densityScale: 2.8,
+    killGoalBase: 0,
+    eliteGoal: 0,
+  },
+});
+
+// Per-wave modifiers are temporary variety, not a tax on your build: they expire with
+// the wave, you never pick them, and the harsher ones pay out extra experience.
+const WAVE_MODIFIER_LIBRARY = Object.freeze([
+  { id: "calm", name: "平静", description: "本波没有额外变化。" },
+  { id: "swift", name: "疾行", description: "本波害虫移速 +40%。", speedScale: 1.4 },
+  { id: "tough", name: "厚甲", description: "本波害虫生命 +50%。", healthScale: 1.5 },
+  { id: "swarm", name: "虫群", description: "本波刷怪密度 +60%，但害虫更脆。", densityScale: 1.6, healthScale: 0.68 },
+  { id: "frenzy", name: "狂乱", description: "本波害虫移速与伤害 +25%，经验掉落 +40%。", speedScale: 1.25, damageScale: 1.25, expScale: 1.4 },
+]);
+
+function getWaveTypeDefinition(typeId) {
+  return WAVE_TYPE_LIBRARY[typeId] || WAVE_TYPE_LIBRARY.cull;
+}
+
+function getWaveModifierDefinition(modifierId) {
+  return WAVE_MODIFIER_LIBRARY.find((item) => item.id === modifierId) || WAVE_MODIFIER_LIBRARY[0];
+}
 const UPGRADE_CHOICE_WEIGHTS = Object.freeze({
   general: 1,
   "skill-unlock": 3,
@@ -259,7 +330,6 @@ export class GameRuntime {
     this.specialBoonLevels = Object.fromEntries(SPECIAL_BOON_LIBRARY.map((item) => [item.id, 0]));
     this.skillStates = {};
     this.activeSkillTrigger = null;
-    this.lastDamageRoll = null;
     this.pendingChoiceMode = null;
     this.specialState = this.createSpecialState();
     this.session = null;
@@ -277,6 +347,7 @@ export class GameRuntime {
     this.companions = [];
     this.damageNumbers = [];
     this.pickups = [];
+    this.bossHazards = [];
     this.orbitAngle = 0;
     this.lastTimestamp = 0;
     this.hudClock = 0;
@@ -501,13 +572,26 @@ export class GameRuntime {
       startingSkillId,
       upgradesExhaustedNotified: false,
       pendingSpecialChoices: 0,
-      eliteSpawnInterval: ELITE_SPAWN_INTERVAL_SECONDS,
-      nextEliteSpawnAt: ELITE_SPAWN_INTERVAL_SECONDS,
+      // Wave pacing state. Elites now arrive as hunt-wave objectives rather than on a
+      // fixed timer, which keeps the special-boon cadence tied to a readable event.
+      wavePlan: [],
+      waveIndex: 0,
+      wavePhase: "combat",
+      waveTimer: 0,
+      waveTypeId: "cull",
+      waveModifierId: "calm",
+      waveKillBaseline: 0,
+      waveKillGoal: 0,
+      waveEliteKills: 0,
+      waveEliteGoal: 0,
+      intermissionTimer: 0,
+      intermissionRewardTaken: false,
       discoveries: {
         monsters: new Set(),
         skills: new Set(),
       },
     };
+    this.session.wavePlan = this.buildWavePlan();
     this.enemies = [];
     this.enemyProjectiles = [];
     this.projectiles = [];
@@ -522,6 +606,7 @@ export class GameRuntime {
     this.companions = [];
     this.damageNumbers = [];
     this.pickups = [];
+    this.bossHazards = [];
     this.orbitAngle = 0;
     this.pendingChoices = [];
     this.screenShake = 0;
@@ -530,11 +615,12 @@ export class GameRuntime {
 
     this.applyTalents(progress?.talents || {});
     this.unlockSkill(startingSkillId, false);
+    this.startWave(1);
     this.state = "running";
     this.lastTimestamp = 0;
     this.callbacks.onSessionLabel?.(
       "战斗进行中",
-      `起始技能：${getSkillDefinition(startingSkillId)?.name || "飞剑术"}，撑过 ${Math.round(this.session.roundDurationSeconds / 60)} 分钟并击败最终 Boss`
+      `起始技能：${getSkillDefinition(startingSkillId)?.name || "飞剑术"}，撑过 ${WAVE_COUNT} 个波次并击败最终 Boss`
     );
     this.callbacks.onOverlayChange?.(null);
     this.emitHud();
@@ -597,7 +683,15 @@ export class GameRuntime {
     }
     this.state = "running";
     this.callbacks.onOverlayChange?.(null);
-    this.callbacks.onSessionLabel?.("战斗进行中", "撑过 15 分钟并击败最终 Boss");
+    const resumeType = this.getCurrentWaveType();
+    this.callbacks.onSessionLabel?.(
+      this.session?.bossSpawned
+        ? "Boss 战"
+        : this.session?.wavePhase === "intermission"
+          ? "波间休整"
+          : `第 ${this.session?.waveIndex || 1}/${WAVE_COUNT} 波 · ${resumeType.name}`,
+      this.session?.bossSpawned ? "击败最终 Boss 即可获胜" : resumeType.objective,
+    );
     this.lastTimestamp = 0;
     window.requestAnimationFrame((timestamp) => this.loop(timestamp));
   }
@@ -619,9 +713,11 @@ export class GameRuntime {
       return;
     }
 
-    if (this.pendingChoiceMode === "special") {
+    const resolvedMode = this.pendingChoiceMode;
+    if (resolvedMode === "special") {
       this.applySpecialBoonChoice(picked);
     } else {
+      // Wave rewards draw from the same growth pool as level-ups.
       this.applyUpgradeChoice(picked);
     }
     this.pendingChoices = [];
@@ -638,7 +734,16 @@ export class GameRuntime {
 
     this.state = "running";
     this.callbacks.onOverlayChange?.(null);
-    this.callbacks.onSessionLabel?.("战斗进行中", "升级完成，继续推进局内成长");
+    if (resolvedMode === "wave" && this.session?.wavePhase === "intermission") {
+      const nextEntry = this.session.wavePlan[this.session.waveIndex] || null;
+      const nextType = nextEntry ? getWaveTypeDefinition(nextEntry.typeId) : null;
+      this.callbacks.onSessionLabel?.(
+        "波间休整",
+        nextType ? `下一波：${nextType.name} — ${nextType.objective}` : "准备迎战最终 Boss",
+      );
+    } else {
+      this.callbacks.onSessionLabel?.("战斗进行中", "升级完成，继续推进局内成长");
+    }
     this.emitHud();
     this.lastTimestamp = 0;
     window.requestAnimationFrame((timestamp) => this.loop(timestamp));
@@ -937,6 +1042,15 @@ export class GameRuntime {
       this.specialState.iceThornCooldown = 0;
     }
 
+    if (boon.id === "soulStrip") {
+      // Immediately strip any elite/boss already on the field (copy first: stripSoul pushes).
+      for (const enemy of [...this.enemies]) {
+        if (!enemy.isSoul && (enemy.boss || enemy.elite) && enemy.health > 0) {
+          this.stripSoul(enemy);
+        }
+      }
+    }
+
     this.callbacks.onToast?.(`获得精英增益：${boon.name}`);
   }
 
@@ -1059,16 +1173,9 @@ export class GameRuntime {
       player.blinkCharges = Math.min(player.blinkChargesMax, player.blinkCharges + 1);
     }
 
-    if (!session.bossSpawned && session.elapsed >= session.roundDurationSeconds) {
-      this.spawnBoss();
-    }
-
-    if (!session.bossSpawned && session.elapsed < session.roundDurationSeconds) {
-      while (session.elapsed >= session.nextEliteSpawnAt) {
-        session.nextEliteSpawnAt += session.eliteSpawnInterval;
-        this.spawnElite();
-      }
-    }
+    // Wave pacing drives both the intermissions and the boss entrance now; elites arrive
+    // as hunt-wave objectives rather than on a fixed wall-clock interval.
+    this.updateWaveState(delta);
 
     this.movePlayer(delta);
     this.spawnEnemies(delta);
@@ -1087,6 +1194,7 @@ export class GameRuntime {
     this.updateThunderSprites(delta);
     this.updateEnemies(delta);
     this.updateEnemyProjectiles(delta);
+    this.updateBossHazards(delta);
     this.updatePickups(delta);
 
     if (session.expVacuumEnabled) {
@@ -1199,8 +1307,205 @@ export class GameRuntime {
     };
   }
 
+  // ── Wave pacing ─────────────────────────────────────────────────────────────
+  // Fixed structure (cull / hunt / cull / hunt / surge) with random per-wave modifiers:
+  // predictable pacing and a guaranteed elite cadence, but varied texture each run.
+  buildWavePlan() {
+    const order = ["cull", "hunt", "cull", "hunt", "surge"];
+    const plan = [];
+    for (let index = 0; index < WAVE_COUNT; index += 1) {
+      // Wave 1 is always calm so the opening can never roll unfair.
+      const modifierId = index === 0
+        ? "calm"
+        : WAVE_MODIFIER_LIBRARY[Math.floor(Math.random() * WAVE_MODIFIER_LIBRARY.length)].id;
+      plan.push({ typeId: order[index] || "cull", modifierId });
+    }
+    return plan;
+  }
+
+  getCurrentWaveType() {
+    return getWaveTypeDefinition(this.session?.waveTypeId);
+  }
+
+  getCurrentWaveModifier() {
+    return getWaveModifierDefinition(this.session?.waveModifierId);
+  }
+
+  startWave(waveNumber) {
+    const session = this.session;
+    if (!session) {
+      return;
+    }
+    const index = clamp(waveNumber, 1, WAVE_COUNT);
+    const entry = session.wavePlan[index - 1] || { typeId: "cull", modifierId: "calm" };
+    const type = getWaveTypeDefinition(entry.typeId);
+    const modifier = getWaveModifierDefinition(entry.modifierId);
+
+    session.waveIndex = index;
+    session.waveTypeId = type.id;
+    session.waveModifierId = modifier.id;
+    session.wavePhase = "combat";
+    session.waveTimer = type.duration;
+    session.waveKillBaseline = session.kills;
+    session.waveKillGoal = type.killGoalBase > 0
+      ? Math.ceil(type.killGoalBase * (1 + (index - 1) * 0.35))
+      : 0;
+    session.waveEliteKills = 0;
+    session.waveEliteGoal = type.eliteGoal || 0;
+    session.intermissionTimer = 0;
+    session.intermissionRewardTaken = false;
+    session.spawnTimer = 0.6;
+
+    // Hunt waves put their objective on the field immediately.
+    for (let count = 0; count < session.waveEliteGoal; count += 1) {
+      this.spawnElite();
+    }
+
+    const modifierSuffix = modifier.id === "calm" ? "" : ` · ${modifier.name}`;
+    this.callbacks.onToast?.(`第 ${index}/${WAVE_COUNT} 波 — ${type.name}${modifierSuffix}`);
+    this.callbacks.onSessionLabel?.(
+      `第 ${index}/${WAVE_COUNT} 波 · ${type.name}`,
+      modifier.id === "calm" ? type.objective : `${type.objective}（${modifier.description}）`,
+    );
+    this.emitHud();
+  }
+
+  isWaveObjectiveComplete() {
+    const session = this.session;
+    if (!session) {
+      return false;
+    }
+    if (session.waveEliteGoal > 0) {
+      return session.waveEliteKills >= session.waveEliteGoal;
+    }
+    if (session.waveKillGoal > 0) {
+      return session.kills - session.waveKillBaseline >= session.waveKillGoal;
+    }
+    return false;
+  }
+
+  updateWaveState(delta) {
+    const session = this.session;
+    if (!session || session.bossSpawned) {
+      return;
+    }
+
+    if (session.wavePhase === "intermission") {
+      session.intermissionTimer -= delta;
+      if (session.intermissionTimer <= 0) {
+        this.startWave(session.waveIndex + 1);
+      }
+      return;
+    }
+
+    session.waveTimer -= delta;
+    const clearedEarly = this.isWaveObjectiveComplete();
+    if (clearedEarly || session.waveTimer <= 0) {
+      this.endCurrentWave(clearedEarly);
+    }
+  }
+
+  endCurrentWave(clearedEarly) {
+    const session = this.session;
+    if (!session) {
+      return;
+    }
+
+    if (clearedEarly) {
+      this.callbacks.onToast?.("波次目标达成");
+    }
+
+    if (session.waveIndex >= WAVE_COUNT) {
+      // Final wave over: wipe the field and bring in the boss.
+      this.clearBattlefieldForBreak();
+      this.spawnBoss();
+      return;
+    }
+
+    this.startIntermission();
+  }
+
+  // Wipe the field so a break is genuinely a break (bosses are never removed).
+  clearBattlefieldForBreak() {
+    this.enemies = this.enemies.filter((enemy) => enemy.boss);
+    this.enemyProjectiles = [];
+    this.bossHazards = [];
+  }
+
+  startIntermission() {
+    const session = this.session;
+    session.wavePhase = "intermission";
+    session.intermissionTimer = WAVE_INTERMISSION_SECONDS;
+    session.intermissionRewardTaken = false;
+    this.clearBattlefieldForBreak();
+
+    // The breather restores a slice of health so chip damage isn't permanent.
+    this.player.health = Math.min(
+      this.player.maxHealth,
+      this.player.health + this.player.maxHealth * WAVE_INTERMISSION_HEAL_RATIO,
+    );
+
+    const nextEntry = session.wavePlan[session.waveIndex] || null;
+    const nextType = nextEntry ? getWaveTypeDefinition(nextEntry.typeId) : null;
+    const nextModifier = nextEntry ? getWaveModifierDefinition(nextEntry.modifierId) : null;
+    this.callbacks.onSessionLabel?.(
+      "波间休整",
+      nextType
+        ? `下一波：${nextType.name}${nextModifier && nextModifier.id !== "calm" ? ` · ${nextModifier.name}` : ""} — ${nextType.objective}`
+        : "准备迎战最终 Boss",
+    );
+    this.emitHud();
+    this.tryStartWaveReward();
+  }
+
+  // The reward pick pauses the run; the rest of the intermission then plays out live.
+  tryStartWaveReward() {
+    const session = this.session;
+    if (!session || session.intermissionRewardTaken) {
+      return false;
+    }
+    session.intermissionRewardTaken = true;
+
+    const choices = this.buildUpgradeChoices();
+    if (choices.length === 0) {
+      return false;
+    }
+
+    this.pendingChoices = choices;
+    this.pendingChoiceMode = "wave";
+    this.state = "levelup";
+    this.callbacks.onLevelChoices?.(this.pendingChoices);
+    this.callbacks.onOverlayChange?.("levelScreen");
+    this.callbacks.onSessionLabel?.("波次奖励", "从三项成长中选择其一，随后继续推进");
+    this.emitHud();
+    return true;
+  }
+
+  getWaveStatusText() {
+    const session = this.session;
+    if (!session) {
+      return "";
+    }
+    if (session.bossSpawned) {
+      return "Boss 战";
+    }
+    if (session.wavePhase === "intermission") {
+      return `休整 ${Math.max(0, Math.ceil(session.intermissionTimer))}s`;
+    }
+    const type = this.getCurrentWaveType();
+    const timeText = formatDuration(Math.max(0, session.waveTimer));
+    let progress = "";
+    if (session.waveEliteGoal > 0) {
+      progress = ` ${session.waveEliteKills}/${session.waveEliteGoal}`;
+    } else if (session.waveKillGoal > 0) {
+      const done = Math.min(session.waveKillGoal, session.kills - session.waveKillBaseline);
+      progress = ` ${done}/${session.waveKillGoal}`;
+    }
+    return `第${session.waveIndex}/${WAVE_COUNT}波 ${type.name}${progress} ${timeText}`;
+  }
+
   spawnEnemies(delta) {
-    if (this.session.bossSpawned) {
+    if (this.session.bossSpawned || this.session.wavePhase !== "combat") {
       return;
     }
 
@@ -1210,7 +1515,12 @@ export class GameRuntime {
     }
 
     const elapsed = this.session.elapsed;
-    const spawnCount = elapsed > 540 ? 4 : elapsed > 300 ? 3 : elapsed > 120 ? 2 : 1;
+    // Density now comes from the wave type and its modifier instead of raw elapsed time.
+    const waveType = this.getCurrentWaveType();
+    const waveModifier = this.getCurrentWaveModifier();
+    const densityScale = (waveType.densityScale || 1) * (waveModifier.densityScale || 1);
+    const rampBonus = this.session.waveIndex >= 4 ? 2 : this.session.waveIndex >= 2 ? 1 : 0;
+    const spawnCount = Math.max(1, Math.round((1 + rampBonus) * densityScale));
     const profile = this.session.difficultyProfile;
     let aliveKinCount = this.enemies.filter((e) => e.regionExclusive).length;
     for (let index = 0; index < spawnCount; index += 1) {
@@ -1257,19 +1567,26 @@ export class GameRuntime {
     const healthMultiplier = 1 + (baseHealthMultiplier - 1) * healthGrowthScale;
     const speedMultiplier = definition.boss ? profile.bossSpeedMultiplier : profile.monsterSpeedMultiplier;
     const damageMultiplier = definition.boss ? profile.bossDamageMultiplier : profile.monsterDamageMultiplier;
+    // Per-wave modifiers reshape the trash that spawns during that wave only. Bosses are
+    // exempt so their tuning stays predictable.
+    const waveModifier = definition.boss ? null : this.getCurrentWaveModifier();
+    const waveHealthScale = waveModifier?.healthScale ?? 1;
+    const waveSpeedScale = waveModifier?.speedScale ?? 1;
+    const waveDamageScale = waveModifier?.damageScale ?? 1;
+    const waveExpScale = waveModifier?.expScale ?? 1;
 
     return {
       id: crypto.randomUUID(),
       typeId: definition.id,
       x: spawn.x,
       y: spawn.y,
-      health: Math.ceil(definition.health * healthMultiplier * (definition.boss ? 1 : 2)),
-      maxHealth: Math.ceil(definition.health * healthMultiplier * (definition.boss ? 1 : 2)),
-      speed: definition.speed * speedMultiplier,
-      damage: Math.ceil(definition.damage * damageMultiplier),
-      contactDamage: Math.max(1, Math.ceil(definition.damage * damageMultiplier * MONSTER_CONTACT_DAMAGE_SCALE)),
+      health: Math.ceil(definition.health * healthMultiplier * waveHealthScale * (definition.boss ? 1 : 2)),
+      maxHealth: Math.ceil(definition.health * healthMultiplier * waveHealthScale * (definition.boss ? 1 : 2)),
+      speed: definition.speed * speedMultiplier * waveSpeedScale,
+      damage: Math.ceil(definition.damage * damageMultiplier * waveDamageScale),
+      contactDamage: Math.max(1, Math.ceil(definition.damage * damageMultiplier * waveDamageScale * MONSTER_CONTACT_DAMAGE_SCALE)),
       radius: definition.radius,
-      exp: Math.ceil(definition.exp * profile.expMultiplier),
+      exp: Math.ceil(definition.exp * profile.expMultiplier * waveExpScale),
       color: definition.color,
       accent: definition.accent,
       detailColor: definition.detailColor || "#fff7d8",
@@ -1292,11 +1609,113 @@ export class GameRuntime {
       attackClock: definition.boss ? Math.max(0.55, 2.1 - (definition.bossTier || 1) * 0.08) : 0,
       attackPhase: 0,
       specialPhase: Math.random() * Math.PI * 2,
+      // 灵魂剥离: only elites/bosses record a movement trail their soul can replay.
+      soulTrail: definition.boss || definition.elite ? [] : null,
+      soulId: null,
+      isSoul: false,
+      soulOwnerId: null,
+      // Boss fight structure: phases, a shield -> break -> vulnerable burst cycle,
+      // telegraphed specials (slam / charge) and guard summons.
+      bossPhase: 1,
+      bossShieldHp: 0,
+      bossShieldMax: 0,
+      bossShieldClock: definition.boss ? BOSS_SHIELD_FIRST_DELAY : 0,
+      bossShieldTimer: 0,
+      bossVulnerableFor: 0,
+      bossSpecialClock: definition.boss ? BOSS_SPECIAL_FIRST_DELAY : 0,
+      bossSpecialIndex: 0,
+      bossSummonClock: 0,
+      bossWindupFor: 0,
+      chargeTime: 0,
+      chargeVx: 0,
+      chargeVy: 0,
     };
   }
 
   hasLivingElite() {
-    return this.enemies.some((enemy) => enemy.elite && enemy.health > 0);
+    return this.enemies.some((enemy) => enemy.elite && !enemy.isSoul && enemy.health > 0);
+  }
+
+  // 灵魂剥离: pull a soul copy out of an elite/boss. The soul mirrors the body's attributes,
+  // replays its movement on a delay, shares its health pool, and never attacks.
+  stripSoul(owner) {
+    if (!this.hasSpecialBoon("soulStrip")) return null;
+    if (!owner || owner.isSoul || owner.health <= 0) return null;
+    if (!owner.boss && !owner.elite) return null;
+    if (owner.soulId && this.findEnemyById(owner.soulId)) return null;
+
+    if (!owner.soulTrail) {
+      owner.soulTrail = [];
+    }
+
+    const soul = {
+      ...owner,
+      id: crypto.randomUUID(),
+      isSoul: true,
+      soulOwnerId: owner.id,
+      soulId: null,
+      soulTrail: null,
+      // The soul is inert: it deals no damage, never attacks, and grants no rewards.
+      exp: 0,
+      damage: 0,
+      contactDamage: 0,
+      contactCooldown: 0,
+      attackClock: Number.POSITIVE_INFINITY,
+      attackPhase: 0,
+      hitCooldowns: {},
+      hitFlash: 0,
+      burnTimer: 0,
+      burnDamage: 0,
+      slowTimer: 0,
+      freezeTimer: 0,
+      vulnerableTimer: 0,
+      vulnerableMult: 0,
+      markedForExplosion: 0,
+      specialPhase: Math.random() * Math.PI * 2,
+      // A soul is a passive echo: it carries none of the boss's shield/charge machinery.
+      bossShieldHp: 0,
+      bossShieldMax: 0,
+      bossShieldClock: 0,
+      bossShieldTimer: 0,
+      bossVulnerableFor: 0,
+      bossSpecialClock: 0,
+      bossSummonClock: 0,
+      bossWindupFor: 0,
+      chargeTime: 0,
+      chargeVx: 0,
+      chargeVy: 0,
+    };
+
+    owner.soulId = soul.id;
+    this.enemies.push(soul);
+    this.spawnSkillEffect({
+      kind: "soulStrip",
+      x: owner.x,
+      y: owner.y,
+      radius: owner.radius * 1.8,
+      duration: 0.55,
+      color: "#b9a6ff",
+      accent: "#f1ebff",
+    });
+    this.callbacks.onToast?.("灵魂剥离");
+    return soul;
+  }
+
+  // The position the body occupied `delay` seconds ago, driving the soul's delayed replay.
+  getDelayedTrailPosition(owner, delay) {
+    const trail = owner?.soulTrail;
+    if (!trail || trail.length === 0) return null;
+    const cutoff = (this.session?.elapsed ?? 0) - delay;
+    // Trail is ordered oldest -> newest; take the newest sample at or behind the cutoff.
+    let chosen = trail[0];
+    for (let index = 0; index < trail.length; index += 1) {
+      if (trail[index].t <= cutoff) {
+        chosen = trail[index];
+      } else {
+        break;
+      }
+    }
+    return chosen;
   }
 
   spawnElite() {
@@ -1304,6 +1723,7 @@ export class GameRuntime {
     this.enemies.push(elite);
     this.session.discoveries.monsters.add(ELITE_MONSTER_DEFINITION.id);
     this.callbacks.onToast?.(`${ELITE_MONSTER_DEFINITION.name} 出现`);
+    this.stripSoul(elite);
   }
 
   findSaferTeleportPoint() {
@@ -1919,6 +2339,7 @@ export class GameRuntime {
     this.session.discoveries.monsters.add(definition.id);
     this.callbacks.onToast?.(`${definition.name} 出现`);
     this.callbacks.onSessionLabel?.("Boss 战", `击败 ${definition.name} 即可获胜`);
+    this.stripSoul(boss);
   }
 
   getProjectileCountBonus(skillId) {
@@ -2024,6 +2445,7 @@ export class GameRuntime {
     if (skillId === "operaMothBlade") return this.castOperaMothBlade(state, stats);
     if (skillId === "clockIvyLash") return this.castClockIvyLash(state, stats);
     if (skillId === "moonwellSnare") return this.castMoonwellSnare(state, stats);
+    if (skillId === "pearlRoll") return this.castPearlRoll(state, stats);
 
     const behavior = definition.advancedBehavior;
     if (behavior === "beam") this.castAdvancedBeam(skillId, state, stats);
@@ -2113,7 +2535,6 @@ export class GameRuntime {
     if (!target) return;
     const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
     const mireLevel = state?.exclusives?.honeyBombMire || 0;
-    const shrapnelLevel = state?.exclusives?.pearlBubbleShrapnel || 0;
     const sawLevel = state?.exclusives?.amberGearBurstSaw || 0;
     const totalCount = stats.count + this.getProjectileCountBonus(skillId);
     const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
@@ -2137,7 +2558,7 @@ export class GameRuntime {
         distanceTravelled: 0,
         color: definitionColor(skillId),
         advancedBomb: true,
-        splitLevel: focus + shrapnelLevel * 2,
+        splitLevel: focus,
         slowLevel: 1 + tempo,
         mireLevel: mireLevel + sawLevel,
       });
@@ -2678,6 +3099,74 @@ export class GameRuntime {
         accent: "#fff0f8",
         thickness: 4 + focus,
       });
+    }
+  }
+
+  // ── 珍珠滚碾: a heavy pearl that rolls through everything, growing as it crushes ──
+  castPearlRoll(state, stats) {
+    const skillId = "pearlRoll";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const avalancheLevel = state?.exclusives?.pearlRollAvalanche || 0;
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!target) return;
+    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    for (let index = 0; index < totalCount; index += 1) {
+      const aim = this.getProjectileAim(target, index, totalCount, 0.22, assignedTargets);
+      if (!aim) continue;
+      const speed = stats.speed * this.player.projectileSpeedMultiplier;
+      const startRadius = stats.size * this.player.projectileSizeMultiplier;
+      this.projectiles.push({
+        id: crypto.randomUUID(),
+        skillId,
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        vx: aim.direction.x * speed,
+        vy: aim.direction.y * speed,
+        speed,
+        radius: startRadius,
+        maxRadius: startRadius * (2.1 + avalancheLevel * 0.85),
+        damage: this.rollDamage(stats.damage),
+        // The pearl never stops at a target; its lifetime and bounce budget end the roll.
+        pierce: Number.POSITIVE_INFINITY,
+        maxDistance: Number.POSITIVE_INFINITY,
+        distanceTravelled: 0,
+        color: definitionColor(skillId),
+        rollingPearl: true,
+        rollLife: (stats.duration || 3) + tempo * 0.5,
+        bouncesLeft: (stats.bounces || 2) + avalancheLevel * 2,
+        growthPerHit: 0.055 + avalancheLevel * 0.045,
+        avalancheLevel,
+        focusLevel: focus,
+        spin: 0,
+        recentHits: {},
+      });
+    }
+  }
+
+  // The pearl's roll ends in a shockwave; the signature exclusive makes it far bigger.
+  shatterRollingPearl(projectile) {
+    const level = projectile.avalancheLevel || 0;
+    const radius = projectile.radius * (1.9 + level * 0.7);
+    this.spawnSkillEffect({
+      kind: "pearlShatter",
+      x: projectile.x,
+      y: projectile.y,
+      radius,
+      duration: 0.42,
+      color: projectile.color || "#f1d18a",
+      accent: "#fff6dc",
+      avalanche: level,
+    });
+    this.addScreenShake(6 + level * 4);
+    for (const enemy of this.enemies) {
+      if (circleDistance(projectile, enemy) <= radius + enemy.radius) {
+        this.damageEnemy(enemy, projectile.damage * (0.75 + level * 0.3), projectile);
+        if (level > 0) {
+          enemy.slowTimer = Math.max(enemy.slowTimer, 0.8 + level * 0.4);
+        }
+      }
     }
   }
 
@@ -3475,6 +3964,49 @@ export class GameRuntime {
       projectile.distanceTravelled += Math.hypot(projectile.vx * delta, projectile.vy * delta);
       let removed = false;
 
+      // 珍珠滚碾: the pearl rolls on a timer and ricochets off the arena bounds.
+      if (projectile.rollingPearl) {
+        projectile.rollLife -= delta;
+        projectile.spin += delta * 5.2;
+        const r = projectile.radius;
+        let bounced = false;
+        if (projectile.x < r && projectile.vx < 0) {
+          projectile.x = r;
+          projectile.vx = -projectile.vx;
+          bounced = true;
+        } else if (projectile.x > ARENA.width - r && projectile.vx > 0) {
+          projectile.x = ARENA.width - r;
+          projectile.vx = -projectile.vx;
+          bounced = true;
+        }
+        if (projectile.y < r && projectile.vy < 0) {
+          projectile.y = r;
+          projectile.vy = -projectile.vy;
+          bounced = true;
+        } else if (projectile.y > ARENA.height - r && projectile.vy > 0) {
+          projectile.y = ARENA.height - r;
+          projectile.vy = -projectile.vy;
+          bounced = true;
+        }
+        if (bounced) {
+          projectile.bouncesLeft -= 1;
+          this.addScreenShake(4);
+          this.spawnSkillEffect({
+            kind: "impactSpark",
+            x: projectile.x,
+            y: projectile.y,
+            radius: projectile.radius * 1.2,
+            duration: 0.18,
+            color: projectile.color,
+            accent: "#fff6dc",
+          });
+        }
+        if (projectile.rollLife <= 0 || projectile.bouncesLeft < 0) {
+          this.shatterRollingPearl(projectile);
+          removed = true;
+        }
+      }
+
       if (projectile.cometPlow && projectile.novaLevel > 0) {
         projectile.trailClock -= delta;
         if (projectile.trailClock <= 0) {
@@ -3536,7 +4068,8 @@ export class GameRuntime {
         }
 
         if (projectile.recentHits) {
-          projectile.recentHits[enemy.id] = boomerangProjectile ? 0.24 : 0.12;
+          // The slow rolling pearl lingers on targets, so it needs a longer re-hit gate.
+          projectile.recentHits[enemy.id] = projectile.rollingPearl ? 0.42 : boomerangProjectile ? 0.24 : 0.12;
         }
 
         this.damageEnemy(enemy, projectile.damage, projectile);
@@ -3586,6 +4119,14 @@ export class GameRuntime {
         if (projectile.crescentBlade) {
           // Each reap builds move-speed momentum, more so with the signature exclusive.
           this.player.harvestMomentum = Math.min(1.7, (this.player.harvestMomentum || 1) + 0.03 + (projectile.reapLevel || 0) * 0.02);
+        }
+
+        // 珍珠滚碾: every enemy crushed makes the pearl bigger and heavier.
+        if (projectile.rollingPearl) {
+          const grow = projectile.growthPerHit || 0.055;
+          projectile.radius = Math.min(projectile.maxRadius, projectile.radius * (1 + grow));
+          projectile.damage = Math.ceil(projectile.damage * (1 + grow * 0.6));
+          enemy.slowTimer = Math.max(enemy.slowTimer, 0.45);
         }
 
         if (projectile.refractCount > 0) {
@@ -4709,9 +5250,53 @@ export class GameRuntime {
   updateEnemies(delta) {
     const remaining = [];
     for (const enemy of this.enemies) {
+      // 灵魂剥离: a soul is an inert replay of its owner. Handled entirely here so it never
+      // attacks, never deals contact damage, and never runs death rewards.
+      if (enemy.isSoul) {
+        const owner = this.findEnemyById(enemy.soulOwnerId);
+        if (!owner || owner.health <= 0) {
+          // The body is gone, so the soul dissipates with it.
+          this.spawnSkillEffect({
+            kind: "soulStrip",
+            x: enemy.x,
+            y: enemy.y,
+            radius: enemy.radius * 1.6,
+            duration: 0.4,
+            color: "#b9a6ff",
+            accent: "#f1ebff",
+          });
+          continue;
+        }
+
+        // Shared health pool: the soul always mirrors the body's bar.
+        enemy.health = owner.health;
+        enemy.maxHealth = owner.maxHealth;
+        if (enemy.hitFlash > 0) {
+          enemy.hitFlash = Math.max(0, enemy.hitFlash - delta);
+        }
+
+        const replay = this.getDelayedTrailPosition(owner, SOUL_FOLLOW_DELAY);
+        if (replay) {
+          enemy.x = replay.x;
+          enemy.y = replay.y;
+        }
+
+        remaining.push(enemy);
+        continue;
+      }
+
       if (enemy.health <= 0) {
         this.handleEnemyDefeat(enemy);
         continue;
+      }
+
+      // Record the movement trail an elite/boss hands to its stripped soul.
+      if (enemy.soulTrail) {
+        const trailNow = this.session?.elapsed ?? 0;
+        enemy.soulTrail.push({ x: enemy.x, y: enemy.y, t: trailNow });
+        while (enemy.soulTrail.length > 0 && trailNow - enemy.soulTrail[0].t > SOUL_TRAIL_RETENTION) {
+          enemy.soulTrail.shift();
+        }
       }
 
       if (enemy.burnTimer > 0) {
@@ -4742,10 +5327,19 @@ export class GameRuntime {
       enemy.slowTimer = Math.max(0, enemy.slowTimer - delta);
       enemy.contactCooldown = Math.max(0, enemy.contactCooldown - delta);
       if (enemy.boss) {
+        this.updateBossBehavior(enemy, delta);
         this.updateBossAttack(enemy, delta);
       }
-      enemy.x += direction.x * enemy.speed * slowFactor * delta;
-      enemy.y += direction.y * enemy.speed * slowFactor * delta;
+
+      // A charging boss overrides normal pursuit for the duration of its dash.
+      if (enemy.chargeTime > 0) {
+        enemy.chargeTime = Math.max(0, enemy.chargeTime - delta);
+        enemy.x = clamp(enemy.x + enemy.chargeVx * delta, enemy.radius, ARENA.width - enemy.radius);
+        enemy.y = clamp(enemy.y + enemy.chargeVy * delta, enemy.radius, ARENA.height - enemy.radius);
+      } else if (!(enemy.bossWindupFor > 0)) {
+        enemy.x += direction.x * enemy.speed * slowFactor * delta;
+        enemy.y += direction.y * enemy.speed * slowFactor * delta;
+      }
       if (this.specialState.frostBudZone) {
         this.pushEnemyOutOfFrostBud(enemy, this.specialState.frostBudZone);
       }
@@ -4761,7 +5355,285 @@ export class GameRuntime {
     this.enemies = remaining;
   }
 
+  // Boss fight structure: phase transitions, the shield -> break -> vulnerable cycle,
+  // telegraphed specials and guard summons. Runs every frame for each living boss.
+  updateBossBehavior(enemy, delta) {
+    const profile = this.session?.difficultyProfile || getDifficultyProfile(1);
+
+    if (enemy.bossVulnerableFor > 0) {
+      enemy.bossVulnerableFor = Math.max(0, enemy.bossVulnerableFor - delta);
+    }
+    // While winding up a charge the boss plants itself, so the telegraphed lane matches
+    // the dash that follows and the player gets a clear tell.
+    if (enemy.bossWindupFor > 0) {
+      enemy.bossWindupFor = Math.max(0, enemy.bossWindupFor - delta);
+    }
+
+    // Phase transitions at two thirds and one third health.
+    const ratio = enemy.maxHealth > 0 ? enemy.health / enemy.maxHealth : 1;
+    const nextPhase = ratio <= 0.34 ? 3 : ratio <= 0.67 ? 2 : 1;
+    if (nextPhase > (enemy.bossPhase || 1)) {
+      enemy.bossPhase = nextPhase;
+      this.onBossPhaseChange(enemy, nextPhase);
+    }
+
+    if (enemy.bossShieldHp > 0) {
+      // An unbroken shield expires on its own, so it can never stall the fight.
+      enemy.bossShieldTimer -= delta;
+      if (enemy.bossShieldTimer <= 0) {
+        enemy.bossShieldHp = 0;
+        enemy.bossShieldMax = 0;
+        enemy.bossShieldClock = BOSS_SHIELD_INTERVAL;
+        this.callbacks.onToast?.("Boss 护盾消散");
+      }
+    } else if (enemy.bossVulnerableFor <= 0) {
+      // Shield cycle — only while not already shielded or staggered.
+      enemy.bossShieldClock -= delta;
+      if (enemy.bossShieldClock <= 0) {
+        this.raiseBossShield(enemy);
+      }
+    }
+
+    // Telegraphed specials take the place of some bullet volleys.
+    if (enemy.bossVulnerableFor <= 0) {
+      enemy.bossSpecialClock -= delta;
+      if (enemy.bossSpecialClock <= 0) {
+        enemy.bossSpecialClock = Math.max(3.2, BOSS_SPECIAL_INTERVAL - (enemy.bossPhase || 1) * 1.1);
+        this.fireBossSpecial(enemy, profile);
+      }
+    }
+
+    // Guard summons from phase 2 onward give the player something to clear.
+    if ((enemy.bossPhase || 1) >= 2 && enemy.bossVulnerableFor <= 0) {
+      enemy.bossSummonClock -= delta;
+      if (enemy.bossSummonClock <= 0) {
+        enemy.bossSummonClock = (enemy.bossPhase || 1) >= 3 ? 12 : 17;
+        this.summonBossGuards(enemy);
+      }
+    }
+  }
+
+  onBossPhaseChange(enemy, phase) {
+    // A phase break clears incoming fire (a breather), then the boss escalates.
+    this.enemyProjectiles = [];
+    enemy.bossSpecialClock = Math.min(enemy.bossSpecialClock, 1.3);
+    enemy.attackClock = Math.max(enemy.attackClock, 1.5);
+    enemy.speed *= 1.07;
+    if (phase === 2) {
+      enemy.bossSummonClock = 4;
+    }
+    this.addScreenShake(14);
+    this.audio?.playKill(true);
+    this.callbacks.onToast?.(`Boss 进入第 ${phase} 阶段`);
+    this.spawnSkillEffect({
+      kind: "bossPhase",
+      x: enemy.x,
+      y: enemy.y,
+      radius: enemy.radius * 3,
+      duration: 0.7,
+      color: enemy.detailColor || enemy.accent || "#ffd9a8",
+      accent: "#ffffff",
+    });
+  }
+
+  raiseBossShield(enemy) {
+    enemy.bossShieldMax = Math.max(1, Math.ceil(enemy.maxHealth * BOSS_SHIELD_HP_RATIO));
+    enemy.bossShieldHp = enemy.bossShieldMax;
+    enemy.bossShieldTimer = BOSS_SHIELD_DURATION;
+    this.callbacks.onToast?.("Boss 展开护盾 — 打破它");
+    this.spawnSkillEffect({
+      kind: "bossShield",
+      x: enemy.x,
+      y: enemy.y,
+      radius: enemy.radius * 1.9,
+      duration: 0.6,
+      color: enemy.accent || "#9fd0ff",
+      accent: "#ffffff",
+    });
+  }
+
+  // Breaking the shield staggers the boss: fire stops and it takes amplified damage.
+  breakBossShield(enemy) {
+    enemy.bossShieldHp = 0;
+    enemy.bossShieldMax = 0;
+    enemy.bossShieldTimer = 0;
+    enemy.bossShieldClock = BOSS_SHIELD_INTERVAL;
+    enemy.bossVulnerableFor = BOSS_VULNERABLE_DURATION;
+    // Breaking the shield also cancels any dash it was committed to.
+    enemy.chargeTime = 0;
+    enemy.bossWindupFor = 0;
+    this.enemyProjectiles = [];
+    enemy.attackClock = Math.max(enemy.attackClock, BOSS_VULNERABLE_DURATION);
+    this.triggerHitStop(0.09);
+    this.addScreenShake(18);
+    this.audio?.playKill(true);
+    this.callbacks.onToast?.("护盾破碎！弱点暴露");
+    this.spawnSkillEffect({
+      kind: "bossShieldBreak",
+      x: enemy.x,
+      y: enemy.y,
+      radius: enemy.radius * 2.6,
+      duration: 0.6,
+      color: "#ffe9a8",
+      accent: "#ffffff",
+    });
+  }
+
+  fireBossSpecial(enemy, profile) {
+    enemy.bossSpecialIndex = (enemy.bossSpecialIndex || 0) + 1;
+    if (enemy.bossSpecialIndex % 2 === 0) {
+      this.spawnBossChargeLane(enemy, profile);
+    } else {
+      this.spawnBossGroundSlam(enemy, profile, false);
+    }
+    // The final phase layers a second, offset slam to force real repositioning.
+    if ((enemy.bossPhase || 1) >= 3 && Math.random() < 0.55) {
+      this.spawnBossGroundSlam(enemy, profile, true);
+    }
+  }
+
+  summonBossGuards(enemy) {
+    const elapsed = this.session?.elapsed ?? 0;
+    const profile = this.session?.difficultyProfile || getDifficultyProfile(1);
+    const eligible = (this.getAvailableMonsters(elapsed, profile) || []).filter((item) => !item.boss && !item.elite);
+    if (eligible.length === 0) {
+      return;
+    }
+    const count = (enemy.bossPhase || 1) >= 3 ? 3 : 2;
+    for (let index = 0; index < count; index += 1) {
+      const definition = eligible[Math.floor(Math.random() * eligible.length)];
+      const guard = this.createEnemy(definition);
+      const angle = (Math.PI * 2 * index) / count + randomBetween(-0.5, 0.5);
+      const distance = enemy.radius + 80;
+      guard.x = clamp(enemy.x + Math.cos(angle) * distance, 24, ARENA.width - 24);
+      guard.y = clamp(enemy.y + Math.sin(angle) * distance, 24, ARENA.height - 24);
+      this.enemies.push(guard);
+    }
+    this.callbacks.onToast?.("Boss 召唤护卫");
+  }
+
+  // A telegraphed ground slam: a warning ring appears, then detonates. Dodgeable by
+  // simply walking out, which is the point — it rewards positioning over sustain.
+  spawnBossGroundSlam(enemy, profile, offset = false) {
+    const radius = (enemy.radius * 1.4 + 68) * (1 + (enemy.bossPhase || 1) * 0.07);
+    let targetX = this.player.x;
+    let targetY = this.player.y;
+    if (offset) {
+      const angle = Math.random() * Math.PI * 2;
+      targetX += Math.cos(angle) * radius * 0.95;
+      targetY += Math.sin(angle) * radius * 0.95;
+    }
+    this.bossHazards.push({
+      id: crypto.randomUUID(),
+      kind: "groundSlam",
+      ownerId: enemy.id,
+      x: clamp(targetX, 30, ARENA.width - 30),
+      y: clamp(targetY, 30, ARENA.height - 30),
+      radius,
+      telegraph: BOSS_SLAM_TELEGRAPH,
+      maxTelegraph: BOSS_SLAM_TELEGRAPH,
+      damage: Math.ceil((enemy.damage || 20) * 1.45),
+      color: enemy.detailColor || enemy.accent || "#ffb27a",
+    });
+  }
+
+  // A telegraphed charge: the lane lights up, then the boss dashes down it.
+  spawnBossChargeLane(enemy, profile) {
+    const angle = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
+    enemy.bossWindupFor = BOSS_CHARGE_TELEGRAPH;
+    this.bossHazards.push({
+      id: crypto.randomUUID(),
+      kind: "chargeLane",
+      ownerId: enemy.id,
+      x: enemy.x,
+      y: enemy.y,
+      angle,
+      length: 720,
+      halfWidth: enemy.radius * 0.9 + 24,
+      telegraph: BOSS_CHARGE_TELEGRAPH,
+      maxTelegraph: BOSS_CHARGE_TELEGRAPH,
+      damage: Math.ceil((enemy.damage || 20) * 1.6),
+      color: enemy.accent || "#ff9d7a",
+    });
+  }
+
+  isPlayerInBossLane(hazard) {
+    const dx = this.player.x - hazard.x;
+    const dy = this.player.y - hazard.y;
+    const ax = Math.cos(hazard.angle);
+    const ay = Math.sin(hazard.angle);
+    const along = dx * ax + dy * ay;
+    if (along < 0 || along > hazard.length) {
+      return false;
+    }
+    const perpendicular = Math.abs(dx * -ay + dy * ax);
+    return perpendicular <= hazard.halfWidth + this.player.radius;
+  }
+
+  updateBossHazards(delta) {
+    const next = [];
+    for (const hazard of this.bossHazards) {
+      // Drop pending hazards whose owner died so nothing lands after the fight ends.
+      const owner = this.findEnemyById(hazard.ownerId);
+      if (!owner || owner.health <= 0) {
+        continue;
+      }
+
+      hazard.telegraph -= delta;
+      if (hazard.telegraph > 0) {
+        next.push(hazard);
+        continue;
+      }
+
+      if (hazard.kind === "groundSlam") {
+        if (circleDistance(hazard, this.player) <= hazard.radius + this.player.radius) {
+          this.damagePlayer(hazard.damage);
+        }
+        this.addScreenShake(12);
+        this.spawnSkillEffect({
+          kind: "bossSlamBurst",
+          x: hazard.x,
+          y: hazard.y,
+          radius: hazard.radius,
+          duration: 0.4,
+          color: hazard.color,
+          accent: "#fff3df",
+        });
+        continue;
+      }
+
+      if (hazard.kind === "chargeLane") {
+        const chargeSpeed = 900;
+        owner.chargeVx = Math.cos(hazard.angle) * chargeSpeed;
+        owner.chargeVy = Math.sin(hazard.angle) * chargeSpeed;
+        owner.chargeTime = hazard.length / chargeSpeed;
+        if (this.isPlayerInBossLane(hazard)) {
+          this.damagePlayer(hazard.damage);
+        }
+        this.addScreenShake(10);
+        this.spawnSkillEffect({
+          kind: "bossChargeBurst",
+          x: hazard.x,
+          y: hazard.y,
+          targetX: hazard.x + Math.cos(hazard.angle) * hazard.length,
+          targetY: hazard.y + Math.sin(hazard.angle) * hazard.length,
+          radius: hazard.halfWidth,
+          duration: 0.35,
+          color: hazard.color,
+          accent: "#fff0e4",
+        });
+        continue;
+      }
+    }
+    this.bossHazards = next;
+  }
+
   updateBossAttack(enemy, delta) {
+    // Staggered bosses hold their fire — this is the player's burst window.
+    if (enemy.bossVulnerableFor > 0) {
+      return;
+    }
+
     enemy.attackClock -= delta;
     if (enemy.attackClock > 0) {
       return;
@@ -5492,6 +6364,11 @@ export class GameRuntime {
   }
 
   handleEnemyDefeat(enemy) {
+    // 灵魂剥离: a soul holds no rewards of its own and must never trigger the victory path.
+    if (enemy.isSoul) {
+      return;
+    }
+
     // Game feel: kills punch. Bosses land a heavier freeze + shake.
     if (enemy.boss) {
       this.triggerHitStop(0.11);
@@ -5559,6 +6436,8 @@ export class GameRuntime {
     }
 
     if (enemy.elite) {
+      // Hunt waves end as soon as every marked elite is down.
+      this.session.waveEliteKills = (this.session.waveEliteKills || 0) + 1;
       this.queueSpecialBoonChoice();
     }
 
@@ -5688,18 +6567,48 @@ export class GameRuntime {
   }
 
   damageEnemy(enemy, damage, source) {
-    const rollInfo = this.lastDamageRoll;
-    this.lastDamageRoll = null;
-    let finalDamage = damage;
-    let crit = Boolean(rollInfo?.crit);
-    if (this.specialState.killingIntentFor > 0 && !rollInfo?.killingIntentActive) {
-      finalDamage *= (this.player.critDamage || 1.5) + 1;
-      crit = true;
+    // 灵魂剥离: striking the soul wounds the shared body. Keep the hit feedback on the soul,
+    // then delegate so the crit/roll pipeline runs exactly once against the real target.
+    if (enemy.isSoul) {
+      const owner = this.findEnemyById(enemy.soulOwnerId);
+      if (!owner || owner.health <= 0) {
+        return;
+      }
+      const soulAlreadyFlashing = (enemy.hitFlash || 0) > 0.04;
+      enemy.hitFlash = 0.12;
+      if (!soulAlreadyFlashing) {
+        this.spawnImpactSpark(enemy, false);
+      }
+      this.damageEnemy(owner, damage, source);
+      enemy.health = owner.health;
+      return;
     }
+
+    // Crit is rolled here — once per real hit, against live stats. Rolling at cast time
+    // mis-attributed the result (a projectile can land seconds later) and made piercing
+    // shots crit all-or-nothing. 杀心 grants +100% crit chance and +100% crit damage.
+    const killingIntentActive = this.specialState.killingIntentFor > 0;
+    const critChance = (this.player.critChance || 0) + (killingIntentActive ? 1 : 0);
+    const critDamage = (this.player.critDamage || 1.5) + (killingIntentActive ? 1 : 0);
+    const crit = Math.random() < critChance;
+    let finalDamage = crit ? damage * critDamage : damage;
     if (enemy.vulnerableTimer > 0 && enemy.vulnerableMult > 0) {
       finalDamage *= 1 + enemy.vulnerableMult;
     }
-    enemy.health -= finalDamage;
+    // Boss stagger window: damage is amplified while the broken shield leaves it exposed.
+    if (enemy.bossVulnerableFor > 0) {
+      finalDamage *= BOSS_VULNERABLE_DAMAGE_BONUS;
+    }
+
+    // An active boss shield soaks damage instead of health; breaking it opens the window.
+    if (enemy.bossShieldHp > 0) {
+      enemy.bossShieldHp -= finalDamage;
+      if (enemy.bossShieldHp <= 0) {
+        this.breakBossShield(enemy);
+      }
+    } else {
+      enemy.health -= finalDamage;
+    }
     // Game feel: flash the enemy white and kick a tiny bit of screen shake per hit.
     // Only spawn a fresh spark/shake if this enemy wasn't already flashing, so rapid
     // multi-hit sources (fields, chains) don't spam sparks or over-shake.
@@ -5772,6 +6681,10 @@ export class GameRuntime {
       this.screenShake = 0;
       this.hitStopTimer = 0;
     }
+  }
+
+  setPerspectiveMode(enabled) {
+    this.renderer?.setPerspectiveMode(enabled);
   }
 
   // Resume the audio context on a user gesture (browsers block autoplay otherwise).
@@ -5901,6 +6814,12 @@ export class GameRuntime {
     this.callbacks.onHudUpdate?.({
       status: this.state,
       time: remainingTime,
+      // Wave progress is the primary pacing readout now; the raw countdown stays in the
+      // detailed stats panel for reference.
+      waveText: this.getWaveStatusText(),
+      wave: this.session.bossSpawned
+        ? "Boss 战"
+        : `${this.session.waveIndex} / ${WAVE_COUNT} · ${this.getCurrentWaveType().name}${this.getCurrentWaveModifier().id === "calm" ? "" : ` · ${this.getCurrentWaveModifier().name}`}`,
       level: this.session.level,
       exp: `${Math.floor(this.session.exp)} / ${this.session.expRequired}`,
       expRatio: this.session.expRequired > 0 ? this.session.exp / this.session.expRequired : 0,
@@ -5927,15 +6846,12 @@ export class GameRuntime {
   }
 
   rollDamage(baseDamage) {
+    // Pre-hit scaling only (attack multiplier + frost field). Crit is deliberately NOT
+    // rolled here: this runs at cast time, while the hit can land seconds later, so the
+    // roll is now made per actual hit inside damageEnemy.
     const source = this.activeSkillTrigger?.snapshot || this.player;
-    const killingIntentActive = this.specialState.killingIntentFor > 0;
-    const critChance = (source.critChance || 0) + (killingIntentActive ? 1 : 0);
-    const critDamage = (source.critDamage || 1.5) + (killingIntentActive ? 1 : 0);
-    const crit = Math.random() < critChance;
     const frostMultiplier = source.frostBudDamageMultiplier ?? (this.isPointInsideFrostBudZone(this.player.x, this.player.y) ? 2 : 1);
-    const damage = baseDamage * source.attackMultiplier * frostMultiplier * (crit ? critDamage : 1);
-    this.lastDamageRoll = { crit, damage, killingIntentActive };
-    return damage;
+    return baseDamage * source.attackMultiplier * frostMultiplier;
   }
 
   findNearestEnemy(x, y) {

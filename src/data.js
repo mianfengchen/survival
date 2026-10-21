@@ -31,7 +31,7 @@ export function getDifficultyProfile(value) {
     coinMultiplier: Number((1 + bonus * 0.12).toFixed(2)),
     typeAdvanceSeconds: bonus * 80,
     eliteWeightMultiplier: Number((1 + bonus * 0.14).toFixed(2)),
-    bossHealthMultiplier: Number((1 + bonus * 0.38).toFixed(2)),
+    bossHealthMultiplier: Number((1 + bonus * 0.15).toFixed(2)),
     bossDamageMultiplier: Number((1 + bonus * 0.2).toFixed(2)),
     bossSpeedMultiplier: Number((0.62 + bonus * 0.025).toFixed(2)),
     bossBulletSpeedMultiplier: Number((0.36 + bonus * 0.02).toFixed(2)),
@@ -70,6 +70,18 @@ export const TALENT_MAX_LEVEL = 100;
 
 function normalizeTalentLevel(level) {
   return Math.max(0, Math.min(TALENT_MAX_LEVEL, Number(level) || 0));
+}
+
+// Boss health curve. Player single-target DPS grows roughly 5-10x across the campaign
+// (more skills, higher skill levels, talent-driven attack multiplier), so boss HP grows
+// on the same order instead of the old near-linear blow-up that outran every build.
+// Target time-to-kill is ~60-120s at a build appropriate to that tier.
+export const BOSS_BASE_HEALTH = 60000;
+export const BOSS_HEALTH_PER_TIER = 16000;
+
+export function bossHealthForTier(tier) {
+  const safeTier = Math.max(1, Math.round(Number(tier) || 1));
+  return BOSS_BASE_HEALTH + (safeTier - 1) * BOSS_HEALTH_PER_TIER;
 }
 
 export const MONSTER_LIBRARY = [
@@ -215,7 +227,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#eff9c9",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1850000,
+    health: bossHealthForTier(10),
     speed: 92,
     damage: 66,
     radius: 124,
@@ -234,7 +246,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#e3f5d6",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 60000,
+    health: bossHealthForTier(1),
     speed: 58,
     damage: 16,
     radius: 56,
@@ -253,7 +265,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#ffe3a8",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 135000,
+    health: bossHealthForTier(2),
     speed: 68,
     damage: 20,
     radius: 62,
@@ -272,7 +284,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#f3dcff",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 220000,
+    health: bossHealthForTier(3),
     speed: 70,
     damage: 24,
     radius: 70,
@@ -291,7 +303,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#dff6ff",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 340000,
+    health: bossHealthForTier(4),
     speed: 74,
     damage: 30,
     radius: 76,
@@ -310,7 +322,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#f0f5c9",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 500000,
+    health: bossHealthForTier(5),
     speed: 78,
     damage: 36,
     radius: 86,
@@ -329,7 +341,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#ffe1d4",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 700000,
+    health: bossHealthForTier(6),
     speed: 76,
     damage: 42,
     radius: 96,
@@ -348,7 +360,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#ffd5e4",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 920000,
+    health: bossHealthForTier(7),
     speed: 82,
     damage: 48,
     radius: 104,
@@ -367,7 +379,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#dfe5ff",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1180000,
+    health: bossHealthForTier(8),
     speed: 86,
     damage: 54,
     radius: 110,
@@ -386,7 +398,7 @@ export const MONSTER_LIBRARY = [
     detailColor: "#ffd5c5",
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: 1480000,
+    health: bossHealthForTier(9),
     speed: 90,
     damage: 60,
     radius: 116,
@@ -437,7 +449,9 @@ MONSTER_LIBRARY.push(
     detailColor,
     minTime: ROUND_DURATION_SECONDS,
     weight: 0,
-    health: Math.round(2200000 + index * 500000),
+    // Boss HP follows BOSS_BASE_HEALTH + (tier - 1) * BOSS_HEALTH_PER_TIER so it tracks
+    // realistic player DPS growth instead of exploding faster than any build can scale.
+    health: bossHealthForTier(tier),
     speed: 66 + (index % 9) * 3,
     damage: 22 + index * 2,
     radius: 64 + Math.min(62, index * 2),
@@ -701,6 +715,11 @@ export const SPECIAL_BOON_LIBRARY = [
     id: "iceThorn",
     name: "冰棘",
     description: "单次受到伤害超过最大生命值 15% 时，将该次伤害强制降低为最大生命值 15%，并冻结所有敌人 5 秒。该效果每 50 秒最多触发一次。",
+  },
+  {
+    id: "soulStrip",
+    name: "灵魂剥离",
+    description: "面对精英与 Boss 时，将其灵魂剥离出体。灵魂以 2 秒延迟复刻本体的移动轨迹，属性与本体完全一致且与本体共享血条，但不会发动任何攻击。",
   },
 ];
 

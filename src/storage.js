@@ -23,6 +23,7 @@ export function createDefaultProgress() {
       eyeComfortMode: false,
       muted: false,
       reducedMotion: false,
+      perspectiveMode: false,
     },
     talents: createTalentState(),
     unlocks: createDefaultUnlockState(),
@@ -56,6 +57,7 @@ function mergeProgress(raw) {
     eyeComfortMode: Boolean(raw.settings?.eyeComfortMode ?? fallback.settings.eyeComfortMode),
     muted: Boolean(raw.settings?.muted ?? fallback.settings.muted),
     reducedMotion: Boolean(raw.settings?.reducedMotion ?? fallback.settings.reducedMotion),
+    perspectiveMode: Boolean(raw.settings?.perspectiveMode ?? fallback.settings.perspectiveMode),
   };
   const codex = {
     monsters: Array.isArray(raw.codex?.monsters) ? [...new Set(raw.codex.monsters)] : [],
@@ -147,6 +149,7 @@ export function updateSettings(progress, partialSettings) {
     eyeComfortMode: Boolean(partialSettings?.eyeComfortMode ?? next.settings.eyeComfortMode),
     muted: Boolean(partialSettings?.muted ?? next.settings.muted),
     reducedMotion: Boolean(partialSettings?.reducedMotion ?? next.settings.reducedMotion),
+    perspectiveMode: Boolean(partialSettings?.perspectiveMode ?? next.settings.perspectiveMode),
   };
   return next;
 }

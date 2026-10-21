@@ -629,6 +629,7 @@ export class PixiRenderer {
     });
     this.app.stop();
     this.eyeComfortMode = false;
+    this.perspectiveMode = false;
     this.visualProfile = DEFAULT_VISUAL_PROFILE;
     this.syncViewStyle();
 
@@ -660,6 +661,7 @@ export class PixiRenderer {
       arena: new PIXI.Graphics(),
       arenaTile: null,
       fieldGlow: new PIXI.Graphics(),
+      bossHazards: new PIXI.Graphics(),
       strikes: new PIXI.Graphics(),
       mines: new PIXI.Graphics(),
       pulses: new PIXI.Graphics(),
@@ -700,6 +702,7 @@ export class PixiRenderer {
       this.spriteLayers.decorations,
       this.layers.fieldGlow,
       this.spriteLayers.fields,
+      this.layers.bossHazards,
       this.spriteLayers.meteors,
       this.spriteLayers.beacons,
       this.spriteLayers.pickups,
@@ -817,6 +820,10 @@ export class PixiRenderer {
     this.syncViewStyle();
   }
 
+  setPerspectiveMode(enabled) {
+    this.perspectiveMode = Boolean(enabled);
+  }
+
   getMotionTime(rate = 1) {
     return this.lastRenderTime * rate * this.visualProfile.motionRate;
   }
@@ -897,6 +904,9 @@ export class PixiRenderer {
 
     this.updateParticles(delta);
     this.drawArena(camera);
+    if (this.perspectiveMode && runtime.session) {
+      this.drawPerspectiveGround(camera);
+    }
     /* Decoration layer temporarily disabled
     this.drawDecorations(camera);
     */
@@ -920,6 +930,7 @@ export class PixiRenderer {
     this.drawEnemies(runtime.enemies || [], delta);
     this.drawSkillEffects(runtime.skillEffects || [], delta);
     this.drawEnemyProjectiles(runtime.enemyProjectiles || [], delta);
+    this.drawBossHazards(runtime.bossHazards || [], delta);
     this.drawPlayer(runtime.player, delta, runtime.session?.selectedCharacterId);
     this.drawDamageNumbers(runtime.damageNumbers || []);
 
@@ -1245,13 +1256,20 @@ export class PixiRenderer {
           g.drawCircle(x - r * 0.1, y, r * 0.22);
           g.endFill();
         });
-      case "pearlBubble":
-        return this.getCachedTexture("proj-pearl", 96, 18, (g, x, y, r) => {
-          beginFill(g, "rgba(241,209,138,0.7)");
-          g.drawCircle(x, y, r * 0.7);
+      case "pearlRoll":
+        // A heavy opaque pearl with banding + a specular highlight so its spin reads clearly.
+        return this.getCachedTexture("proj-pearlroll", 128, 22, (g, x, y, r) => {
+          beginFill(g, "#fff8e4");
+          g.drawCircle(x, y, r);
           g.endFill();
-          beginFill(g, "rgba(255,255,255,0.35)");
-          g.drawCircle(x - r * 0.15, y - r * 0.2, r * 0.25);
+          beginFill(g, "rgba(214, 176, 112, 0.55)");
+          g.drawEllipse(x, y + r * 0.34, r * 0.92, r * 0.3);
+          g.endFill();
+          beginFill(g, "rgba(190, 150, 88, 0.4)");
+          g.drawEllipse(x, y - r * 0.38, r * 0.78, r * 0.2);
+          g.endFill();
+          beginFill(g, "rgba(255,255,255,0.95)");
+          g.drawCircle(x - r * 0.3, y - r * 0.32, r * 0.26);
           g.endFill();
         });
       case "amberGearBurst":
@@ -1688,6 +1706,43 @@ export class PixiRenderer {
     graphics.drawRect(0, 0, ARENA.width, ARENA.height);
   }
 
+  // Faux-3D ground: a screen-space vertical gradient (dark/far at top, bright/near at
+  // bottom) plus a soft edge vignette, implying the flat arena is a tilted plane.
+  drawPerspectiveGround(camera) {
+    const graphics = this.layers.arena;
+    const alphaScale = this.visualProfile.effectLayerAlpha;
+    const left = camera.x - 40;
+    const right = camera.x + camera.width + 40;
+    const top = camera.y - 40;
+    const height = camera.height + 80;
+    const width = right - left;
+    // Vertical depth gradient: stacked translucent bands, darker toward the top (far).
+    const bands = 14;
+    for (let index = 0; index < bands; index += 1) {
+      const t = index / (bands - 1); // 0 at top (far) -> 1 at bottom (near)
+      const bandY = top + height * (index / bands);
+      const bandH = height / bands + 1;
+      // Far = cool shade (depth), near = warm highlight (light hitting the ground).
+      if (t < 0.5) {
+        const k = (0.5 - t) * 2; // strongest at very top
+        beginFill(graphics, "#16331f", 0.26 * k * alphaScale);
+      } else {
+        const k = (t - 0.5) * 2; // strongest at very bottom
+        beginFill(graphics, "#fff3c4", 0.1 * k * alphaScale);
+      }
+      graphics.drawRect(left, bandY, width, bandH);
+      graphics.endFill();
+    }
+    // Edge vignette: darken the four screen borders so the plane reads as receding.
+    const vig = 90;
+    beginFill(graphics, "#0d2415", 0.3 * alphaScale);
+    graphics.drawRect(left, top, width, vig);
+    graphics.drawRect(left, top + height - vig, width, vig);
+    graphics.drawRect(left, top, vig, height);
+    graphics.drawRect(right - vig, top, vig, height);
+    graphics.endFill();
+  }
+
   drawDecorations(camera) {
     const startX = Math.floor(camera.x / DECORATION_STEP_X) * DECORATION_STEP_X;
     const startY = Math.floor(camera.y / DECORATION_STEP_Y) * DECORATION_STEP_Y;
@@ -1742,8 +1797,15 @@ export class PixiRenderer {
     this.playerVisual.mainSprite.alpha = player.phaseFadeFor > 0 ? 0.48 : 1;
     this.playerVisual.mainSprite.scale.set(mainScale);
     this.playerVisual.mainSprite.rotation = 0;
-    this.playerVisual.shadowSprite.scale.set((player.radius / 24) * 1.38 * PLAYER_VISUAL_SCALE, (player.radius / 24) * 0.74 * PLAYER_VISUAL_SCALE);
-    this.playerVisual.shadowSprite.alpha = player.phaseFadeFor > 0 ? 0.08 : 0.16;
+    // Faux-3D billboard bob for the player, matching enemies.
+    const playerBob = this.perspectiveMode
+      ? (Math.sin(this.getMotionTime(0.005)) * 0.5 + 0.5) * visualRadius * 0.1
+      : 0;
+    const playerLift = this.perspectiveMode ? visualRadius * 0.14 + playerBob : 0;
+    this.playerVisual.mainSprite.y = -playerLift;
+    this.playerVisual.shadowSprite.y = this.perspectiveMode ? 14 : 12;
+    this.playerVisual.shadowSprite.scale.set((player.radius / 24) * 1.38 * PLAYER_VISUAL_SCALE, (player.radius / 24) * (this.perspectiveMode ? 0.64 : 0.74) * PLAYER_VISUAL_SCALE);
+    this.playerVisual.shadowSprite.alpha = (player.phaseFadeFor > 0 ? 0.08 : 0.16) * (this.perspectiveMode ? 1.6 : 1);
     this.playerVisual.glowSprite.scale.set((player.radius / 24) * 1.24 * PLAYER_VISUAL_SCALE * glowPulse);
     this.playerVisual.glowSprite.alpha = (player.invulnerableFor > 0 || player.phaseFadeFor > 0 ? 0.34 : 0.22) * this.visualProfile.effectLayerAlpha;
 
@@ -1770,8 +1832,13 @@ export class PixiRenderer {
 
   drawEnemies(enemies, delta) {
     const barGraphics = this.layers.enemyBars;
+    // Y-sort so nearer (lower on screen) enemies overlap the ones behind them.
+    this.spriteLayers.enemies.sortableChildren = this.perspectiveMode;
     for (const enemy of enemies) {
       const visual = this.acquireFromPool("enemies", this.spriteLayers.enemies, () => this.createEnemyVisual());
+      if (this.perspectiveMode) {
+        visual.zIndex = enemy.y;
+      }
       const textureData = this.getEnemyTexture(enemy);
       const scale = enemy.radius / textureData.baseRadius;
       const mainScale = scale * (enemy.boss ? 0.98 * BOSS_VISUAL_SCALE : enemy.elite ? 1.54 * NORMAL_ENEMY_VISUAL_SCALE : 1.33 * NORMAL_ENEMY_VISUAL_SCALE);
@@ -1791,15 +1858,21 @@ export class PixiRenderer {
       // accent (rather than brightening toward white) so pale/warm bugs still read as
       // saturated threats against the green field + pastel allies.
       const enemyAccent = enemy.accent || enemy.color;
-      const baseTint = enemy.boss
-        ? mixColors(enemy.color, 0xffffff, 0.1)
-        : enemy.elite
-          ? mixColors(enemy.color, enemyAccent, 0.32)
-          : mixColors(enemy.color, enemyAccent, 0.5);
+      // 灵魂剥离: a stripped soul reads as a pale violet spectre, not a solid body.
+      const isSoul = Boolean(enemy.isSoul);
+      const baseTint = isSoul
+        ? mixColors(mixColors(enemy.color, 0xb9a6ff, 0.62), 0xffffff, 0.28)
+        : enemy.boss
+          ? mixColors(enemy.color, 0xffffff, 0.1)
+          : enemy.elite
+            ? mixColors(enemy.color, enemyAccent, 0.32)
+            : mixColors(enemy.color, enemyAccent, 0.5);
       // Hit flash: briefly blend the sprite toward white when recently damaged.
       const flash = enemy.hitFlash > 0 ? Math.min(1, enemy.hitFlash / 0.09) : 0;
       visual.mainSprite.tint = flash > 0 ? mixColors(baseTint, 0xffffff, 0.7 * flash) : baseTint;
-      visual.mainSprite.alpha = enemy.boss ? 0.98 : enemy.elite ? 1 : enemy.regionExclusive ? 0.98 : 0.96;
+      visual.mainSprite.alpha = isSoul
+        ? 0.46 + Math.sin(this.getMotionTime(0.004) + enemy.specialPhase) * 0.08
+        : enemy.boss ? 0.98 : enemy.elite ? 1 : enemy.regionExclusive ? 0.98 : 0.96;
       visual.mainSprite.scale.set(mainScale);
       const enemyRotation = enemy.boss && enemy.shapeId === "twilightMower"
         ? (enemy.attackPhase || 0) * 0.18
@@ -1808,23 +1881,41 @@ export class PixiRenderer {
           : 0;
       visual.mainSprite.rotation = enemyRotation;
 
+      // Faux-3D billboard bob: lift the body off the ground a little so sprites feel like
+      // stand-up cutouts, while the shadow stays planted. Disabled when perspective is off.
+      const bob = this.perspectiveMode
+        ? (Math.sin(this.getMotionTime(0.004) + enemy.x * 0.03 + enemy.y * 0.02) * 0.5 + 0.5) * visualRadius * 0.12
+        : 0;
+      const baseLift = this.perspectiveMode ? visualRadius * 0.14 : 0;
+      const bodyLift = baseLift + bob;
+      visual.mainSprite.y = -bodyLift;
+
       // Dark hostile silhouette rim behind the body (a scaled-up copy of the sprite);
       // tiered so higher ranks look more menacing. Aligned to the body's rotation.
-      const rimColor = enemy.boss || enemy.regionExclusive
-        ? 0x2a0d24
-        : enemy.elite
-          ? 0x3a1410
-          : parseColor(enemyAccent).color;
+      const rimColor = isSoul
+        ? 0x7d5fc4
+        : enemy.boss || enemy.regionExclusive
+          ? 0x2a0d24
+          : enemy.elite
+            ? 0x3a1410
+            : parseColor(enemyAccent).color;
       visual.rimSprite.texture = textureData.texture;
       visual.rimSprite.tint = flash > 0 ? 0xffffff : rimColor;
       visual.rimSprite.scale.set(mainScale * (enemy.boss ? 1.16 : enemy.elite ? 1.2 : 1.22));
       visual.rimSprite.rotation = enemyRotation;
-      visual.rimSprite.alpha = (enemy.boss || enemy.elite || enemy.regionExclusive ? 0.72 : 0.5) * (flash > 0 ? 0.4 : 1);
-      visual.shadowSprite.scale.set(mainScale * 1.4, mainScale * 0.82);
-      visual.shadowSprite.alpha = enemy.boss ? 0.28 : enemy.elite ? 0.26 : enemy.regionExclusive ? 0.22 : 0.18;
-      visual.glowSprite.tint = glowTint;
+      visual.rimSprite.y = -bodyLift;
+      // Souls get only a faint spectral halo instead of a solid dark silhouette.
+      visual.rimSprite.alpha = (isSoul ? 0.26 : enemy.boss || enemy.elite || enemy.regionExclusive ? 0.72 : 0.5) * (flash > 0 ? 0.4 : 1);
+      // Grounded contact shadow: stronger/offset in perspective mode, and it shrinks a
+      // touch as the body lifts, reinforcing the sense of height.
+      const shadowShrink = this.perspectiveMode ? 1 - (bodyLift / Math.max(1, visualRadius)) * 0.3 : 1;
+      visual.shadowSprite.y = this.perspectiveMode ? 14 : 12;
+      visual.shadowSprite.scale.set(mainScale * 1.4 * shadowShrink, mainScale * (this.perspectiveMode ? 0.7 : 0.82) * shadowShrink);
+      // A soul barely touches the ground, so its contact shadow is almost gone.
+      visual.shadowSprite.alpha = (enemy.boss ? 0.28 : enemy.elite ? 0.26 : enemy.regionExclusive ? 0.22 : 0.18) * (this.perspectiveMode ? 1.5 : 1) * (isSoul ? 0.28 : 1);
+      visual.glowSprite.tint = isSoul ? 0xb9a6ff : glowTint;
       visual.glowSprite.scale.set(mainScale * (enemy.boss ? 2.45 : enemy.elite ? 2.08 : enemy.regionExclusive ? 1.88 : 1.54) * pulse);
-      visual.glowSprite.alpha = (enemy.boss ? 0.24 : enemy.elite ? 0.2 : enemy.regionExclusive ? 0.18 : 0.09) * this.visualProfile.effectLayerAlpha;
+      visual.glowSprite.alpha = (isSoul ? 0.3 : enemy.boss ? 0.24 : enemy.elite ? 0.2 : enemy.regionExclusive ? 0.18 : 0.09) * this.visualProfile.effectLayerAlpha;
 
       if (enemy.boss) {
         const bossEffect = this.acquireFromPool("bossEffects", this.spriteLayers.bossEffects, () => this.createBossEffectVisual());
@@ -1910,6 +2001,35 @@ export class PixiRenderer {
       barGraphics.drawRoundedRect(enemy.x - width / 2, healthBarY, width * ratio, 5, 3);
       barGraphics.endFill();
 
+      // Boss shield: its own bar above the health bar plus a hard ring around the body,
+      // so "chew through this before you can hurt it" is immediately readable.
+      if (enemy.bossShieldHp > 0 && enemy.bossShieldMax > 0) {
+        const shieldRatio = clamp(enemy.bossShieldHp / enemy.bossShieldMax, 0, 1);
+        const shieldBarY = healthBarY - 8;
+        beginFill(barGraphics, "rgba(28, 44, 62, 0.34)");
+        barGraphics.drawRoundedRect(enemy.x - width / 2, shieldBarY, width, 5, 3);
+        barGraphics.endFill();
+        beginFill(barGraphics, "#8fd4ff");
+        barGraphics.drawRoundedRect(enemy.x - width / 2, shieldBarY, width * shieldRatio, 5, 3);
+        barGraphics.endFill();
+        const shieldPulse = 1 + Math.sin(this.getMotionTime(0.009)) * 0.04;
+        setLine(barGraphics, 3.4, "rgba(143, 212, 255, 0.9)");
+        barGraphics.drawCircle(enemy.x, enemy.y, visualRadius * 1.22 * shieldPulse);
+        setLine(barGraphics, 1.6, "rgba(226, 246, 255, 0.7)");
+        barGraphics.drawCircle(enemy.x, enemy.y, visualRadius * 1.1 * shieldPulse);
+      } else if (enemy.bossVulnerableFor > 0) {
+        // Stagger window: broken shards orbit the exposed boss.
+        const spin = this.getMotionTime(0.004);
+        setLine(barGraphics, 3, "rgba(255, 226, 138, 0.9)");
+        for (let index = 0; index < 6; index += 1) {
+          const a = (Math.PI * 2 * index) / 6 + spin;
+          const inner = visualRadius * 1.16;
+          const outer = visualRadius * 1.42;
+          barGraphics.moveTo(enemy.x + Math.cos(a) * inner, enemy.y + Math.sin(a) * inner);
+          barGraphics.lineTo(enemy.x + Math.cos(a) * outer, enemy.y + Math.sin(a) * outer);
+        }
+      }
+
       if (enemy.boss && Math.random() < delta * 7) {
         const angle = Math.random() * Math.PI * 2;
         const distance = enemy.radius * (0.8 + Math.random() * 0.5);
@@ -1933,6 +2053,7 @@ export class PixiRenderer {
     for (const projectile of projectiles) {
       const isBubble = projectile.skillId === "bubbleBurst" || projectile.skillId === "bubbleShard";
       const isPrism = projectile.skillId === "glassPrismRay";
+      const isRollingPearl = Boolean(projectile.rollingPearl);
       const definition = getSkillDefinition(projectile.sourceSkillId || projectile.skillId);
       const advancedProjectile = Boolean(definition?.advancedBehavior || projectile.advancedBomb || projectile.advancedBoomerang || projectile.skillId.endsWith("Shard"));
       const supported = [
@@ -1961,7 +2082,8 @@ export class PixiRenderer {
       const textureData = this.getProjectileTexture(projectile);
       const angle = Math.atan2(projectile.vy, projectile.vx);
       const scale = projectile.radius / textureData.baseRadius;
-      const mainScale = scale * (projectile.skillId === "flyingSword" ? 1.35 : isBubble ? 1.26 : 1.18);
+      // The rolling pearl grows, so keep its sprite matched to the real hitbox radius.
+      const mainScale = scale * (projectile.skillId === "flyingSword" ? 1.35 : isBubble ? 1.26 : isRollingPearl ? 1.02 : 1.18);
       const glowTint = parseColor(projectile.color).color;
 
       visual.position.set(projectile.x, projectile.y);
@@ -1971,10 +2093,14 @@ export class PixiRenderer {
         : mixColors(projectile.color, 0xffffff, isBubble ? 0.2 : 0.2);
       visual.mainSprite.scale.set(mainScale * (projectile.giant ? 1.08 : 1));
       visual.mainSprite.alpha = isBubble ? 0.84 : 1;
-      visual.mainSprite.rotation = isBubble ? this.getMotionTime(0.0018) + projectile.x * 0.0006 : angle;
+      visual.mainSprite.rotation = isRollingPearl
+        ? projectile.spin || 0
+        : isBubble ? this.getMotionTime(0.0018) + projectile.x * 0.0006 : angle;
       visual.glowSprite.tint = isBubble ? 0xe6fbff : glowTint;
-      visual.glowSprite.scale.set(mainScale * (projectile.skillId === "meteorShard" ? 1.75 : projectile.skillId === "flyingSword" ? 1.92 : isPrism ? 2.2 : isBubble ? 1.72 : 1.38));
-      visual.glowSprite.alpha = (isBubble
+      visual.glowSprite.scale.set(mainScale * (projectile.skillId === "meteorShard" ? 1.75 : projectile.skillId === "flyingSword" ? 1.92 : isPrism ? 2.2 : isBubble ? 1.72 : isRollingPearl ? 1.6 : 1.38));
+      visual.glowSprite.alpha = (isRollingPearl
+        ? 0.34
+        : isBubble
         ? 0.18
         : isPrism
           ? 0.42
@@ -2724,6 +2850,156 @@ export class PixiRenderer {
             blendMode: SCREEN_BLEND,
           });
         }
+      } else if (effect.kind === "bossPhase") {
+        // Phase break: a wide shockwave announcing the boss escalating.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.3 + progress * 0.95);
+        setLine(graphics, 10 * fade, effect.color || "#ffd9a8");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, 4 * fade, effect.accent || "#ffffff");
+        graphics.drawCircle(effect.x, effect.y, r * 0.72);
+        for (let index = 0; index < 14; index += 1) {
+          const a = (Math.PI * 2 * index) / 14 + progress * 0.5;
+          graphics.moveTo(effect.x + Math.cos(a) * r * 0.74, effect.y + Math.sin(a) * r * 0.74);
+          graphics.lineTo(effect.x + Math.cos(a) * r * 1.12, effect.y + Math.sin(a) * r * 1.12);
+        }
+      } else if (effect.kind === "bossShield") {
+        // Shield raise: rings converge inward and lock.
+        const fade = 1 - progress;
+        const r = effect.radius * (1.7 - progress * 0.7);
+        setLine(graphics, 6 * fade, effect.color || "#9fd0ff");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, 2.4 * fade, effect.accent || "#ffffff");
+        graphics.drawCircle(effect.x, effect.y, r * 0.8);
+        for (let index = 0; index < 10; index += 1) {
+          const a = (Math.PI * 2 * index) / 10;
+          graphics.moveTo(effect.x + Math.cos(a) * r, effect.y + Math.sin(a) * r);
+          graphics.lineTo(effect.x + Math.cos(a) * r * 1.3, effect.y + Math.sin(a) * r * 1.3);
+        }
+      } else if (effect.kind === "bossShieldBreak") {
+        // Shield break: shards blow outward, signalling the burst window.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.4 + progress * 1.1);
+        setLine(graphics, 5 * fade, effect.color || "#ffe9a8");
+        graphics.drawCircle(effect.x, effect.y, r);
+        for (let index = 0; index < 12; index += 1) {
+          const a = (Math.PI * 2 * index) / 12 + 0.2;
+          const inner = r * 0.72;
+          const outer = r * (1.08 + (index % 2) * 0.2);
+          graphics.moveTo(effect.x + Math.cos(a) * inner, effect.y + Math.sin(a) * inner);
+          graphics.lineTo(effect.x + Math.cos(a) * outer, effect.y + Math.sin(a) * outer);
+        }
+        if (progress < 0.35 && Math.random() < delta * 90) {
+          const a = Math.random() * Math.PI * 2;
+          this.spawnParticle({
+            x: effect.x + Math.cos(a) * r * 0.7,
+            y: effect.y + Math.sin(a) * r * 0.7,
+            vx: Math.cos(a) * 150,
+            vy: Math.sin(a) * 150,
+            life: 0.45,
+            scale: 0.3,
+            color: "#fff1c4",
+            alpha: 0.7,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "bossSlamBurst") {
+        // Ground slam landing: a hard ring plus radial cracks.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.6 + progress * 0.6);
+        beginFill(graphics, effect.color || "#ffb27a", 0.3 * fade);
+        graphics.drawCircle(effect.x, effect.y, r * 0.8);
+        graphics.endFill();
+        setLine(graphics, 9 * fade, effect.accent || "#fff3df");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, 3.4 * fade, effect.color || "#ffb27a");
+        for (let index = 0; index < 10; index += 1) {
+          const a = (Math.PI * 2 * index) / 10 + 0.15;
+          graphics.moveTo(effect.x + Math.cos(a) * r * 0.25, effect.y + Math.sin(a) * r * 0.25);
+          graphics.lineTo(effect.x + Math.cos(a) * r * 1.05, effect.y + Math.sin(a) * r * 1.05);
+        }
+      } else if (effect.kind === "bossChargeBurst") {
+        // Charge sweep: the lane flashes along its length as the boss tears through.
+        const fade = 1 - progress;
+        const ex = effect.targetX ?? effect.x;
+        const ey = effect.targetY ?? effect.y;
+        const dx = ex - effect.x;
+        const dy = ey - effect.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const px = -(dy / len);
+        const py = dx / len;
+        const w = (effect.radius || 20) * (1 - progress * 0.4);
+        beginFill(graphics, effect.color || "#ff9d7a", 0.3 * fade);
+        graphics.drawPolygon([
+          effect.x + px * w, effect.y + py * w,
+          ex + px * w, ey + py * w,
+          ex - px * w, ey - py * w,
+          effect.x - px * w, effect.y - py * w,
+        ]);
+        graphics.endFill();
+        setLine(graphics, 3 * fade, effect.accent || "#fff0e4");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(ex, ey);
+      } else if (effect.kind === "pearlShatter") {
+        // 珍珠滚碾: the spent pearl cracks apart into an outward pressure wave.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.35 + progress * 0.8);
+        const heavy = (effect.avalanche || 0) > 0;
+        setLine(graphics, (heavy ? 9 : 6) * fade, effect.color || "#f1d18a");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, (heavy ? 4 : 2.6) * fade, effect.accent || "#fff6dc");
+        graphics.drawCircle(effect.x, effect.y, r * 0.62);
+        const shards = heavy ? 12 : 8;
+        for (let index = 0; index < shards; index += 1) {
+          const a = (Math.PI * 2 * index) / shards + effect.x * 0.01;
+          const inner = r * 0.45;
+          const outer = r * (1.0 + (index % 2) * 0.16);
+          graphics.moveTo(effect.x + Math.cos(a) * inner, effect.y + Math.sin(a) * inner);
+          graphics.lineTo(effect.x + Math.cos(a) * outer, effect.y + Math.sin(a) * outer);
+        }
+        if (progress < 0.3 && Math.random() < delta * (heavy ? 90 : 55)) {
+          const a = Math.random() * Math.PI * 2;
+          this.spawnParticle({
+            x: effect.x,
+            y: effect.y,
+            vx: Math.cos(a) * (heavy ? 130 : 90),
+            vy: Math.sin(a) * (heavy ? 130 : 90),
+            life: 0.42,
+            scale: 0.3,
+            color: "#fff1cf",
+            alpha: 0.6,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "soulStrip") {
+        // 灵魂剥离: a spectral ring tears open and wisps peel outward as the soul leaves.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.3 + progress * 0.8);
+        setLine(graphics, 5 * fade, effect.color || "#b9a6ff");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, 2 * fade, effect.accent || "#f1ebff");
+        graphics.drawCircle(effect.x, effect.y, r * 0.66);
+        for (let index = 0; index < 7; index += 1) {
+          const a = (Math.PI * 2 * index) / 7 + progress * 1.4;
+          const inner = r * 0.5;
+          const outer = r * (1.05 + (index % 2) * 0.14);
+          graphics.moveTo(effect.x + Math.cos(a) * inner, effect.y + Math.sin(a) * inner);
+          graphics.lineTo(effect.x + Math.cos(a) * outer, effect.y + Math.sin(a) * outer);
+        }
+        if (Math.random() < delta * 44) {
+          const a = Math.random() * Math.PI * 2;
+          this.spawnParticle({
+            x: effect.x + Math.cos(a) * r * 0.5,
+            y: effect.y + Math.sin(a) * r * 0.5,
+            vx: Math.cos(a) * 46,
+            vy: Math.sin(a) * 46 - 18,
+            life: 0.55,
+            scale: 0.26,
+            color: "#d9ccff",
+            alpha: 0.55,
+            blendMode: SCREEN_BLEND,
+          });
+        }
       }
     }
   }
@@ -2760,6 +3036,87 @@ export class PixiRenderer {
           alpha: 0.24,
           blendMode: SCREEN_BLEND,
         });
+      }
+    }
+  }
+
+  // Boss telegraphs drawn as ground markings: they fill up and flush red as they arm,
+  // so the player can read exactly where and when the hit lands.
+  drawBossHazards(hazards, delta) {
+    const graphics = this.layers.bossHazards;
+    for (const hazard of hazards) {
+      const total = hazard.maxTelegraph || 1;
+      const charge = clamp(1 - hazard.telegraph / total, 0, 1);
+      const imminent = charge > 0.75;
+      const warnColor = imminent ? "#ff5f52" : hazard.color || "#ffb27a";
+
+      if (hazard.kind === "groundSlam") {
+        const r = hazard.radius;
+        // Danger floor fills from the middle outward as the slam arms.
+        beginFill(graphics, warnColor, 0.16 + charge * 0.2);
+        graphics.drawCircle(hazard.x, hazard.y, r * charge);
+        graphics.endFill();
+        setLine(graphics, imminent ? 6 : 4, warnColor);
+        graphics.drawCircle(hazard.x, hazard.y, r);
+        setLine(graphics, 2, "rgba(255,255,255,0.8)");
+        graphics.drawCircle(hazard.x, hazard.y, r * 0.5);
+        for (let index = 0; index < 8; index += 1) {
+          const a = (Math.PI * 2 * index) / 8 + charge * 0.7;
+          graphics.moveTo(hazard.x + Math.cos(a) * r * 0.82, hazard.y + Math.sin(a) * r * 0.82);
+          graphics.lineTo(hazard.x + Math.cos(a) * r, hazard.y + Math.sin(a) * r);
+        }
+        if (imminent && Math.random() < delta * 46) {
+          const a = Math.random() * Math.PI * 2;
+          this.spawnParticle({
+            x: hazard.x + Math.cos(a) * r * 0.8,
+            y: hazard.y + Math.sin(a) * r * 0.8,
+            vx: 0,
+            vy: -40 - Math.random() * 30,
+            life: 0.36,
+            scale: 0.28,
+            color: "#ffd0b4",
+            alpha: 0.6,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+        continue;
+      }
+
+      if (hazard.kind === "chargeLane") {
+        const ax = Math.cos(hazard.angle);
+        const ay = Math.sin(hazard.angle);
+        const px = -ay;
+        const py = ax;
+        const w = hazard.halfWidth;
+        const endX = hazard.x + ax * hazard.length;
+        const endY = hazard.y + ay * hazard.length;
+        // The lane body fills forward from the boss as the dash winds up.
+        const fillX = hazard.x + ax * hazard.length * charge;
+        const fillY = hazard.y + ay * hazard.length * charge;
+        beginFill(graphics, warnColor, 0.14 + charge * 0.2);
+        graphics.drawPolygon([
+          hazard.x + px * w, hazard.y + py * w,
+          fillX + px * w, fillY + py * w,
+          fillX - px * w, fillY - py * w,
+          hazard.x - px * w, hazard.y - py * w,
+        ]);
+        graphics.endFill();
+        setLine(graphics, imminent ? 5 : 3, warnColor);
+        graphics.moveTo(hazard.x + px * w, hazard.y + py * w);
+        graphics.lineTo(endX + px * w, endY + py * w);
+        graphics.moveTo(hazard.x - px * w, hazard.y - py * w);
+        graphics.lineTo(endX - px * w, endY - py * w);
+        // Direction chevrons so the dash path is unmistakable.
+        setLine(graphics, 2.4, "rgba(255,255,255,0.78)");
+        for (let index = 1; index <= 5; index += 1) {
+          const t = index / 6;
+          const cx = hazard.x + ax * hazard.length * t;
+          const cy = hazard.y + ay * hazard.length * t;
+          graphics.moveTo(cx - ax * 14 + px * w * 0.55, cy - ay * 14 + py * w * 0.55);
+          graphics.lineTo(cx + ax * 14, cy + ay * 14);
+          graphics.lineTo(cx - ax * 14 - px * w * 0.55, cy - ay * 14 - py * w * 0.55);
+        }
+        continue;
       }
     }
   }
