@@ -161,8 +161,15 @@ const BOSS_SHIELD_HP_RATIO = 0.03;
 const BOSS_SHIELD_DURATION = 8;
 const BOSS_VULNERABLE_DURATION = 4.5;
 const BOSS_VULNERABLE_DAMAGE_BONUS = 1.6;
-const BOSS_SLAM_TELEGRAPH = 1.15;
-const BOSS_CHARGE_TELEGRAPH = 0.95;
+const BOSS_SLAM_TELEGRAPH = 1.45;
+const BOSS_CHARGE_TELEGRAPH = 1.15;
+// Telegraphed attacks derive from the boss's damage stat but are hard-capped as a share
+// of the player's max health: a dodgeable tell must punish bad positioning, never
+// one-shot someone from full. Boss bullets sit around 14 + difficulty*2 for reference.
+const BOSS_SLAM_DAMAGE_RATIO = 0.55;
+const BOSS_SLAM_MAX_HP_FRACTION = 0.3;
+const BOSS_CHARGE_DAMAGE_RATIO = 0.65;
+const BOSS_CHARGE_MAX_HP_FRACTION = 0.35;
 
 // ── Wave pacing ───────────────────────────────────────────────────────────────
 // The run is split into waves separated by short intermissions so the 15 minutes
@@ -5512,6 +5519,21 @@ export class GameRuntime {
     this.callbacks.onToast?.("Boss 召唤护卫");
   }
 
+  // The warning window is what the player actually reacts to, and reactions happen in
+  // wall-clock time. At 2x speed the sim steps twice per frame, so a telegraph measured
+  // in game-seconds would feel half as long — stretch it to keep the window honest.
+  getTelegraphSeconds(baseSeconds) {
+    return baseSeconds * Math.max(1, this.gameSpeedMultiplier || 1);
+  }
+
+  // Telegraphed damage is capped as a share of max health so a dodgeable tell always
+  // leaves the player alive to learn from the mistake.
+  getTelegraphedDamage(enemy, ratio, maxHpFraction) {
+    const raw = (enemy.damage || 20) * ratio;
+    const cap = Math.max(1, this.player.maxHealth * maxHpFraction);
+    return Math.max(1, Math.ceil(Math.min(raw, cap)));
+  }
+
   // A telegraphed ground slam: a warning ring appears, then detonates. Dodgeable by
   // simply walking out, which is the point — it rewards positioning over sustain.
   spawnBossGroundSlam(enemy, profile, offset = false) {
@@ -5523,6 +5545,7 @@ export class GameRuntime {
       targetX += Math.cos(angle) * radius * 0.95;
       targetY += Math.sin(angle) * radius * 0.95;
     }
+    const telegraph = this.getTelegraphSeconds(BOSS_SLAM_TELEGRAPH);
     this.bossHazards.push({
       id: crypto.randomUUID(),
       kind: "groundSlam",
@@ -5530,9 +5553,9 @@ export class GameRuntime {
       x: clamp(targetX, 30, ARENA.width - 30),
       y: clamp(targetY, 30, ARENA.height - 30),
       radius,
-      telegraph: BOSS_SLAM_TELEGRAPH,
-      maxTelegraph: BOSS_SLAM_TELEGRAPH,
-      damage: Math.ceil((enemy.damage || 20) * 1.45),
+      telegraph,
+      maxTelegraph: telegraph,
+      damage: this.getTelegraphedDamage(enemy, BOSS_SLAM_DAMAGE_RATIO, BOSS_SLAM_MAX_HP_FRACTION),
       color: enemy.detailColor || enemy.accent || "#ffb27a",
     });
   }
@@ -5540,7 +5563,9 @@ export class GameRuntime {
   // A telegraphed charge: the lane lights up, then the boss dashes down it.
   spawnBossChargeLane(enemy, profile) {
     const angle = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
-    enemy.bossWindupFor = BOSS_CHARGE_TELEGRAPH;
+    const telegraph = this.getTelegraphSeconds(BOSS_CHARGE_TELEGRAPH);
+    // The boss plants itself for exactly as long as the lane is lit.
+    enemy.bossWindupFor = telegraph;
     this.bossHazards.push({
       id: crypto.randomUUID(),
       kind: "chargeLane",
@@ -5550,9 +5575,9 @@ export class GameRuntime {
       angle,
       length: 720,
       halfWidth: enemy.radius * 0.9 + 24,
-      telegraph: BOSS_CHARGE_TELEGRAPH,
-      maxTelegraph: BOSS_CHARGE_TELEGRAPH,
-      damage: Math.ceil((enemy.damage || 20) * 1.6),
+      telegraph,
+      maxTelegraph: telegraph,
+      damage: this.getTelegraphedDamage(enemy, BOSS_CHARGE_DAMAGE_RATIO, BOSS_CHARGE_MAX_HP_FRACTION),
       color: enemy.accent || "#ff9d7a",
     });
   }
