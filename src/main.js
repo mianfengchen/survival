@@ -51,6 +51,7 @@ const STATUS_LABELS = {
   running: "进行中",
   paused: "已暂停",
   levelup: "升级中",
+  shop: "波间商店",
   ended: "已结束",
 };
 
@@ -297,6 +298,7 @@ const elements = {
   hudLevelText: document.querySelector("#hudLevelText"),
   hudExpFill: document.querySelector("#hudExpFill"),
   hudExpText: document.querySelector("#hudExpText"),
+  hudDewText: document.querySelector("#hudDewText"),
   eyeComfortButton: document.querySelector("#eyeComfortButton"),
   muteButton: document.querySelector("#muteButton"),
   reducedMotionButton: document.querySelector("#reducedMotionButton"),
@@ -309,6 +311,10 @@ const elements = {
   touchPauseButton: document.querySelector("#touchPauseButton"),
   activeSkills: document.querySelector("#activeSkills"),
   levelChoices: document.querySelector("#levelChoices"),
+  shopOffers: document.querySelector("#shopOffers"),
+  shopWalletText: document.querySelector("#shopWalletText"),
+  shopRefreshButton: document.querySelector("#shopRefreshButton"),
+  shopContinueButton: document.querySelector("#shopContinueButton"),
   menuSummary: document.querySelector("#menuSummary"),
   resultSummary: document.querySelector("#resultSummary"),
   resultTitle: document.querySelector("#resultTitle"),
@@ -363,6 +369,7 @@ const game = new GameRuntime({
   callbacks: {
     onHudUpdate: renderHud,
     onLevelChoices: renderLevelChoices,
+    onWaveShop: renderWaveShop,
     onRunEnd: handleRunEnd,
     onOverlayChange: showOverlay,
     onSessionLabel: updateSessionLabel,
@@ -1019,6 +1026,9 @@ function renderHud(snapshot) {
   elements.hudLevelText.textContent = `LV ${snapshot.level}`;
   elements.hudExpText.textContent = snapshot.exp;
   elements.hudExpFill.style.width = `${Math.max(0, Math.min(100, (snapshot.expRatio || 0) * 100))}%`;
+  if (elements.hudDewText) {
+    elements.hudDewText.textContent = `${snapshot.dewCoinsValue ?? 0}`;
+  }
 
   for (const [key, value] of Object.entries(snapshot)) {
     if (key === "skills") {
@@ -1122,6 +1132,41 @@ function renderLevelChoices(choices) {
     elements.levelChoices.append(fallbackButton);
   }
 }
+
+function renderWaveShop(snapshot) {
+  elements.shopWalletText.textContent = `${snapshot.dewCoins}`;
+  elements.shopOffers.innerHTML = snapshot.offers
+    .map((offer) => {
+      // Three states so the price list stays legible: buyable, too expensive, already taken.
+      const state = offer.purchased ? "purchased" : offer.affordable ? "ready" : "locked";
+      const priceText = offer.purchased ? "已购入" : `${offer.cost} 露金`;
+      return `
+        <button class="choice-button" type="button" data-offer-key="${offer.key}" data-shop-state="${state}" ${state === "ready" ? "" : "disabled"}>
+          <strong>${offer.name}</strong>
+          <span>${offer.description}</span>
+          <small class="shop-price">${priceText}</small>
+        </button>
+      `;
+    })
+    .join("");
+
+  for (const button of elements.shopOffers.querySelectorAll("[data-offer-key]")) {
+    button.addEventListener("click", () => {
+      game.buyWaveShopOffer(button.dataset.offerKey);
+    });
+  }
+
+  elements.shopRefreshButton.disabled = !snapshot.canRefresh;
+  elements.shopRefreshButton.textContent = `刷新货品（${snapshot.refreshCost} 露金）`;
+}
+
+elements.shopRefreshButton?.addEventListener("click", () => {
+  game.refreshWaveShop();
+});
+
+elements.shopContinueButton?.addEventListener("click", () => {
+  game.closeWaveShop();
+});
 
 const SPECIAL_LEVEL_CHOICE_IDS = new Set(["monsterPressure", "minuteVacuum", "projectileOverload", "summonOverload"]);
 

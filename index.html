@@ -232,7 +232,8 @@
             </div>
             <div class="hud-top-right">
               <div class="hud-top-values">
-                <span id="hudTimerText">倒计时 15:00</span>
+                <span id="hudTimerText">倒计时 20:00</span>
+                <span>露金 <strong id="hudDewText">0</strong></span>
                 <span>植物能量 <strong data-global-field="coins">0</strong></span>
               </div>
               <div class="hud-top-actions">
@@ -297,8 +298,9 @@
               <h3>详细属性</h3>
               <dl id="hudStats" class="stats-grid pause-stats-grid">
                 <div><dt>状态</dt><dd data-field="status">待机</dd></div>
-                <div><dt>波次</dt><dd data-field="wave">1 / 5</dd></div>
-                <div><dt>时间</dt><dd data-field="time">15:00</dd></div>
+                <div><dt>波次</dt><dd data-field="wave">1 / 8</dd></div>
+                <div><dt>时间</dt><dd data-field="time">20:00</dd></div>
+                <div><dt>露金</dt><dd data-field="dewCoins">0</dd></div>
                 <div><dt>等级</dt><dd data-field="level">1</dd></div>
                 <div><dt>经验</dt><dd data-field="exp">0 / 18</dd></div>
                 <div><dt>生命</dt><dd data-field="health">100 / 100</dd></div>
@@ -327,6 +329,24 @@
 
       <section class="screen-overlay" id="levelScreen">
         <div id="levelChoices" class="choice-grid level-choice-grid"></div>
+      </section>
+
+      <section class="screen-overlay" id="waveShopScreen">
+        <div class="overlay-card shop-card">
+          <div class="shop-header">
+            <div>
+              <p class="eyebrow">Intermission</p>
+              <h2>波间商店</h2>
+            </div>
+            <p class="shop-wallet">露金 <strong id="shopWalletText">0</strong></p>
+          </div>
+          <p class="shop-hint">露金只在本局有效，带不出战斗。每件补给每次开店只能买一次。</p>
+          <div id="shopOffers" class="choice-grid shop-offer-grid"></div>
+          <div class="hero-actions">
+            <button id="shopRefreshButton" class="ghost-button" type="button">刷新货品（5 露金）</button>
+            <button id="shopContinueButton" class="primary-button" type="button">继续推进</button>
+          </div>
+        </div>
       </section>
 
       <section class="screen-overlay" id="resultScreen">

@@ -3,11 +3,13 @@ import {
   ELITE_MONSTER_DEFINITION,
   GENERAL_UPGRADES,
   MONSTER_LIBRARY,
+  NEST_MONSTER_DEFINITION,
   PLAYER_BASE,
   ROUND_DURATION_SECONDS,
   SKILL_LIBRARY,
   SPECIAL_BOON_LIBRARY,
   TALENT_LIBRARY,
+  WAVE_SHOP_LIBRARY,
   createDefaultUnlockState,
   formatDuration,
   getBossDefinitionForDifficulty,
@@ -15,6 +17,7 @@ import {
   getMonsterDefinition,
   getSpecialBoonDefinition,
   getSkillDefinition,
+  getWaveShopItem,
   normalizeInitialSkillId,
   normalizeDifficultyLevel,
 } from "./data.js";
@@ -176,18 +179,52 @@ const BOSS_CHARGE_MAX_HP_FRACTION = 0.35;
 const MOTH_BLADE_TURN_RATE = 1.5;
 
 // ── Wave pacing ───────────────────────────────────────────────────────────────
-// The run is split into waves separated by short intermissions so the 15 minutes
-// has an actual rhythm (pressure -> relief -> decision) instead of one flat ramp.
-const WAVE_COUNT = 5;
+// The run is split into waves separated by short intermissions so the round has an
+// actual rhythm (pressure -> relief -> decision) instead of one flat ramp.
 const WAVE_INTERMISSION_SECONDS = 20;
 const WAVE_INTERMISSION_HEAL_RATIO = 0.15;
 
+// Fixed wave order. The three objective waves (净化 / 采集 / 坚守) are interleaved with
+// plain 歼灭 waves so there is always a familiar beat between the unusual ones, and the
+// two 猎杀 waves stay spread out to keep the special-boon cadence even.
+const WAVE_ORDER_FULL = Object.freeze(["cull", "hunt", "purge", "cull", "gather", "hunt", "hold", "surge"]);
+// The 3-minute tutorial region runs a compressed plan instead of being stretched into
+// eight twenty-second waves.
+const WAVE_ORDER_SHORT = Object.freeze(["cull", "hunt", "surge"]);
+const WAVE_SHORT_ROUND_SECONDS = 360;
+const WAVE_SHORT_INTERMISSION_SECONDS = 8;
+
+// 坚守 sanctuary tuning.
+const HOLD_ZONE_RADIUS = 168;
+// Leaving the circle bleeds progress back, but slower than it fills, so a forced
+// reposition costs you time rather than wiping the attempt.
+const HOLD_ZONE_DECAY = 0.55;
+const HOLD_ZONE_MOVE_SECONDS = 24;
+
+// 净化 nest tuning.
+const NEST_BROOD_INTERVAL = 3.4;
+
+// 采集 dew tuning.
+const DEW_ORB_RADIUS = 20;
+const DEW_ORB_EXP = 30;
+
+// 露金 income and 波间商店 tuning. Wave clears are the bulk of it; elites (+5), nests (+3)
+// and 灵露 (+1) top it up, which quietly pays objective waves better than plain culls.
+const WAVE_CLEAR_DEW_BASE = 6;
+const WAVE_CLEAR_DEW_PER_WAVE = 2;
+const WAVE_CLEAR_DEW_EARLY_BONUS = 4;
+const WAVE_SHOP_OFFER_COUNT = 3;
+const WAVE_SHOP_REFRESH_COST = 5;
+
+// Wave durations are weights rather than absolute seconds: they are fitted to whatever
+// round length the region advertises, so a region's "20 分钟" stays true and the short
+// tutorial round still gets a real rhythm.
 const WAVE_TYPE_LIBRARY = Object.freeze({
   cull: {
     id: "cull",
     name: "歼灭",
     objective: "击杀足够数量的害虫",
-    duration: 165,
+    durationWeight: 1,
     densityScale: 1,
     killGoalBase: 55,
     eliteGoal: 0,
@@ -196,16 +233,48 @@ const WAVE_TYPE_LIBRARY = Object.freeze({
     id: "hunt",
     name: "猎杀",
     objective: "击杀全部标记精英即可提前结束",
-    duration: 165,
+    durationWeight: 1,
     densityScale: 0.72,
     killGoalBase: 0,
     eliteGoal: 2,
+  },
+  purge: {
+    id: "purge",
+    name: "净化",
+    objective: "摧毁场上所有虫巢，它们会不断孵化害虫",
+    durationWeight: 0.95,
+    // Ambient spawns drop hard because the nests themselves are the pressure.
+    densityScale: 0.45,
+    killGoalBase: 0,
+    eliteGoal: 0,
+    nestGoal: 3,
+  },
+  gather: {
+    id: "gather",
+    name: "采集",
+    objective: "拾取散落在庭域各处的灵露",
+    durationWeight: 0.95,
+    densityScale: 0.9,
+    killGoalBase: 0,
+    eliteGoal: 0,
+    dewGoal: 8,
+  },
+  hold: {
+    id: "hold",
+    name: "坚守",
+    objective: "留在净土圈内直到净化完成，圈会定期转移",
+    durationWeight: 1,
+    // You are pinned in place, so the field gets busier to make that cost something.
+    densityScale: 1.45,
+    killGoalBase: 0,
+    eliteGoal: 0,
+    holdSeconds: 42,
   },
   surge: {
     id: "surge",
     name: "潮汐",
     objective: "顶住短时间的高密度虫潮",
-    duration: 60,
+    durationWeight: 0.42,
     densityScale: 2.8,
     killGoalBase: 0,
     eliteGoal: 0,
@@ -359,6 +428,9 @@ export class GameRuntime {
     this.damageNumbers = [];
     this.pickups = [];
     this.bossHazards = [];
+    // Ground markers owned by the current wave objective (净土圈 / 灵露).
+    this.waveMarkers = [];
+    this.waveShopOffers = [];
     this.orbitAngle = 0;
     this.lastTimestamp = 0;
     this.hudClock = 0;
@@ -480,6 +552,9 @@ export class GameRuntime {
           this.pause();
         } else if (this.state === "paused") {
           this.resume();
+        } else if (this.state === "shop") {
+          // Esc is the natural "I'm done shopping" gesture.
+          this.closeWaveShop();
         }
       }
     });
@@ -595,8 +670,20 @@ export class GameRuntime {
       waveKillGoal: 0,
       waveEliteKills: 0,
       waveEliteGoal: 0,
+      // Objective counters for 净化 / 采集 / 坚守.
+      waveNestGoal: 0,
+      waveNestKills: 0,
+      waveDewGoal: 0,
+      waveDewCollected: 0,
+      waveHoldRequired: 0,
+      waveHoldProgress: 0,
+      waveZoneTimer: 0,
       intermissionTimer: 0,
       intermissionRewardTaken: false,
+      intermissionShopTaken: false,
+      // 露金: in-run currency, spent only at the 波间商店.
+      dewCoins: 0,
+      dewCoinsSpent: 0,
       discoveries: {
         monsters: new Set(),
         skills: new Set(),
@@ -618,6 +705,8 @@ export class GameRuntime {
     this.damageNumbers = [];
     this.pickups = [];
     this.bossHazards = [];
+    this.waveMarkers = [];
+    this.waveShopOffers = [];
     this.orbitAngle = 0;
     this.pendingChoices = [];
     this.screenShake = 0;
@@ -631,7 +720,7 @@ export class GameRuntime {
     this.lastTimestamp = 0;
     this.callbacks.onSessionLabel?.(
       "战斗进行中",
-      `起始技能：${getSkillDefinition(startingSkillId)?.name || "飞剑术"}，撑过 ${WAVE_COUNT} 个波次并击败最终 Boss`
+      `起始技能：${getSkillDefinition(startingSkillId)?.name || "飞剑术"}，撑过 ${this.getWaveCount()} 个波次并击败最终 Boss`
     );
     this.callbacks.onOverlayChange?.(null);
     this.emitHud();
@@ -700,7 +789,7 @@ export class GameRuntime {
         ? "Boss 战"
         : this.session?.wavePhase === "intermission"
           ? "波间休整"
-          : `第 ${this.session?.waveIndex || 1}/${WAVE_COUNT} 波 · ${resumeType.name}`,
+          : `第 ${this.session?.waveIndex || 1}/${this.getWaveCount()} 波 · ${resumeType.name}`,
       this.session?.bossSpawned ? "击败最终 Boss 即可获胜" : resumeType.objective,
     );
     this.lastTimestamp = 0;
@@ -739,6 +828,13 @@ export class GameRuntime {
     }
 
     if (this.tryStartLevelUp()) {
+      this.lastTimestamp = 0;
+      return;
+    }
+
+    // With every popup resolved, the intermission's shop gets its turn. This covers both
+    // the wave reward and any level-ups that chained off it.
+    if (this.session?.wavePhase === "intermission" && this.tryOpenWaveShop()) {
       this.lastTimestamp = 0;
       return;
     }
@@ -1185,7 +1281,9 @@ export class GameRuntime {
     }
 
     // Wave pacing drives both the intermissions and the boss entrance now; elites arrive
-    // as hunt-wave objectives rather than on a fixed wall-clock interval.
+    // as hunt-wave objectives rather than on a fixed wall-clock interval. Objectives tick
+    // first so a goal finished this frame is seen by the wave state in the same frame.
+    this.updateWaveObjectives(delta);
     this.updateWaveState(delta);
 
     this.movePlayer(delta);
@@ -1319,24 +1417,47 @@ export class GameRuntime {
   }
 
   // ── Wave pacing ─────────────────────────────────────────────────────────────
-  // Fixed structure (cull / hunt / cull / hunt / surge) with random per-wave modifiers:
-  // predictable pacing and a guaranteed elite cadence, but varied texture each run.
+  // Fixed structure with random per-wave modifiers: predictable pacing and a guaranteed
+  // elite cadence, but varied texture each run. Durations are fitted to the region's
+  // advertised round length so one plan serves both the tutorial and the campaign.
   buildWavePlan() {
-    const order = ["cull", "hunt", "cull", "hunt", "surge"];
-    const plan = [];
-    for (let index = 0; index < WAVE_COUNT; index += 1) {
-      const typeId = order[index] || "cull";
+    const roundDuration = Math.max(60, this.session?.roundDurationSeconds || ROUND_DURATION_SECONDS);
+    const short = roundDuration <= WAVE_SHORT_ROUND_SECONDS;
+    const order = short ? WAVE_ORDER_SHORT : WAVE_ORDER_FULL;
+    const intermissionSeconds = short ? WAVE_SHORT_INTERMISSION_SECONDS : WAVE_INTERMISSION_SECONDS;
+    // Everything the intermissions don't eat is combat time, split by weight. The floor
+    // keeps a pathologically short round from producing zero-second waves.
+    const combatBudget = Math.max(
+      order.length * 25,
+      roundDuration - intermissionSeconds * (order.length - 1),
+    );
+    const totalWeight = order.reduce(
+      (sum, typeId) => sum + (getWaveTypeDefinition(typeId).durationWeight || 1),
+      0,
+    );
+
+    return order.map((typeId, index) => {
+      const type = getWaveTypeDefinition(typeId);
       // Wave 1 is always calm so the opening can never roll unfair.
       const modifierId = index === 0
         ? "calm"
         : WAVE_MODIFIER_LIBRARY[Math.floor(Math.random() * WAVE_MODIFIER_LIBRARY.length)].id;
-      // Both hunts ask for the full pair. The first hunt used to be cut to a single target,
-      // but that was papering over elite HP being ~6x too high; with the HP fixed, two
-      // elites fit inside the wave timer at level 10.
-      const eliteGoal = typeId === "hunt" ? 2 : 0;
-      plan.push({ typeId, modifierId, eliteGoal });
-    }
-    return plan;
+      return {
+        typeId,
+        modifierId,
+        duration: Math.round((combatBudget * (type.durationWeight || 1)) / totalWeight),
+        intermissionSeconds,
+        // Both hunts ask for the full pair. The first hunt used to be cut to a single
+        // target, but that was papering over elite HP being ~6x too high.
+        eliteGoal: type.eliteGoal || 0,
+      };
+    });
+  }
+
+  // Wave count is plan-driven now (8 for a campaign round, 3 for the tutorial), so every
+  // readout has to ask rather than assume.
+  getWaveCount() {
+    return this.session?.wavePlan?.length || WAVE_ORDER_FULL.length;
   }
 
   getCurrentWaveType() {
@@ -1352,7 +1473,8 @@ export class GameRuntime {
     if (!session) {
       return;
     }
-    const index = clamp(waveNumber, 1, WAVE_COUNT);
+    const waveCount = this.getWaveCount();
+    const index = clamp(waveNumber, 1, waveCount);
     const entry = session.wavePlan[index - 1] || { typeId: "cull", modifierId: "calm" };
     const type = getWaveTypeDefinition(entry.typeId);
     const modifier = getWaveModifierDefinition(entry.modifierId);
@@ -1361,7 +1483,7 @@ export class GameRuntime {
     session.waveTypeId = type.id;
     session.waveModifierId = modifier.id;
     session.wavePhase = "combat";
-    session.waveTimer = type.duration;
+    session.waveTimer = entry.duration || 150;
     session.waveKillBaseline = session.kills;
     session.waveKillGoal = type.killGoalBase > 0
       ? Math.ceil(type.killGoalBase * (1 + (index - 1) * 0.35))
@@ -1369,19 +1491,39 @@ export class GameRuntime {
     session.waveEliteKills = 0;
     // The plan's per-wave count wins over the type default so the first hunt stays light.
     session.waveEliteGoal = entry.eliteGoal ?? type.eliteGoal ?? 0;
+    session.waveNestGoal = type.nestGoal || 0;
+    session.waveNestKills = 0;
+    // Dew count creeps up over the run so a late 采集 wave still asks for real travel.
+    session.waveDewGoal = type.dewGoal ? type.dewGoal + Math.floor((index - 1) / 2) : 0;
+    session.waveDewCollected = 0;
+    session.waveHoldRequired = type.holdSeconds || 0;
+    session.waveHoldProgress = 0;
+    session.waveZoneTimer = 0;
     session.intermissionTimer = 0;
     session.intermissionRewardTaken = false;
+    session.intermissionShopTaken = false;
     session.spawnTimer = 0.6;
+    this.waveMarkers = [];
 
-    // Hunt waves put their objective on the field immediately.
+    // Objective waves put their targets on the field immediately so the goal is readable
+    // from the first second rather than trickling in.
     for (let count = 0; count < session.waveEliteGoal; count += 1) {
       this.spawnElite();
     }
+    for (let count = 0; count < session.waveNestGoal; count += 1) {
+      this.spawnNest();
+    }
+    for (let count = 0; count < session.waveDewGoal; count += 1) {
+      this.spawnDewOrb();
+    }
+    if (session.waveHoldRequired > 0) {
+      this.relocateHoldZone(false);
+    }
 
     const modifierSuffix = modifier.id === "calm" ? "" : ` · ${modifier.name}`;
-    this.callbacks.onToast?.(`第 ${index}/${WAVE_COUNT} 波 — ${type.name}${modifierSuffix}`);
+    this.callbacks.onToast?.(`第 ${index}/${waveCount} 波 — ${type.name}${modifierSuffix}`);
     this.callbacks.onSessionLabel?.(
-      `第 ${index}/${WAVE_COUNT} 波 · ${type.name}`,
+      `第 ${index}/${waveCount} 波 · ${type.name}`,
       modifier.id === "calm" ? type.objective : `${type.objective}（${modifier.description}）`,
     );
     this.emitHud();
@@ -1394,6 +1536,15 @@ export class GameRuntime {
     }
     if (session.waveEliteGoal > 0) {
       return session.waveEliteKills >= session.waveEliteGoal;
+    }
+    if (session.waveNestGoal > 0) {
+      return session.waveNestKills >= session.waveNestGoal;
+    }
+    if (session.waveDewGoal > 0) {
+      return session.waveDewCollected >= session.waveDewGoal;
+    }
+    if (session.waveHoldRequired > 0) {
+      return session.waveHoldProgress >= session.waveHoldRequired;
     }
     if (session.waveKillGoal > 0) {
       return session.kills - session.waveKillBaseline >= session.waveKillGoal;
@@ -1432,7 +1583,14 @@ export class GameRuntime {
       this.callbacks.onToast?.("波次目标达成");
     }
 
-    if (session.waveIndex >= WAVE_COUNT) {
+    // Wave clear is the main 露金 income. Clearing the objective early pays a bonus, so
+    // pushing the goal is worth something even though the wave ends sooner.
+    const payout = WAVE_CLEAR_DEW_BASE
+      + session.waveIndex * WAVE_CLEAR_DEW_PER_WAVE
+      + (clearedEarly ? WAVE_CLEAR_DEW_EARLY_BONUS : 0);
+    this.awardDewCoins(payout, `波次结算 +${payout} 露金`);
+
+    if (session.waveIndex >= this.getWaveCount()) {
       // Final wave over: wipe the field and bring in the boss.
       this.clearBattlefieldForBreak();
       this.spawnBoss();
@@ -1444,20 +1602,24 @@ export class GameRuntime {
 
   // Wipe the field so a break is genuinely a break. Bosses are never removed, and during
   // an intermission surviving elites are spared: a hunt target you *almost* killed should
-  // not be deleted along with its special boon.
+  // not be deleted along with its special boon. Objective markers always go — they belong
+  // to the wave that just ended.
   clearBattlefieldForBreak({ keepElites = false } = {}) {
     this.enemies = this.enemies.filter(
       (enemy) => enemy.boss || (keepElites && (enemy.elite || enemy.isSoul)),
     );
     this.enemyProjectiles = [];
     this.bossHazards = [];
+    this.waveMarkers = [];
   }
 
   startIntermission() {
     const session = this.session;
+    const entry = session.wavePlan[session.waveIndex - 1] || null;
     session.wavePhase = "intermission";
-    session.intermissionTimer = WAVE_INTERMISSION_SECONDS;
+    session.intermissionTimer = entry?.intermissionSeconds ?? WAVE_INTERMISSION_SECONDS;
     session.intermissionRewardTaken = false;
+    session.intermissionShopTaken = false;
     this.clearBattlefieldForBreak({ keepElites: true });
 
     // The breather restores a slice of health so chip damage isn't permanent.
@@ -1476,7 +1638,11 @@ export class GameRuntime {
         : "准备迎战最终 Boss",
     );
     this.emitHud();
-    this.tryStartWaveReward();
+    // The growth pick comes first; the shop opens behind it. If there is no pick to make
+    // (everything maxed) the shop still gets its turn.
+    if (!this.tryStartWaveReward()) {
+      this.tryOpenWaveShop();
+    }
   }
 
   // The reward pick pauses the run; the rest of the intermission then plays out live.
@@ -1502,6 +1668,138 @@ export class GameRuntime {
     return true;
   }
 
+  // ── 露金 & 波间商店 ──────────────────────────────────────────────────────────
+  // 露金 is an in-run currency only: it is never banked between runs, so there is no
+  // reason to hoard it past the last intermission.
+  awardDewCoins(amount, toast = null) {
+    const session = this.session;
+    if (!session || !(amount > 0)) {
+      return;
+    }
+    session.dewCoins += Math.round(amount);
+    if (toast) {
+      this.callbacks.onToast?.(toast);
+    }
+  }
+
+  getCheapestShopCost() {
+    return WAVE_SHOP_LIBRARY.reduce((min, item) => Math.min(min, item.cost), Number.POSITIVE_INFINITY);
+  }
+
+  buildWaveShopOffers() {
+    // Sample without replacement so one visit never shows the same item twice.
+    const pool = [...WAVE_SHOP_LIBRARY];
+    const offers = [];
+    const count = Math.min(WAVE_SHOP_OFFER_COUNT, pool.length);
+    for (let index = 0; index < count; index += 1) {
+      const pick = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+      offers.push({ key: `shop-${index}-${pick.id}`, itemId: pick.id, purchased: false });
+    }
+    return offers;
+  }
+
+  tryOpenWaveShop() {
+    const session = this.session;
+    if (!session || session.bossSpawned || session.wavePhase !== "intermission") {
+      return false;
+    }
+    if (session.intermissionShopTaken) {
+      return false;
+    }
+    // Opening a shop you cannot buy anything from is pure friction, so skip it silently.
+    if (session.dewCoins < this.getCheapestShopCost()) {
+      return false;
+    }
+
+    session.intermissionShopTaken = true;
+    this.waveShopOffers = this.buildWaveShopOffers();
+    this.state = "shop";
+    this.emitWaveShop();
+    this.callbacks.onOverlayChange?.("waveShopScreen");
+    this.callbacks.onSessionLabel?.("波间商店", "用露金购买补给，准备好后继续推进");
+    this.emitHud();
+    return true;
+  }
+
+  emitWaveShop() {
+    const session = this.session;
+    if (!session) {
+      return;
+    }
+    this.callbacks.onWaveShop?.({
+      dewCoins: session.dewCoins,
+      refreshCost: WAVE_SHOP_REFRESH_COST,
+      canRefresh: session.dewCoins >= WAVE_SHOP_REFRESH_COST,
+      offers: this.waveShopOffers.map((offer) => {
+        const item = getWaveShopItem(offer.itemId);
+        return {
+          key: offer.key,
+          name: item?.name || offer.itemId,
+          description: item?.description || "",
+          cost: item?.cost ?? 0,
+          purchased: offer.purchased,
+          affordable: !offer.purchased && session.dewCoins >= (item?.cost ?? 0),
+        };
+      }),
+    });
+  }
+
+  buyWaveShopOffer(offerKey) {
+    const session = this.session;
+    if (this.state !== "shop" || !session) {
+      return false;
+    }
+    const offer = this.waveShopOffers.find((candidate) => candidate.key === offerKey);
+    if (!offer || offer.purchased) {
+      return false;
+    }
+    const item = getWaveShopItem(offer.itemId);
+    if (!item || session.dewCoins < item.cost) {
+      return false;
+    }
+
+    session.dewCoins -= item.cost;
+    session.dewCoinsSpent += item.cost;
+    offer.purchased = true;
+    item.apply(this.player, session);
+    this.audio?.playLevelUp?.();
+    this.callbacks.onToast?.(`购入 ${item.name}`);
+    this.emitWaveShop();
+    this.emitHud();
+    return true;
+  }
+
+  refreshWaveShop() {
+    const session = this.session;
+    if (this.state !== "shop" || !session || session.dewCoins < WAVE_SHOP_REFRESH_COST) {
+      return false;
+    }
+    session.dewCoins -= WAVE_SHOP_REFRESH_COST;
+    session.dewCoinsSpent += WAVE_SHOP_REFRESH_COST;
+    this.waveShopOffers = this.buildWaveShopOffers();
+    this.emitWaveShop();
+    this.emitHud();
+    return true;
+  }
+
+  closeWaveShop() {
+    if (this.state !== "shop") {
+      return;
+    }
+    this.waveShopOffers = [];
+    this.state = "running";
+    this.callbacks.onOverlayChange?.(null);
+    const nextEntry = this.session?.wavePlan[this.session.waveIndex] || null;
+    const nextType = nextEntry ? getWaveTypeDefinition(nextEntry.typeId) : null;
+    this.callbacks.onSessionLabel?.(
+      "波间休整",
+      nextType ? `下一波：${nextType.name} — ${nextType.objective}` : "准备迎战最终 Boss",
+    );
+    this.emitHud();
+    this.lastTimestamp = 0;
+    window.requestAnimationFrame((timestamp) => this.loop(timestamp));
+  }
+
   getWaveStatusText() {
     const session = this.session;
     if (!session) {
@@ -1518,11 +1816,17 @@ export class GameRuntime {
     let progress = "";
     if (session.waveEliteGoal > 0) {
       progress = ` ${session.waveEliteKills}/${session.waveEliteGoal}`;
+    } else if (session.waveNestGoal > 0) {
+      progress = ` 巢 ${session.waveNestKills}/${session.waveNestGoal}`;
+    } else if (session.waveDewGoal > 0) {
+      progress = ` 露 ${session.waveDewCollected}/${session.waveDewGoal}`;
+    } else if (session.waveHoldRequired > 0) {
+      progress = ` 净化 ${Math.floor((session.waveHoldProgress / session.waveHoldRequired) * 100)}%`;
     } else if (session.waveKillGoal > 0) {
       const done = Math.min(session.waveKillGoal, session.kills - session.waveKillBaseline);
       progress = ` ${done}/${session.waveKillGoal}`;
     }
-    return `第${session.waveIndex}/${WAVE_COUNT}波 ${type.name}${progress} ${timeText}`;
+    return `第${session.waveIndex}/${this.getWaveCount()}波 ${type.name}${progress} ${timeText}`;
   }
 
   spawnEnemies(delta) {
@@ -1613,6 +1917,9 @@ export class GameRuntime {
       detailColor: definition.detailColor || "#fff7d8",
       boss: Boolean(definition.boss),
       elite: Boolean(definition.elite),
+      // 净化 objective target: stationary, hatches brood until destroyed.
+      nest: Boolean(definition.nest),
+      nestBroodTimer: NEST_BROOD_INTERVAL,
       bossTier: definition.bossTier || 0,
       shapeId: definition.shapeId || null,
       familyId: definition.familyId || null,
@@ -1745,6 +2052,190 @@ export class GameRuntime {
     this.session.discoveries.monsters.add(ELITE_MONSTER_DEFINITION.id);
     this.callbacks.onToast?.(`${ELITE_MONSTER_DEFINITION.name} 出现`);
     this.stripSoul(elite);
+  }
+
+  // ── Wave objective entities ─────────────────────────────────────────────────
+  // Objective targets are planted inland rather than at the usual off-screen spawn ring:
+  // the player has to go to them, which is the point of these wave types. minDistance
+  // keeps a target from landing on top of the player (a dew orb would auto-collect, a
+  // nest would free-hit); maxDistance keeps the opening target within reach.
+  getInlandPoint(margin = 220, { minDistance = 0, maxDistance = Infinity } = {}) {
+    const safeMargin = Math.min(margin, Math.min(ARENA.width, ARENA.height) / 2 - 40);
+    const spanX = Math.max(1, ARENA.width - safeMargin * 2);
+    const spanY = Math.max(1, ARENA.height - safeMargin * 2);
+    let fallback = null;
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      const point = {
+        x: safeMargin + Math.random() * spanX,
+        y: safeMargin + Math.random() * spanY,
+      };
+      fallback = fallback || point;
+      const distance = Math.hypot(point.x - this.player.x, point.y - this.player.y);
+      if (distance >= minDistance && distance <= maxDistance) {
+        return point;
+      }
+    }
+    return fallback;
+  }
+
+  // 净化: a nest is a stationary enemy, so it inherits the whole damage/health/render
+  // pipeline for free. Its only extra behaviour is hatching brood on a timer.
+  spawnNest() {
+    const nest = this.createEnemy(NEST_MONSTER_DEFINITION);
+    const point = this.getInlandPoint(260, { minDistance: 420 });
+    nest.x = point.x;
+    nest.y = point.y;
+    // Stagger the first hatch so three nests don't pulse in unison.
+    nest.nestBroodTimer = NEST_BROOD_INTERVAL * (0.5 + Math.random() * 0.6);
+    this.enemies.push(nest);
+    this.session.discoveries.monsters.add(NEST_MONSTER_DEFINITION.id);
+  }
+
+  spawnNestBrood(nest) {
+    const profile = this.session?.difficultyProfile;
+    if (!profile) {
+      return;
+    }
+    const eligible = this.getAvailableMonsters(this.session.elapsed, profile).filter((m) => !m.regionExclusive);
+    const definition = eligible[Math.floor(Math.random() * eligible.length)];
+    if (!definition) {
+      return;
+    }
+    const enemy = this.createEnemy(definition);
+    const angle = Math.random() * Math.PI * 2;
+    const distance = nest.radius + 26;
+    enemy.x = clamp(nest.x + Math.cos(angle) * distance, enemy.radius, ARENA.width - enemy.radius);
+    enemy.y = clamp(nest.y + Math.sin(angle) * distance, enemy.radius, ARENA.height - enemy.radius);
+    this.enemies.push(enemy);
+    this.session.discoveries.monsters.add(definition.id);
+    this.spawnSkillEffect({
+      kind: "vineBloom",
+      x: enemy.x,
+      y: enemy.y,
+      radius: 28,
+      duration: 0.3,
+      color: "#c79ae0",
+      accent: "#f6e4ff",
+    });
+  }
+
+  // 采集: walk-over pickups scattered across the arena.
+  spawnDewOrb() {
+    const point = this.getInlandPoint(200, { minDistance: 360 });
+    this.waveMarkers.push({
+      id: crypto.randomUUID(),
+      kind: "dewOrb",
+      x: point.x,
+      y: point.y,
+      radius: DEW_ORB_RADIUS,
+      exp: DEW_ORB_EXP,
+      spin: Math.random() * Math.PI * 2,
+    });
+  }
+
+  // 坚守: plant (or move) the sanctuary circle. Relocating resets the move timer but
+  // never the accumulated progress.
+  relocateHoldZone(announce = true) {
+    const session = this.session;
+    if (!session) {
+      return;
+    }
+    session.waveZoneTimer = HOLD_ZONE_MOVE_SECONDS;
+    // The opening circle lands close by so the wave doesn't start with a long walk;
+    // later relocations are free to go anywhere.
+    const point = this.getInlandPoint(
+      HOLD_ZONE_RADIUS + 120,
+      announce ? { minDistance: 360 } : { maxDistance: 620 },
+    );
+    const existing = this.waveMarkers.find((marker) => marker.kind === "holdZone");
+    if (existing) {
+      existing.x = point.x;
+      existing.y = point.y;
+      existing.occupied = false;
+      if (announce) {
+        this.callbacks.onToast?.("净土圈已转移");
+      }
+      return;
+    }
+    this.waveMarkers.push({
+      id: crypto.randomUUID(),
+      kind: "holdZone",
+      x: point.x,
+      y: point.y,
+      radius: HOLD_ZONE_RADIUS,
+      occupied: false,
+    });
+  }
+
+  // Objective tick. Only runs during combat, so an intermission never advances a goal.
+  updateWaveObjectives(delta) {
+    const session = this.session;
+    if (!session || session.bossSpawned || session.wavePhase !== "combat") {
+      return;
+    }
+
+    if (session.waveNestGoal > 0) {
+      for (const enemy of this.enemies) {
+        if (!enemy.nest) {
+          continue;
+        }
+        enemy.nestBroodTimer -= delta;
+        if (enemy.nestBroodTimer <= 0) {
+          enemy.nestBroodTimer = NEST_BROOD_INTERVAL;
+          this.spawnNestBrood(enemy);
+        }
+      }
+    }
+
+    if (session.waveHoldRequired > 0) {
+      const zone = this.waveMarkers.find((marker) => marker.kind === "holdZone");
+      if (zone) {
+        const inside = Math.hypot(this.player.x - zone.x, this.player.y - zone.y) <= zone.radius;
+        zone.occupied = inside;
+        if (inside) {
+          session.waveHoldProgress = Math.min(session.waveHoldRequired, session.waveHoldProgress + delta);
+        } else {
+          // Stepping out costs progress, but slower than it fills: a forced reposition
+          // is a setback, not a reset.
+          session.waveHoldProgress = Math.max(0, session.waveHoldProgress - delta * HOLD_ZONE_DECAY);
+        }
+        session.waveZoneTimer -= delta;
+        if (session.waveZoneTimer <= 0 && session.waveHoldProgress < session.waveHoldRequired) {
+          this.relocateHoldZone();
+        }
+      }
+    }
+
+    if (session.waveDewGoal > 0) {
+      const kept = [];
+      for (const marker of this.waveMarkers) {
+        if (marker.kind !== "dewOrb") {
+          kept.push(marker);
+          continue;
+        }
+        marker.spin += delta * 2.2;
+        const reach = marker.radius + this.player.radius;
+        if (Math.hypot(this.player.x - marker.x, this.player.y - marker.y) <= reach) {
+          session.waveDewCollected += 1;
+          this.awardDewCoins(1);
+          this.spawnSkillEffect({
+            kind: "meteorBurst",
+            x: marker.x,
+            y: marker.y,
+            radius: 46,
+            duration: 0.28,
+            color: "#8fe6ff",
+            accent: "#f2fdff",
+          });
+          this.audio?.playLevelUp?.();
+          // Dew also feeds the level curve, which is why 采集 waves are worth running down.
+          this.gainExp(marker.exp);
+          continue;
+        }
+        kept.push(marker);
+      }
+      this.waveMarkers = kept;
+    }
   }
 
   findSaferTeleportPoint() {
@@ -6481,7 +6972,14 @@ export class GameRuntime {
     if (enemy.elite) {
       // Hunt waves end as soon as every marked elite is down.
       this.session.waveEliteKills = (this.session.waveEliteKills || 0) + 1;
+      this.awardDewCoins(5);
       this.queueSpecialBoonChoice();
+    }
+
+    if (enemy.nest) {
+      // Purge waves end as soon as every nest is down.
+      this.session.waveNestKills = (this.session.waveNestKills || 0) + 1;
+      this.awardDewCoins(3);
     }
 
     if (enemy.boss) {
@@ -6565,7 +7063,13 @@ export class GameRuntime {
   advanceLevel() {
     this.session.exp -= this.session.expRequired;
     this.session.level += 1;
-    this.session.expRequired = Math.floor(18 + this.session.level * 10 + this.session.level * this.session.level * 1.15);
+    // The quadratic term was 1.15, which made the back half of a run cost so much that a
+    // full round stalled out around level 25 no matter how long it ran. At 0.55 the curve
+    // still climbs, but the 8-wave round lands in the high 30s / low 40s instead, so the
+    // extra five minutes show up as build depth rather than just more time on the clock.
+    // The growth pool is ~121 general picks plus hundreds of skill levels, so there is no
+    // risk of running out of choices at that level.
+    this.session.expRequired = Math.floor(18 + this.session.level * 10 + this.session.level * this.session.level * 0.55);
   }
 
   tryStartLevelUp() {
@@ -6862,7 +7366,7 @@ export class GameRuntime {
       waveText: this.getWaveStatusText(),
       wave: this.session.bossSpawned
         ? "Boss 战"
-        : `${this.session.waveIndex} / ${WAVE_COUNT} · ${this.getCurrentWaveType().name}${this.getCurrentWaveModifier().id === "calm" ? "" : ` · ${this.getCurrentWaveModifier().name}`}`,
+        : `${this.session.waveIndex} / ${this.getWaveCount()} · ${this.getCurrentWaveType().name}${this.getCurrentWaveModifier().id === "calm" ? "" : ` · ${this.getCurrentWaveModifier().name}`}`,
       level: this.session.level,
       exp: `${Math.floor(this.session.exp)} / ${this.session.expRequired}`,
       expRatio: this.session.expRequired > 0 ? this.session.exp / this.session.expRequired : 0,
@@ -6884,6 +7388,8 @@ export class GameRuntime {
           : 1,
       expPickupRange: `${Math.round(this.player.expPickupRange)}`,
       kills: `${this.session.kills}`,
+      dewCoins: `${this.session.dewCoins}`,
+      dewCoinsValue: this.session.dewCoins,
       skills,
     });
   }

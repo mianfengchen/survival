@@ -480,6 +480,49 @@ function paintBossBody(graphics, x, y, radius, enemy) {
   }
 }
 
+// 虫巢 (净化 objective). Deliberately not bug-shaped: a rooted, bulbous hive with a dark
+// mouth, so the player can tell the objective apart from the trash it keeps hatching.
+function paintGardenNest(graphics, x, y, radius, enemy) {
+  // Roots splayed on the ground to sell "this thing does not move".
+  setLine(graphics, radius * 0.11, enemy.accent);
+  for (let index = 0; index < 6; index += 1) {
+    const angle = Math.PI * 0.15 + (Math.PI * 0.7 * index) / 5;
+    graphics.moveTo(x, y + radius * 0.34);
+    graphics.quadraticCurveTo(
+      x + Math.cos(angle) * radius * 0.5,
+      y + radius * 0.62,
+      x + Math.cos(angle) * radius * 0.92,
+      y + radius * 0.78,
+    );
+  }
+
+  beginFill(graphics, enemy.color);
+  graphics.drawEllipse(x, y + radius * 0.08, radius * 0.74, radius * 0.82);
+  graphics.endFill();
+
+  // Horizontal comb banding.
+  setLine(graphics, radius * 0.07, enemy.accent);
+  for (const offset of [-0.42, -0.12, 0.2, 0.5]) {
+    graphics.moveTo(x - radius * 0.66, y + radius * offset);
+    graphics.quadraticCurveTo(x, y + radius * (offset + 0.16), x + radius * 0.66, y + radius * offset);
+  }
+
+  // The mouth: dark opening with a pale rim, where brood comes out.
+  beginFill(graphics, "rgba(26, 12, 36, 0.86)");
+  graphics.drawEllipse(x, y + radius * 0.3, radius * 0.26, radius * 0.2);
+  graphics.endFill();
+  setLine(graphics, radius * 0.06, enemy.detailColor);
+  graphics.drawEllipse(x, y + radius * 0.3, radius * 0.28, radius * 0.22);
+
+  // Crown spines.
+  beginFill(graphics, enemy.detailColor);
+  for (let index = 0; index < 3; index += 1) {
+    const angle = -Math.PI / 2 + (index - 1) * 0.42;
+    drawLeaf(graphics, x + Math.cos(angle) * radius * 0.3, y - radius * 0.58, radius * 0.46, radius * 0.13, angle, enemy.detailColor);
+  }
+  graphics.endFill();
+}
+
 function paintRegionalKin(graphics, x, y, radius, enemy) {
   switch (enemy.shapeId) {
     case "budKin":
@@ -662,6 +705,8 @@ export class PixiRenderer {
       arenaTile: null,
       fieldGlow: new PIXI.Graphics(),
       bossHazards: new PIXI.Graphics(),
+      // Wave objective markers (净土圈 / 灵露). Ground level, above fields, below enemies.
+      waveMarkers: new PIXI.Graphics(),
       strikes: new PIXI.Graphics(),
       mines: new PIXI.Graphics(),
       pulses: new PIXI.Graphics(),
@@ -703,6 +748,7 @@ export class PixiRenderer {
       this.layers.fieldGlow,
       this.spriteLayers.fields,
       this.layers.bossHazards,
+      this.layers.waveMarkers,
       this.spriteLayers.meteors,
       this.spriteLayers.beacons,
       this.spriteLayers.pickups,
@@ -931,6 +977,7 @@ export class PixiRenderer {
     this.drawSkillEffects(runtime.skillEffects || [], delta);
     this.drawEnemyProjectiles(runtime.enemyProjectiles || [], delta);
     this.drawBossHazards(runtime.bossHazards || [], delta);
+    this.drawWaveMarkers(runtime.waveMarkers || [], runtime.player, delta);
     this.drawPlayer(runtime.player, delta, runtime.session?.selectedCharacterId);
     this.drawDamageNumbers(runtime.damageNumbers || []);
 
@@ -1073,6 +1120,12 @@ export class PixiRenderer {
 
     if (enemy.elite) {
       return this.getExternalTexture("enemyBugStout");
+    }
+
+    if (enemy.nest) {
+      return this.getCachedTexture("garden-nest", 140, 36, (graphics, x, y, radius) => {
+        paintGardenNest(graphics, x, y, radius, enemy);
+      });
     }
 
     if (enemy.regionExclusive) {
@@ -3119,6 +3172,114 @@ export class PixiRenderer {
         continue;
       }
     }
+  }
+
+  // Wave objective markers. These are navigation aids first and decoration second, so
+  // both kinds carry an off-screen direction hint drawn at the edge of the player's view.
+  drawWaveMarkers(markers, player, delta) {
+    const graphics = this.layers.waveMarkers;
+    const pulse = this.getMotionTime(0.0022);
+
+    for (const marker of markers) {
+      if (marker.kind === "holdZone") {
+        const occupied = Boolean(marker.occupied);
+        const color = occupied ? "#9bf0c4" : "#ffe6a8";
+        const r = marker.radius;
+        // Fill reads "safe" when you're standing in it and "come here" when you're not.
+        beginFill(graphics, color, occupied ? 0.17 : 0.1);
+        graphics.drawCircle(marker.x, marker.y, r);
+        graphics.endFill();
+        setLine(graphics, occupied ? 5 : 3.5, color);
+        graphics.drawCircle(marker.x, marker.y, r);
+        // Inward-travelling ring so the circle always reads as a destination.
+        const breathe = (Math.sin(pulse * 2) + 1) / 2;
+        setLine(graphics, 2, "rgba(255,255,255,0.6)");
+        graphics.drawCircle(marker.x, marker.y, r * (0.4 + breathe * 0.45));
+        setLine(graphics, 2.2, color);
+        for (let index = 0; index < 12; index += 1) {
+          const a = (Math.PI * 2 * index) / 12 + pulse * 0.4;
+          graphics.moveTo(marker.x + Math.cos(a) * r * 0.9, marker.y + Math.sin(a) * r * 0.9);
+          graphics.lineTo(marker.x + Math.cos(a) * r * 1.08, marker.y + Math.sin(a) * r * 1.08);
+        }
+        if (occupied && Math.random() < delta * 24) {
+          const a = Math.random() * Math.PI * 2;
+          const d = Math.random() * r;
+          this.spawnParticle({
+            x: marker.x + Math.cos(a) * d,
+            y: marker.y + Math.sin(a) * d,
+            vx: 0,
+            vy: -34 - Math.random() * 26,
+            life: 0.6,
+            scale: 0.24,
+            color: "#d8ffe9",
+            alpha: 0.5,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+        this.drawMarkerCompass(graphics, marker, player, color);
+        continue;
+      }
+
+      if (marker.kind === "dewOrb") {
+        const r = marker.radius;
+        const bob = Math.sin(pulse * 2.6 + marker.spin) * 3;
+        const y = marker.y + bob;
+        // Ground halo keeps the orb findable against busy terrain.
+        beginFill(graphics, "#5fd8ff", 0.12);
+        graphics.drawCircle(marker.x, marker.y, r * 2.6);
+        graphics.endFill();
+        beginFill(graphics, "#8fe6ff", 0.92);
+        graphics.drawCircle(marker.x, y, r * 0.62);
+        graphics.endFill();
+        beginFill(graphics, "rgba(255,255,255,0.95)", 0.9);
+        graphics.drawCircle(marker.x - r * 0.18, y - r * 0.2, r * 0.22);
+        graphics.endFill();
+        setLine(graphics, 2.4, "#d6f7ff");
+        graphics.drawCircle(marker.x, y, r * (0.9 + Math.sin(pulse * 3 + marker.spin) * 0.12));
+        setLine(graphics, 1.6, "rgba(143, 230, 255, 0.55)");
+        graphics.drawCircle(marker.x, marker.y, r * 1.9);
+        if (Math.random() < delta * 14) {
+          this.spawnParticle({
+            x: marker.x + (Math.random() - 0.5) * r,
+            y: y + (Math.random() - 0.5) * r,
+            vx: 0,
+            vy: -26 - Math.random() * 18,
+            life: 0.5,
+            scale: 0.22,
+            color: "#e8fbff",
+            alpha: 0.55,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+        this.drawMarkerCompass(graphics, marker, player, "#8fe6ff");
+        continue;
+      }
+    }
+  }
+
+  // A chevron at the rim of the player's immediate view pointing at an objective that is
+  // too far away to see. Without this the 采集 and 坚守 waves turn into blind wandering.
+  drawMarkerCompass(graphics, marker, player, color) {
+    if (!player) {
+      return;
+    }
+    const dx = marker.x - player.x;
+    const dy = marker.y - player.y;
+    const distance = Math.hypot(dx, dy);
+    const hintRadius = 210;
+    if (distance <= hintRadius + marker.radius) {
+      return;
+    }
+    const ax = dx / distance;
+    const ay = dy / distance;
+    const cx = player.x + ax * hintRadius;
+    const cy = player.y + ay * hintRadius;
+    const px = -ay;
+    const py = ax;
+    setLine(graphics, 3, color);
+    graphics.moveTo(cx - ax * 12 + px * 10, cy - ay * 12 + py * 10);
+    graphics.lineTo(cx + ax * 12, cy + ay * 12);
+    graphics.lineTo(cx - ax * 12 - px * 10, cy - ay * 12 - py * 10);
   }
 
   drawStrikes(strikes, delta) {

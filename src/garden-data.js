@@ -659,7 +659,9 @@ function createRegion(regionIndex) {
     bossTier: boss.bossTier,
     specialMonsterId: specialMonster.id,
     tutorialRegion: regionIndex === 0,
-    durationSeconds: regionIndex === 0 ? 180 : 15 * 60,
+    // The tutorial region keeps its short round (it runs a compressed 3-wave plan);
+    // every other region gets the full 20-minute, 8-wave campaign.
+    durationSeconds: regionIndex === 0 ? 180 : 20 * 60,
     energyReward: regionIndex === 0 ? 24 : 40 + regionIndex * 3,
   };
 }

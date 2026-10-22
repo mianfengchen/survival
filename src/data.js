@@ -7,7 +7,10 @@ export const ARENA = {
   height: 540 * 3,
 };
 
-export const ROUND_DURATION_SECONDS = 15 * 60;
+// Run length. Raised from 15 to 20 minutes together with the 8-wave plan: at 15 minutes
+// a build only reached level 20-30 before the boss arrived, which is not enough room for
+// a build to actually come together.
+export const ROUND_DURATION_SECONDS = 20 * 60;
 
 export function normalizeDifficultyLevel(value) {
   const parsed = Number.parseInt(value, 10);
@@ -485,6 +488,26 @@ export const ELITE_MONSTER_DEFINITION = {
   shapeId: "eliteBrute",
 };
 
+// 净化波的目标：固定不动、持续产卵的虫巢。Stationary (speed 0) so it reuses the normal
+// enemy damage/render pipeline without needing a separate entity type.
+export const NEST_MONSTER_DEFINITION = {
+  id: "gardenNest",
+  name: "虫巢",
+  description: "扎根在庭域里的虫巢，自身不会移动，但会不断孵化害虫，摧毁它才能净化这一波。",
+  color: "#b98ad4",
+  accent: "#56306f",
+  detailColor: "#f6e4ff",
+  // 1600 x2 (非Boss倍率) = 3200 有效血量；三个巢约等于两个精英的工作量。
+  health: 1600,
+  healthGrowthScale: 0.5,
+  speed: 0,
+  damage: 12,
+  radius: 30,
+  exp: 26,
+  nest: true,
+  shapeId: "gardenNest",
+};
+
 export const GENERAL_UPGRADES = [
   {
     id: "attackGrowth",
@@ -728,6 +751,129 @@ export const SPECIAL_BOON_LIBRARY = [
     description: "面对精英与 Boss 时，将其灵魂剥离出体。灵魂以 2 秒延迟复刻本体的移动轨迹，属性与本体完全一致且与本体共享血条，但不会发动任何攻击。",
   },
 ];
+
+// ── 波间商店 ───────────────────────────────────────────────────────────────────
+// Bought with 露金, the in-run currency that drops from wave clears, elites, nests and
+// 灵露. Deliberately small, boring, stackable numbers: the shop is a spending decision
+// (breadth now vs. saving for 多重投射 later), not a second source of build identity.
+// Each offer can be bought once per visit so a single rich intermission can't spike.
+export const WAVE_SHOP_LIBRARY = [
+  {
+    id: "dewTonic",
+    name: "露草药剂",
+    description: "立即恢复 35% 最大生命。",
+    cost: 8,
+    apply: (player) => {
+      player.health = Math.min(player.maxHealth, player.health + player.maxHealth * 0.35);
+    },
+  },
+  {
+    id: "dawnWard",
+    name: "晨露加护",
+    description: "最大生命 +12%，并立即治疗同等数值。",
+    cost: 15,
+    apply: (player) => {
+      const gain = Math.ceil(player.maxHealth * 0.12);
+      player.maxHealth += gain;
+      player.health = Math.min(player.maxHealth, player.health + gain);
+    },
+  },
+  {
+    id: "honingStone",
+    name: "锋锐研磨",
+    description: "总伤害 +8%。",
+    cost: 17,
+    apply: (player) => {
+      player.attackMultiplier *= 1.08;
+    },
+  },
+  {
+    id: "swiftSole",
+    name: "迅捷鞋底",
+    description: "移速 +8%。",
+    cost: 11,
+    apply: (player) => {
+      player.speed *= 1.08;
+    },
+  },
+  {
+    id: "flowCoil",
+    name: "流转盘香",
+    description: "技能冷却 -6%。",
+    cost: 17,
+    apply: (player) => {
+      player.cooldownScale = Math.max(0.2, player.cooldownScale * 0.94);
+    },
+  },
+  {
+    id: "keenEye",
+    name: "锐眼花蜜",
+    description: "暴击率 +6%。",
+    cost: 14,
+    apply: (player) => {
+      player.critChance = Math.min(1, player.critChance + 0.06);
+    },
+  },
+  {
+    id: "barkPlate",
+    name: "树皮护板",
+    description: "护甲 +3。",
+    cost: 11,
+    apply: (player) => {
+      player.armor += 3;
+    },
+  },
+  {
+    id: "dewCompass",
+    name: "露珠罗盘",
+    description: "经验拾取范围 +25%。",
+    cost: 8,
+    apply: (player) => {
+      player.expPickupRange *= 1.25;
+    },
+  },
+  {
+    id: "splitSeed",
+    name: "裂芒之种",
+    description: "所有技能投射物 +1。",
+    cost: 28,
+    apply: (player) => {
+      player.projectileCountBonus += 1;
+    },
+  },
+  {
+    id: "stepFeather",
+    name: "踏空羽",
+    description: "闪现充能上限 +1。",
+    cost: 22,
+    apply: (player) => {
+      player.blinkChargesMax += 1;
+      player.blinkCharges += 1;
+    },
+  },
+  {
+    id: "mendMoss",
+    name: "再生苔",
+    description: "每秒生命恢复 +0.6。",
+    cost: 13,
+    apply: (player) => {
+      player.healthRegen += 0.6;
+    },
+  },
+  {
+    id: "expLens",
+    name: "经验透镜",
+    description: "经验获取 +12%。",
+    cost: 13,
+    apply: (player) => {
+      player.expMultiplier *= 1.12;
+    },
+  },
+];
+
+export function getWaveShopItem(itemId) {
+  return WAVE_SHOP_LIBRARY.find((item) => item.id === itemId) || null;
+}
 
 export const TALENT_LIBRARY = [
   {
