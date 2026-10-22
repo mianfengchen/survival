@@ -1049,7 +1049,7 @@ export const SKILL_LIBRARY = [
   },
   {
     id: "operaMothBlade",
-    name: "蛾刃回旋",
+    name: "a'a'a'a'a'a'a'a'a'a'a'a'a'w'w'w'w'w'w",
     description: "放出蛾形飞刃沿螺旋轨迹盘旋切割，沿途洒落致幻鳞粉，飞远后折返归巢。",
     color: "#c6a0f2",
     advancedBehavior: "boomerang",

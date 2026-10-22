@@ -470,7 +470,13 @@ export const ELITE_MONSTER_DEFINITION = {
   color: "#f4b76b",
   accent: "#8d4f22",
   detailColor: "#fff2c7",
-  health: 14000,
+  // Sized against measured player output: a level-10 build (飞剑术 Lv4 + 两个 Lv2 辅助技)
+  // lands roughly 200 single-target DPS, and only ~60% of that stays on the elite because
+  // auto-targeting leaks into trash. 2200 x2 (非Boss倍率) = 4400 有效血量 ≈ 35 秒专注击杀。
+  health: 2200,
+  // Elites scale at half the rate of trash so the 难度10 猎杀波 does not outrun the
+  // level-10 build that the second wave arrives at.
+  healthGrowthScale: 0.5,
   speed: 34,
   damage: 10,
   radius: 34,

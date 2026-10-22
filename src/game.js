@@ -171,6 +171,10 @@ const BOSS_SLAM_MAX_HP_FRACTION = 0.3;
 const BOSS_CHARGE_DAMAGE_RATIO = 0.65;
 const BOSS_CHARGE_MAX_HP_FRACTION = 0.35;
 
+// 蛾刃回旋 sweep shape: radians/second of curve. At ~400 speed this yields a turning
+// radius near 270px, i.e. a broad scythe arc rather than a tight loop.
+const MOTH_BLADE_TURN_RATE = 1.5;
+
 // ── Wave pacing ───────────────────────────────────────────────────────────────
 // The run is split into waves separated by short intermissions so the 15 minutes
 // has an actual rhythm (pressure -> relief -> decision) instead of one flat ramp.
@@ -1321,11 +1325,16 @@ export class GameRuntime {
     const order = ["cull", "hunt", "cull", "hunt", "surge"];
     const plan = [];
     for (let index = 0; index < WAVE_COUNT; index += 1) {
+      const typeId = order[index] || "cull";
       // Wave 1 is always calm so the opening can never roll unfair.
       const modifierId = index === 0
         ? "calm"
         : WAVE_MODIFIER_LIBRARY[Math.floor(Math.random() * WAVE_MODIFIER_LIBRARY.length)].id;
-      plan.push({ typeId: order[index] || "cull", modifierId });
+      // Both hunts ask for the full pair. The first hunt used to be cut to a single target,
+      // but that was papering over elite HP being ~6x too high; with the HP fixed, two
+      // elites fit inside the wave timer at level 10.
+      const eliteGoal = typeId === "hunt" ? 2 : 0;
+      plan.push({ typeId, modifierId, eliteGoal });
     }
     return plan;
   }
@@ -1358,7 +1367,8 @@ export class GameRuntime {
       ? Math.ceil(type.killGoalBase * (1 + (index - 1) * 0.35))
       : 0;
     session.waveEliteKills = 0;
-    session.waveEliteGoal = type.eliteGoal || 0;
+    // The plan's per-wave count wins over the type default so the first hunt stays light.
+    session.waveEliteGoal = entry.eliteGoal ?? type.eliteGoal ?? 0;
     session.intermissionTimer = 0;
     session.intermissionRewardTaken = false;
     session.spawnTimer = 0.6;
@@ -1432,9 +1442,13 @@ export class GameRuntime {
     this.startIntermission();
   }
 
-  // Wipe the field so a break is genuinely a break (bosses are never removed).
-  clearBattlefieldForBreak() {
-    this.enemies = this.enemies.filter((enemy) => enemy.boss);
+  // Wipe the field so a break is genuinely a break. Bosses are never removed, and during
+  // an intermission surviving elites are spared: a hunt target you *almost* killed should
+  // not be deleted along with its special boon.
+  clearBattlefieldForBreak({ keepElites = false } = {}) {
+    this.enemies = this.enemies.filter(
+      (enemy) => enemy.boss || (keepElites && (enemy.elite || enemy.isSoul)),
+    );
     this.enemyProjectiles = [];
     this.bossHazards = [];
   }
@@ -1444,7 +1458,7 @@ export class GameRuntime {
     session.wavePhase = "intermission";
     session.intermissionTimer = WAVE_INTERMISSION_SECONDS;
     session.intermissionRewardTaken = false;
-    this.clearBattlefieldForBreak();
+    this.clearBattlefieldForBreak({ keepElites: true });
 
     // The breather restores a slice of health so chip damage isn't permanent.
     this.player.health = Math.min(
@@ -2995,7 +3009,9 @@ export class GameRuntime {
         vy: aim.direction.y * speed,
         speed,
         baseSpeed: speed,
-        radius: stats.size * this.player.projectileSizeMultiplier,
+        // The winged blade reads much wider than a dart, so give it a matching hitbox —
+        // the old radius let it thread gaps between packed enemies.
+        radius: (stats.size + 5) * this.player.projectileSizeMultiplier,
         damage: this.rollDamage(stats.damage),
         pierce: stats.pierce + tempo + 1,
         maxDistance: stats.range * this.player.rangeMultiplier,
@@ -3938,9 +3954,11 @@ export class GameRuntime {
         projectile.speed = returnSpeed;
       }
 
-      // 蛾刃回旋: curve the blade into a spiral while it flies out, and shed scale dust.
+      // 蛾刃回旋: curve the blade into a wide sweeping arc, shedding scale dust as it goes.
+      // The turn rate has to stay well below speed/desiredRadius or the blade curls into a
+      // tight donut near the caster and veers off targets instead of cutting through them.
       if (projectile.mothBlade && !projectile.returning) {
-        const turn = projectile.spiralDir * 3.4 * delta;
+        const turn = projectile.spiralDir * MOTH_BLADE_TURN_RATE * delta;
         const cos = Math.cos(turn);
         const sin = Math.sin(turn);
         const nvx = projectile.vx * cos - projectile.vy * sin;
