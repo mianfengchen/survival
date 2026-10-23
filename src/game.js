@@ -226,6 +226,31 @@ const GEAR_MAX_LIVE = 6;
 // Saw teeth flung by 嵌地锯盘.
 const GEAR_TOOTH_INTERVAL = 0.55;
 
+// ── 蓝焰燎原 ──────────────────────────────────────────────────────────────────
+// A spreading fire rather than a placed circle. Hard cap on simultaneous patches,
+// because the whole point is uncontrolled growth and the damage loop is per-patch.
+// 18 patches at ~70px already blankets a large area, and at 26 the cap (not the fuel
+// economy) became the limiter at every level above 2, which flattened the progression.
+const FLAME_MAX_PATCHES = 18;
+// A new patch is seeded this far out, measured in parent radii, so a child lands mostly
+// outside its parent and the fire covers new ground instead of thickening in place.
+const FLAME_SPREAD_REACH = 1.3;
+// Seeding costs the parent fuel, so a fast-spreading fire is a shorter-lived one. Kept
+// low relative to fuel: at 0.9 the seed patch bankrupted itself in about three seconds.
+const FLAME_SPREAD_FUEL_COST = 0.5;
+// A child starts with this share of its parent's remaining fuel.
+const FLAME_CHILD_FUEL_RATIO = 0.72;
+// Minimum separation between patches, in combined radii. Near 1.0 means patches barely
+// overlap, which matters because an enemy takes a tick from every patch covering it —
+// at 0.72 a cluster stacked three or four ticks on one target.
+const FLAME_CROWD_RATIO = 0.9;
+// How long an ignited enemy stays a torch, and how often it drops fire behind itself.
+const FLAME_TORCH_SECONDS = 2.6;
+const FLAME_TORCH_DROP_INTERVAL = 0.42;
+// Fuel returned to nearby patches when something dies burning.
+const FLAME_KILL_FUEL = 1.1;
+const FLAME_KILL_FUEL_INFERNO = 2.6;
+
 // ── Knockback / displacement ─────────────────────────────────────────────────
 // How much of an incoming shove each weight class ignores. Trash gets thrown around
 // freely; elites and bosses only get nudged so they keep closing on the player instead
@@ -531,10 +556,11 @@ export class GameRuntime {
     // Ground markers owned by the current wave objective (净土圈 / 灵露).
     this.waveMarkers = [];
     this.waveShopOffers = [];
-    // 郁金雷网 rods and 琥珀齿轮 gears: both are persistent placed objects rather than
-    // projectiles, so they get their own pools.
+    // 郁金雷网 rods, 琥珀齿轮 gears and 蓝焰燎原 patches: persistent placed objects rather
+    // than projectiles, so they get their own pools.
     this.tulipRods = [];
     this.gears = [];
+    this.flames = [];
     this.orbitAngle = 0;
     this.lastTimestamp = 0;
     this.hudClock = 0;
@@ -813,6 +839,7 @@ export class GameRuntime {
     this.waveShopOffers = [];
     this.tulipRods = [];
     this.gears = [];
+    this.flames = [];
     this.orbitAngle = 0;
     this.pendingChoices = [];
     this.screenShake = 0;
@@ -1402,6 +1429,7 @@ export class GameRuntime {
     this.updateStrikes(delta);
     this.updateTulipGrid(delta);
     this.updateGears(delta);
+    this.updateWildfire(delta);
     this.updateMines(delta);
     this.updateSkillEffects(delta);
     this.updateDamageNumbers(delta);
@@ -2066,6 +2094,12 @@ export class GameRuntime {
       sporeSpreadClock: 0,
       // 鹿角突刺: set while a charge has this enemy speared on its antlers.
       carriedBy: null,
+      // 蓝焰燎原: an ignited enemy carries fire and drops patches as it walks.
+      flameTorch: 0,
+      flameTorchDamage: 0,
+      flameTorchRadius: 0,
+      flameTorchInferno: 0,
+      flameTorchDropClock: 0,
       // Displacement weight class. Heavy enemies resist shoves so they can't be pushed
       // across the arena; `immovable` opts out of displacement completely.
       immovable: Boolean(definition.immovable),
@@ -2150,10 +2184,15 @@ export class GameRuntime {
       sporeTickDamage: 0,
       sporeBloom: 0,
       sporeSpreadClock: 0,
-      // A soul can't be speared or shoved; it only replays the body's path.
+      // A soul can't be speared, shoved or set alight; it only replays the body's path.
       carriedBy: null,
       immovable: true,
       knockbackResist: 1,
+      flameTorch: 0,
+      flameTorchDamage: 0,
+      flameTorchRadius: 0,
+      flameTorchInferno: 0,
+      flameTorchDropClock: 0,
       markedForExplosion: 0,
       specialPhase: Math.random() * Math.PI * 2,
       // A soul is a passive echo: it carries none of the boss's shield/charge machinery.
@@ -3121,6 +3160,7 @@ export class GameRuntime {
     if (skillId === "honeyBomb") return this.castHoneyMire(state, stats);
     if (skillId === "amberGearBurst") return this.castAmberGear(state, stats);
     if (skillId === "grandPrismMeteor") return this.castPrismMeteor(state, stats);
+    if (skillId === "blueflameGarden") return this.castWildfire(state, stats);
 
     // Shared handlers, kept only for the behaviours that still have two or more genuinely
     // differentiated users. "lobbedBomb", "strike" and "snare" are gone: their last users
@@ -3203,15 +3243,14 @@ export class GameRuntime {
     }
   }
 
+  // Only 雨根符印 still routes through here; 蓝焰花园 moved to its own wildfire handler
+  // because the two were the same "place a damaging circle" skill with different colours.
   castAdvancedField(skillId, state, stats) {
     const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
     const thornLevel = state?.exclusives?.rainRootSigilThorn || 0;
-    const infernoLevel = state?.exclusives?.blueflameGardenInferno || 0;
     const totalCount = stats.count + this.getSummonCountBonus(skillId);
     const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
-    let burnLevel = 0;
-    if (skillId === "blueflameGarden") burnLevel = 1 + focus + infernoLevel * 2;
-    else if (skillId === "rainRootSigil") burnLevel = thornLevel * 2;
+    const burnLevel = thornLevel * 2;
     for (let index = 0; index < totalCount; index += 1) {
       const anchor = anchors[index % Math.max(1, anchors.length)] || this.player;
       const angle = (Math.PI * 2 * index) / Math.max(1, totalCount);
@@ -3225,7 +3264,7 @@ export class GameRuntime {
         tickInterval: stats.tickInterval,
         damage: this.rollDamage(stats.damage),
         slowLevel: 1 + tempo,
-        healLevel: skillId === "rainRootSigil" ? 1 + focus : 0,
+        healLevel: 1 + focus,
         burnLevel,
         color: `${definitionColor(skillId)}33`,
         edgeColor: definitionColor(skillId),
@@ -4477,6 +4516,194 @@ export class GameRuntime {
       wardLevel: 0,
       color: meteor.color || "#72cbff",
     });
+  }
+
+  // ── 蓝焰燎原: light a seed patch and let the fire make its own decisions ──
+  castWildfire(state, stats) {
+    const skillId = "blueflameGarden";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const infernoLevel = state?.exclusives?.blueflameGardenInferno || 0;
+    const totalCount = stats.count + this.getSummonCountBonus(skillId);
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
+    for (let index = 0; index < totalCount; index += 1) {
+      const anchor = anchors[index] || null;
+      const x = anchor ? anchor.x : this.player.x + randomBetween(-90, 90);
+      const y = anchor ? anchor.y : this.player.y + randomBetween(-90, 90);
+      this.igniteFlame({
+        x,
+        y,
+        radius: stats.radius * this.player.rangeMultiplier * (1 + focus * 0.12),
+        fuel: stats.fuel + tempo * 0.6,
+        damage: this.rollDamage(stats.damage),
+        tickInterval: stats.tickInterval,
+        spreadInterval: Math.max(0.35, stats.spreadInterval - tempo * 0.1),
+        infernoLevel,
+        seed: true,
+      });
+    }
+  }
+
+  // Create one patch, unless the spot is already well alight or we're at the cap.
+  igniteFlame(config) {
+    if (this.flames.length >= FLAME_MAX_PATCHES) return null;
+    const x = clamp(config.x, 20, ARENA.width - 20);
+    const y = clamp(config.y, 20, ARENA.height - 20);
+    if (!config.seed) {
+      // Don't pile patches on top of each other; that would just stack damage in place
+      // instead of covering ground, which is the opposite of what this skill is for.
+      const crowded = this.flames.some(
+        (flame) => Math.hypot(flame.x - x, flame.y - y) < (flame.radius + config.radius) * FLAME_CROWD_RATIO,
+      );
+      if (crowded) return null;
+    }
+    const flame = {
+      id: crypto.randomUUID(),
+      sourceSkillId: "blueflameGarden",
+      x,
+      y,
+      radius: config.radius,
+      fuel: config.fuel,
+      maxFuel: config.fuel,
+      damage: config.damage,
+      tickInterval: config.tickInterval,
+      // Stagger the first tick so a big fire doesn't pulse the whole field in one frame.
+      tickClock: Math.random() * config.tickInterval,
+      spreadInterval: config.spreadInterval,
+      spreadClock: config.spreadInterval * (config.seed ? 0.5 : 1),
+      infernoLevel: config.infernoLevel || 0,
+      flicker: Math.random() * Math.PI * 2,
+      color: definitionColor("blueflameGarden"),
+    };
+    this.flames.push(flame);
+    return flame;
+  }
+
+  updateWildfire(delta) {
+    if (this.flames.length === 0) return;
+    const alive = [];
+    const seeded = [];
+
+    for (const flame of this.flames) {
+      flame.fuel -= delta;
+      flame.flicker += delta * 4.2;
+      if (flame.fuel <= 0) {
+        this.spawnSkillEffect({
+          kind: "flameDie",
+          x: flame.x,
+          y: flame.y,
+          radius: flame.radius,
+          duration: 0.32,
+          color: flame.color,
+          accent: "#dfe6ff",
+        });
+        continue;
+      }
+
+      // Damage + ignite everything standing in it.
+      flame.tickClock -= delta;
+      if (flame.tickClock <= 0) {
+        flame.tickClock += flame.tickInterval;
+        for (const enemy of this.enemies) {
+          if (enemy.isSoul) continue;
+          if (circleDistance(flame, enemy) > flame.radius + enemy.radius) continue;
+          this.damageEnemy(enemy, flame.damage, flame);
+          // Ignited enemies become carriers. This is how the fire reaches places the
+          // spread never would — it rides the horde back into itself.
+          enemy.flameTorch = FLAME_TORCH_SECONDS;
+          enemy.flameTorchDamage = Math.max(enemy.flameTorchDamage || 0, flame.damage);
+          enemy.flameTorchRadius = Math.max(enemy.flameTorchRadius || 0, flame.radius * 0.72);
+          enemy.flameTorchInferno = Math.max(enemy.flameTorchInferno || 0, flame.infernoLevel);
+        }
+      }
+
+      // Spread. Seeding costs fuel, so a fast-spreading fire is a short-lived one unless
+      // it is being fed by kills.
+      flame.spreadClock -= delta;
+      if (flame.spreadClock <= 0 && flame.fuel > FLAME_SPREAD_FUEL_COST) {
+        flame.spreadClock += flame.spreadInterval;
+        const angle = Math.random() * Math.PI * 2;
+        const reach = flame.radius * FLAME_SPREAD_REACH;
+        seeded.push({
+          x: flame.x + Math.cos(angle) * reach,
+          y: flame.y + Math.sin(angle) * reach,
+          radius: flame.radius,
+          fuel: flame.fuel * FLAME_CHILD_FUEL_RATIO,
+          damage: flame.damage,
+          tickInterval: flame.tickInterval,
+          spreadInterval: flame.spreadInterval,
+          infernoLevel: flame.infernoLevel,
+        });
+        flame.fuel -= FLAME_SPREAD_FUEL_COST;
+      }
+
+      alive.push(flame);
+    }
+
+    this.flames = alive;
+    // Seeded outside the loop so children can't spread again in the same frame.
+    for (const child of seeded) {
+      this.igniteFlame(child);
+    }
+  }
+
+  // A torch enemy drops fire behind itself, and with 湛蓝业火 also lights what it touches.
+  updateFlameTorch(enemy, delta) {
+    enemy.flameTorch = Math.max(0, enemy.flameTorch - delta);
+    enemy.flameTorchDropClock = (enemy.flameTorchDropClock || 0) - delta;
+    if (enemy.flameTorchDropClock <= 0) {
+      enemy.flameTorchDropClock = FLAME_TORCH_DROP_INTERVAL;
+      this.igniteFlame({
+        x: enemy.x,
+        y: enemy.y,
+        radius: enemy.flameTorchRadius || 40,
+        // Carried fire is short-lived; it is a trail, not a second cast.
+        fuel: 1.6 + (enemy.flameTorchInferno || 0) * 0.8,
+        damage: enemy.flameTorchDamage || 10,
+        tickInterval: 0.4,
+        spreadInterval: 1.1,
+        infernoLevel: enemy.flameTorchInferno || 0,
+      });
+    }
+
+    if ((enemy.flameTorchInferno || 0) > 0) {
+      for (const other of this.enemies) {
+        if (other.id === enemy.id || other.isSoul || other.flameTorch > 0) continue;
+        if (circleDistance(enemy, other) > enemy.radius + other.radius + 6) continue;
+        other.flameTorch = FLAME_TORCH_SECONDS;
+        other.flameTorchDamage = enemy.flameTorchDamage;
+        other.flameTorchRadius = enemy.flameTorchRadius;
+        other.flameTorchInferno = enemy.flameTorchInferno;
+        this.spawnSkillEffect({
+          kind: "flameCatch",
+          x: other.x,
+          y: other.y,
+          radius: other.radius * 1.6,
+          duration: 0.28,
+          color: definitionColor("blueflameGarden"),
+          accent: "#ffffff",
+        });
+        break;
+      }
+    }
+
+    if (enemy.flameTorch <= 0) {
+      enemy.flameTorchDamage = 0;
+      enemy.flameTorchRadius = 0;
+      enemy.flameTorchInferno = 0;
+    }
+  }
+
+  // Dying on fire feeds the fire. This is the economy that lets a big blaze sustain itself
+  // and is why 湛蓝业火 can tip it into never going out.
+  refuelFlamesAround(enemy) {
+    const bonus = (enemy.flameTorchInferno || 0) > 0 ? FLAME_KILL_FUEL_INFERNO : FLAME_KILL_FUEL;
+    let fed = 0;
+    for (const flame of this.flames) {
+      if (circleDistance(flame, enemy) > flame.radius * 1.6) continue;
+      flame.fuel = Math.min(flame.maxFuel * 1.5, flame.fuel + bonus);
+      fed += 1;
+      if (fed >= 3) break;
+    }
   }
 
   castFlyingSword(skillId, state, stats) {
@@ -6810,6 +7037,11 @@ export class GameRuntime {
         }
       }
 
+      // 蓝焰燎原: a burning enemy lays a trail of fire and can pass it on.
+      if (enemy.flameTorch > 0) {
+        this.updateFlameTorch(enemy, delta);
+      }
+
       // 孢毒 ticks straight off health (it must not re-enter damageEnemy, or a DoT would
       // roll crits and re-trigger 残响 every frame).
       if (enemy.sporeTimer > 0 && enemy.sporeStacks > 0) {
@@ -7977,6 +8209,11 @@ export class GameRuntime {
     // 孢潮蔓延: a poisoned body pops into one more spore ring on the way out.
     if (enemy.sporeStacks > 0 && enemy.sporeBloom > 0) {
       this.burstSporeCorpse(enemy);
+    }
+
+    // 蓝焰燎原: dying on fire feeds the surrounding blaze.
+    if (enemy.flameTorch > 0) {
+      this.refuelFlamesAround(enemy);
     }
 
     // 黏稠蜜沼: dying inside a mire splits off a small fresh pool, so a honey build keeps

@@ -1060,6 +1060,7 @@ export class PixiRenderer {
     // Ground markings first, so bullets and bodies always read on top of them.
     this.drawClockDials(runtime.strikes || []);
     this.drawScissorBlades(runtime.strikes || []);
+    this.drawWildfire(runtime.flames || [], delta);
     this.drawTulipRods(runtime.tulipRods || [], delta);
     this.drawGears(runtime.gears || []);
     this.drawMeteors(runtime.meteors || [], delta);
@@ -3202,6 +3203,22 @@ export class PixiRenderer {
           graphics.moveTo(effect.x + Math.cos(a) * r * 0.3, effect.y + Math.sin(a) * r * 0.3);
           graphics.lineTo(effect.x + Math.cos(a) * r * 0.92, effect.y + Math.sin(a) * r * 0.92);
         }
+      } else if (effect.kind === "flameDie") {
+        // 蓝焰燎原: a patch running out of fuel collapses into smoke.
+        const fade = 1 - progress;
+        beginFill(graphics, "rgba(150, 170, 230, 0.2)", 0.3 * fade);
+        graphics.drawCircle(effect.x, effect.y - progress * 14, effect.radius * (0.7 + progress * 0.5));
+        graphics.endFill();
+        setLine(graphics, 2.4 * fade, effect.accent || "#dfe6ff");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.8 - progress * 0.3));
+      } else if (effect.kind === "flameCatch") {
+        // 湛蓝业火: fire jumping from one body to the next.
+        const fade = 1 - progress;
+        setLine(graphics, 4 * fade, effect.color || "#92a7ff");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.5 + progress * 0.7));
+        beginFill(graphics, effect.accent || "#ffffff", 0.6 * fade);
+        drawStar(graphics, effect.x, effect.y, effect.radius * 0.5 * fade + 4, effect.radius * 0.16, 5);
+        graphics.endFill();
       } else if (effect.kind === "tulipArc") {
         // 郁金雷网: a jagged bolt strung between two rods. Drawn as a fixed-seed zigzag so
         // it stays put for its whole (very short) life instead of jittering.
@@ -3598,6 +3615,61 @@ export class PixiRenderer {
       beginFill(graphics, "#ffe4e6", 0.85);
       graphics.drawCircle(strike.x, strike.y, 6 + t * 4);
       graphics.endFill();
+    }
+  }
+
+  // 蓝焰燎原: overlapping patches of blue flame. Each patch dims as its fuel runs down,
+  // which is the player's read on where the fire is about to die out.
+  drawWildfire(flames, delta) {
+    const graphics = this.layers.clockDials;
+    for (const flame of flames) {
+      const life = clamp(flame.fuel / Math.max(0.01, flame.maxFuel), 0, 1);
+      const r = flame.radius;
+      const flick = Math.sin(flame.flicker) * 0.06;
+      // Scorched ground underneath, so a burnt-over area stays legible.
+      beginFill(graphics, "rgba(40, 46, 86, 0.3)");
+      graphics.drawCircle(flame.x, flame.y, r * 0.95);
+      graphics.endFill();
+      // Body of the flame; brightness tracks remaining fuel.
+      beginFill(graphics, flame.color || "#92a7ff", 0.16 + life * 0.2);
+      graphics.drawCircle(flame.x, flame.y, r * (0.92 + flick));
+      graphics.endFill();
+      beginFill(graphics, "rgba(190, 210, 255, 0.26)");
+      graphics.drawCircle(flame.x, flame.y, r * (0.6 + flick));
+      graphics.endFill();
+      // Tongues of fire around the rim.
+      const tongues = 7;
+      beginFill(graphics, "rgba(226, 236, 255, 0.5)");
+      for (let index = 0; index < tongues; index += 1) {
+        const a = (Math.PI * 2 * index) / tongues + flame.flicker * 0.4;
+        const h = r * (0.42 + ((index % 3) * 0.1) + Math.sin(flame.flicker * 1.7 + index) * 0.08);
+        const bx = flame.x + Math.cos(a) * r * 0.6;
+        const by = flame.y + Math.sin(a) * r * 0.6;
+        graphics.drawPolygon([
+          bx + Math.cos(a + 1.5) * r * 0.17, by + Math.sin(a + 1.5) * r * 0.17,
+          bx + Math.cos(a) * h, by + Math.sin(a) * h,
+          bx + Math.cos(a - 1.5) * r * 0.17, by + Math.sin(a - 1.5) * r * 0.17,
+        ]);
+      }
+      graphics.endFill();
+      // Hot core.
+      beginFill(graphics, "rgba(255,255,255,0.45)");
+      graphics.drawCircle(flame.x, flame.y, r * 0.2 * (0.7 + life * 0.5));
+      graphics.endFill();
+      if (Math.random() < delta * 10 * life) {
+        const a = Math.random() * Math.PI * 2;
+        this.spawnParticle({
+          x: flame.x + Math.cos(a) * r * 0.5,
+          y: flame.y + Math.sin(a) * r * 0.5,
+          vx: (Math.random() - 0.5) * 14,
+          vy: -34 - Math.random() * 26,
+          life: 0.55,
+          scale: 0.26,
+          color: "#cddcff",
+          alpha: 0.5,
+          blendMode: SCREEN_BLEND,
+        });
+      }
     }
   }
 

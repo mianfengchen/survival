@@ -1262,38 +1262,44 @@ export const SKILL_LIBRARY = [
   },
   {
     id: "blueflameGarden",
-    name: "蓝焰花园",
-    description: "铺开蓝焰花田随时间扩大范围递增伤害。",
+    name: "蓝焰燎原",
+    // Was a static damage circle, i.e. 露水花圃 with a burn tacked on — and its old
+    // description promised growth the shared field handler never implemented. The fire is
+    // now the mechanic: patches spread on their own, burn through a fuel budget, and are
+    // carried around by the enemies they ignite. You light it; you don't place it.
+    description: "点起一小片蓝焰。火会自己朝四周蔓延，烧穿燃料后熄灭；被点燃的害虫会变成火把，把蓝焰一路带到它走过的地方。在火里杀死害虫会为附近的火焰补充燃料——烧得越狠，火活得越久。",
     color: "#92a7ff",
-    advancedBehavior: "field",
+    advancedBehavior: "wildfire",
     unlockCost: 924,
     maxLevel: 5,
+    // `fuel` is how long one patch burns; `spreadInterval` how often it tries to seed a
+    // neighbour. Damage is low per tick because a healthy fire covers a lot of ground.
     statsByLevel: [
-      { cooldown: 4.4, damage: 16, count: 1, radius: 66, duration: 4.0, tickInterval: 0.42 },
-      { cooldown: 4.0, damage: 24, count: 1, radius: 74, duration: 4.6, tickInterval: 0.4 },
-      { cooldown: 3.6, damage: 34, count: 2, radius: 82, duration: 5.2, tickInterval: 0.38 },
-      { cooldown: 3.2, damage: 46, count: 2, radius: 90, duration: 5.8, tickInterval: 0.36 },
-      { cooldown: 2.85, damage: 60, count: 2, radius: 100, duration: 6.4, tickInterval: 0.34 },
+      { cooldown: 6.4, damage: 13, count: 1, radius: 58, fuel: 7.5, spreadInterval: 1.0, tickInterval: 0.4 },
+      { cooldown: 6.2, damage: 17, count: 1, radius: 62, fuel: 8.1, spreadInterval: 0.95, tickInterval: 0.39 },
+      { cooldown: 5.9, damage: 23, count: 2, radius: 66, fuel: 8.7, spreadInterval: 0.9, tickInterval: 0.38 },
+      { cooldown: 5.6, damage: 30, count: 2, radius: 70, fuel: 9.3, spreadInterval: 0.85, tickInterval: 0.37 },
+      { cooldown: 5.4, damage: 39, count: 2, radius: 74, fuel: 10.0, spreadInterval: 0.8, tickInterval: 0.36 },
     ],
     exclusiveUpgrades: [
       {
         id: "blueflameGardenFocus",
         name: "蓝焰浓缩",
-        description: "提高花田伤害与最大范围。",
+        description: "提高火焰伤害与每片火的范围。",
         maxLevel: 2,
         unlockCost: 196,
       },
       {
         id: "blueflameGardenTempo",
         name: "焰速蔓延",
-        description: "缩短蓝焰花园的冷却时间。",
+        description: "加快蔓延速度、延长燃料，并缩短冷却。",
         maxLevel: 2,
         unlockCost: 216,
       },
       {
         id: "blueflameGardenInferno",
         name: "湛蓝业火",
-        description: "【专属】花田点燃踏入的敌人，附加剧烈的蓝焰灼烧并随层数越烧越猛。",
+        description: "【专属】火把害虫会把蓝焰直接引燃给撞到的同类，且在火中击杀回收的燃料大幅增加——火场足够大时便再也不会自己熄灭。",
         maxLevel: 2,
         unlockCost: 240,
       },
