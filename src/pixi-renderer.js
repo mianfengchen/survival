@@ -2,6 +2,10 @@ import * as PIXI from "pixi.js";
 import { ARENA, getSkillDefinition } from "./data.js";
 
 const SCREEN_BLEND = typeof PIXI.BLEND_MODES.SCREEN === "number" ? PIXI.BLEND_MODES.SCREEN : PIXI.BLEND_MODES.ADD;
+
+// Visual width of the 菌杯雾雷 mist band. Mirrors SPORE_RING_THICKNESS in game.js, which
+// is the width actually used for hit detection.
+const SPORE_RING_BAND_WIDTH = 42;
 const DECORATION_STEP_X = 176;
 const DECORATION_STEP_Y = 148;
 const MAX_PARTICLES = 220;
@@ -480,6 +484,89 @@ function paintBossBody(graphics, x, y, radius, enemy) {
   }
 }
 
+// 鹿角突刺 的鹿之虚影. Drawn facing +x because drawProjectiles rotates the sprite to the
+// travel heading. Kept mostly white/blue-white so the per-projectile tint still reads;
+// `crystal` is the 晶华鹿角 level, which brightens the body and lights up the antlers.
+function paintDeerPhantom(graphics, x, y, radius, crystal = 0) {
+  const bodyAlpha = 0.46 + crystal * 0.14;
+  const rimAlpha = 0.72 + crystal * 0.12;
+  const rim = crystal > 0 ? "#eaffff" : "#cdeeff";
+
+  // Trailing phantom smear, so the charge reads as motion even when still.
+  beginFill(graphics, `rgba(160, 220, 255, ${0.14 + crystal * 0.06})`);
+  graphics.drawEllipse(x - radius * 0.72, y + radius * 0.06, radius * 0.72, radius * 0.3);
+  graphics.endFill();
+
+  // Four legs mid-gallop: front pair reaching forward, rear pair thrown back.
+  setLine(graphics, radius * 0.11, rim);
+  for (const [hipX, kneeX, hoofX, hipY] of [
+    [0.22, 0.52, 0.78, 0.26],
+    [0.1, 0.38, 0.6, 0.3],
+    [-0.3, -0.6, -0.84, 0.26],
+    [-0.42, -0.72, -0.9, 0.3],
+  ]) {
+    graphics.moveTo(x + radius * hipX, y + radius * hipY);
+    graphics.lineTo(x + radius * kneeX, y + radius * (hipY + 0.3));
+    graphics.lineTo(x + radius * hoofX, y + radius * (hipY + 0.56));
+  }
+
+  // Barrel of the body.
+  beginFill(graphics, `rgba(214, 244, 255, ${bodyAlpha})`);
+  graphics.drawEllipse(x - radius * 0.08, y + radius * 0.06, radius * 0.6, radius * 0.3);
+  graphics.endFill();
+  setLine(graphics, radius * 0.08, rim);
+  graphics.drawEllipse(x - radius * 0.08, y + radius * 0.06, radius * 0.6, radius * 0.3);
+
+  // Neck sweeping up to the head, and a short muzzle.
+  beginFill(graphics, `rgba(224, 248, 255, ${bodyAlpha + 0.08})`);
+  graphics.drawPolygon([
+    x + radius * 0.3, y + radius * 0.16,
+    x + radius * 0.46, y - radius * 0.36,
+    x + radius * 0.66, y - radius * 0.3,
+    x + radius * 0.5, y + radius * 0.2,
+  ]);
+  graphics.endFill();
+  beginFill(graphics, `rgba(236, 252, 255, ${bodyAlpha + 0.14})`);
+  graphics.drawEllipse(x + radius * 0.62, y - radius * 0.4, radius * 0.2, radius * 0.14);
+  graphics.endFill();
+
+  // Tail flick.
+  setLine(graphics, radius * 0.09, rim);
+  graphics.moveTo(x - radius * 0.66, y - radius * 0.02);
+  graphics.lineTo(x - radius * 0.86, y - radius * 0.18);
+
+  // Antlers: two swept racks with three tines each. This is the part 晶华鹿角 lights up,
+  // so it is drawn last, thickest, and brightest.
+  const antlerColor = crystal > 0 ? "#ffffff" : "#e4f7ff";
+  if (crystal > 0) {
+    // Bloom pass underneath the tines.
+    setLine(graphics, radius * 0.3, "rgba(255, 255, 255, 0.3)");
+    for (const lean of [-0.12, 0.16]) {
+      graphics.moveTo(x + radius * 0.6, y - radius * 0.5);
+      graphics.lineTo(x + radius * (0.82 + lean), y - radius * 1.02);
+    }
+  }
+  setLine(graphics, radius * (0.1 + crystal * 0.03), antlerColor);
+  for (const lean of [-0.12, 0.16]) {
+    const baseX = x + radius * 0.6;
+    const baseY = y - radius * 0.5;
+    const tipX = x + radius * (0.82 + lean);
+    const tipY = y - radius * 1.02;
+    graphics.moveTo(baseX, baseY);
+    graphics.lineTo(tipX, tipY);
+    // Forward-raking tines off the main beam.
+    for (const t of [0.34, 0.62, 0.86]) {
+      const px = baseX + (tipX - baseX) * t;
+      const py = baseY + (tipY - baseY) * t;
+      graphics.moveTo(px, py);
+      graphics.lineTo(px + radius * 0.26, py - radius * 0.14);
+    }
+  }
+  setLine(graphics, radius * 0.05, "rgba(255,255,255,0.95)");
+  graphics.moveTo(x + radius * 0.6, y - radius * 0.5);
+  graphics.lineTo(x + radius * 0.74, y - radius * 1.0);
+}
+
 // 虫巢 (净化 objective). Deliberately not bug-shaped: a rooted, bulbous hive with a dark
 // mouth, so the player can tell the objective apart from the trash it keeps hatching.
 function paintGardenNest(graphics, x, y, radius, enemy) {
@@ -707,6 +794,9 @@ export class PixiRenderer {
       bossHazards: new PIXI.Graphics(),
       // Wave objective markers (净土圈 / 灵露). Ground level, above fields, below enemies.
       waveMarkers: new PIXI.Graphics(),
+      // 凝时钟域 dials. Painted on the floor, so they sit under enemies, nests, the hold
+      // zone and all bullets — the dial is a readable ground marking, not an overlay.
+      clockDials: new PIXI.Graphics(),
       strikes: new PIXI.Graphics(),
       mines: new PIXI.Graphics(),
       pulses: new PIXI.Graphics(),
@@ -747,6 +837,9 @@ export class PixiRenderer {
       this.spriteLayers.decorations,
       this.layers.fieldGlow,
       this.spriteLayers.fields,
+      // The dial goes down first so everything else — telegraphs, objective markers,
+      // bullets, enemies and nests — reads on top of it.
+      this.layers.clockDials,
       this.layers.bossHazards,
       this.layers.waveMarkers,
       this.spriteLayers.meteors,
@@ -964,6 +1057,11 @@ export class PixiRenderer {
     }
 
     this.drawFields(runtime.fields || [], delta);
+    // Ground markings first, so bullets and bodies always read on top of them.
+    this.drawClockDials(runtime.strikes || []);
+    this.drawScissorBlades(runtime.strikes || []);
+    this.drawTulipRods(runtime.tulipRods || [], delta);
+    this.drawGears(runtime.gears || []);
     this.drawMeteors(runtime.meteors || [], delta);
     this.drawBeacons(runtime.beacons || [], delta);
     this.drawPickups(runtime.pickups || [], runtime.player, delta);
@@ -1228,15 +1326,14 @@ export class PixiRenderer {
           g.drawCircle(x, y, r * 0.8);
           g.endFill();
         });
-      case "antlerBolt":
-        return this.getCachedTexture("proj-antler", 96, 16, (g, x, y, r) => {
-          beginFill(g, "#73d1ff");
-          g.moveTo(x - r, y); g.lineTo(x + r * 0.2, y - r * 0.6); g.lineTo(x + r * 0.2, y + r * 0.6); g.closePath();
-          g.endFill();
-          beginFill(g, "rgba(200,240,255,0.3)");
-          g.drawRect(x - r * 0.6, y - r * 0.15, r * 1.2, r * 0.3);
-          g.endFill();
+      case "antlerBolt": {
+        // A galloping deer phantom rather than a dart. 晶华鹿角 gets its own cached
+        // variant: brighter body, heavier rim and lit antlers.
+        const crystal = Math.min(2, projectile.crystalLevel || 0);
+        return this.getCachedTexture(`proj-deer-${crystal}`, 150, 26, (g, x, y, r) => {
+          paintDeerPhantom(g, x, y, r, crystal);
         });
+      }
       case "auroraNeedle":
         return this.getCachedTexture("proj-aurora", 96, 10, (g, x, y, r) => {
           beginFill(g, "#c9a9ff");
@@ -2107,6 +2204,7 @@ export class PixiRenderer {
       const isBubble = projectile.skillId === "bubbleBurst" || projectile.skillId === "bubbleShard";
       const isPrism = projectile.skillId === "glassPrismRay";
       const isRollingPearl = Boolean(projectile.rollingPearl);
+      const isDeerCharge = Boolean(projectile.antlerCharge);
       const definition = getSkillDefinition(projectile.sourceSkillId || projectile.skillId);
       const advancedProjectile = Boolean(definition?.advancedBehavior || projectile.advancedBomb || projectile.advancedBoomerang || projectile.skillId.endsWith("Shard"));
       const supported = [
@@ -2136,7 +2234,9 @@ export class PixiRenderer {
       const angle = Math.atan2(projectile.vy, projectile.vx);
       const scale = projectile.radius / textureData.baseRadius;
       // The rolling pearl grows, so keep its sprite matched to the real hitbox radius.
-      const mainScale = scale * (projectile.skillId === "flyingSword" ? 1.35 : isBubble ? 1.26 : isRollingPearl ? 1.02 : 1.18);
+      // The deer sprite is drawn long and low, so it is sized off the hitbox directly
+      // instead of being padded out like the compact projectiles.
+      const mainScale = scale * (projectile.skillId === "flyingSword" ? 1.35 : isBubble ? 1.26 : isRollingPearl ? 1.02 : isDeerCharge ? 1.05 : 1.18);
       const glowTint = parseColor(projectile.color).color;
 
       visual.position.set(projectile.x, projectile.y);
@@ -2145,18 +2245,24 @@ export class PixiRenderer {
         ? (projectile.giant ? 0xffe3a2 : mixColors(projectile.color, 0xffffff, 0.28))
         : mixColors(projectile.color, 0xffffff, isBubble ? 0.2 : 0.2);
       visual.mainSprite.scale.set(mainScale * (projectile.giant ? 1.08 : 1));
-      visual.mainSprite.alpha = isBubble ? 0.84 : 1;
+      // A phantom is translucent; the crystal variant is more solid.
+      visual.mainSprite.alpha = isBubble ? 0.84 : isDeerCharge ? 0.78 + (projectile.crystalLevel || 0) * 0.08 : 1;
       visual.mainSprite.rotation = isRollingPearl
         ? projectile.spin || 0
         : isBubble ? this.getMotionTime(0.0018) + projectile.x * 0.0006 : angle;
       visual.glowSprite.tint = isBubble ? 0xe6fbff : glowTint;
-      visual.glowSprite.scale.set(mainScale * (projectile.skillId === "meteorShard" ? 1.75 : projectile.skillId === "flyingSword" ? 1.92 : isPrism ? 2.2 : isBubble ? 1.72 : isRollingPearl ? 1.6 : 1.38));
+      visual.glowSprite.scale.set(mainScale * (projectile.skillId === "meteorShard" ? 1.75 : projectile.skillId === "flyingSword" ? 1.92 : isPrism ? 2.2 : isBubble ? 1.72 : isRollingPearl ? 1.6 : isDeerCharge ? 1.85 : 1.38));
       visual.glowSprite.alpha = (isRollingPearl
         ? 0.34
         : isBubble
         ? 0.18
         : isPrism
           ? 0.42
+          // The phantom is made of light, and 晶华鹿角 makes it brighter still. It also
+          // dims as stamina drains, so the charge visibly runs out of steam.
+          : isDeerCharge
+            ? (0.3 + (projectile.crystalLevel || 0) * 0.12)
+              * (0.45 + 0.55 * Math.max(0, Math.min(1, projectile.stamina / Math.max(1, projectile.staminaMax))))
           : projectile.skillId === "flyingSword"
             ? (projectile.giant ? 0.34 : 0.22)
             : projectile.skillId === "ribbonBlade" || projectile.skillId === "ribbonShard"
@@ -2750,33 +2856,34 @@ export class PixiRenderer {
             blendMode: SCREEN_BLEND,
           });
         }
-      } else if (effect.kind === "clockRewind") {
-        // A clock face whose hand winds toward "midnight" as the zone charges up.
-        const p = effect.progress ?? progress;
+      } else if (effect.kind === "clockDialDrop") {
+        // The dial lands: a bright ring snaps outward to its final radius.
+        const fade = 1 - progress;
+        setLine(graphics, 7 * fade, effect.accent || "#fff3c4");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.35 + progress * 0.7));
+        setLine(graphics, 2.4 * fade, effect.color || "#f2c14b");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.2 + progress * 0.95));
+      } else if (effect.kind === "timeFold") {
+        // 时间折叠: concentric gold shells pinched around the target, one per stack, so
+        // the stack count is readable on the enemy itself.
+        const fade = 1 - progress;
+        const stacks = Math.max(1, effect.stacks || 1);
         const r = effect.radius;
-        setLine(graphics, 3, `${effect.color}`);
-        graphics.drawCircle(effect.x, effect.y, r);
-        setLine(graphics, 1.5, "rgba(255,255,255,0.5)");
-        graphics.drawCircle(effect.x, effect.y, r * 0.72);
-        // Tick marks.
-        for (let index = 0; index < 12; index += 1) {
-          const a = (Math.PI * 2 * index) / 12;
-          const inner = r * 0.82;
-          const outer = r * 0.96;
-          graphics.moveTo(effect.x + Math.cos(a) * inner, effect.y + Math.sin(a) * inner);
-          graphics.lineTo(effect.x + Math.cos(a) * outer, effect.y + Math.sin(a) * outer);
+        for (let index = 0; index < stacks; index += 1) {
+          const shell = r * (0.5 + index * 0.22) * (1 + progress * 0.2);
+          setLine(graphics, 2.6 * fade, index === stacks - 1 ? "#ffffff" : effect.color || "#f2c14b");
+          graphics.drawCircle(effect.x, effect.y, shell);
         }
-        // Sweeping hand + shrinking charge ring.
-        const handAngle = -Math.PI / 2 + p * Math.PI * 2;
-        setLine(graphics, 3, effect.accent || "rgba(255,255,255,0.9)");
+        // A folded-over clock hand, pointing nowhere.
+        setLine(graphics, 3 * fade, effect.accent || "#fff3c4");
+        const a = -Math.PI / 2 + stacks * 0.8;
         graphics.moveTo(effect.x, effect.y);
-        graphics.lineTo(effect.x + Math.cos(handAngle) * r * 0.66, effect.y + Math.sin(handAngle) * r * 0.66);
-        setLine(graphics, 4 * (0.4 + p * 0.6), effect.color);
-        graphics.drawCircle(effect.x, effect.y, r * (1 - p) * 0.9 + r * 0.08);
+        graphics.lineTo(effect.x + Math.cos(a) * r * 0.5, effect.y + Math.sin(a) * r * 0.5);
+        graphics.lineTo(effect.x + Math.cos(a + 1.9) * r * 0.34, effect.y + Math.sin(a + 1.9) * r * 0.34);
       } else if (effect.kind === "timeSnap") {
         // Time collapses inward: rings rush toward the center.
         const r = effect.radius;
-        setLine(graphics, 14 * (1 - progress), "rgba(123, 196, 137, 0.18)");
+        setLine(graphics, 14 * (1 - progress), "rgba(242, 193, 75, 0.2)");
         graphics.drawCircle(effect.x, effect.y, r * (1 - progress) + r * 0.1);
         setLine(graphics, 4, effect.color);
         graphics.drawCircle(effect.x, effect.y, r * (1 - progress) * 0.7 + r * 0.06);
@@ -3024,6 +3131,231 @@ export class PixiRenderer {
             blendMode: SCREEN_BLEND,
           });
         }
+      } else if (effect.kind === "chargedStrike") {
+        // 蓄力: the cast flares as the stored charge discharges. Converging arrowheads so
+        // it reads as power being pulled *into* the strike rather than exploding outward.
+        const fade = 1 - progress;
+        const r = effect.radius * (1.05 - progress * 0.45);
+        setLine(graphics, 5 * fade, effect.accent || "rgba(255,255,235,0.9)");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, 2.4 * fade, effect.color || "rgba(255,232,144,0.34)");
+        graphics.drawCircle(effect.x, effect.y, r * 1.28);
+        for (let index = 0; index < 8; index += 1) {
+          const a = (Math.PI * 2 * index) / 8 + progress * 0.9;
+          const outer = r * 1.5;
+          const inner = r * 0.85;
+          const ox = effect.x + Math.cos(a) * outer;
+          const oy = effect.y + Math.sin(a) * outer;
+          const ix = effect.x + Math.cos(a) * inner;
+          const iy = effect.y + Math.sin(a) * inner;
+          setLine(graphics, 3.4 * fade, effect.accent || "#fffbe8");
+          graphics.moveTo(ox, oy);
+          graphics.lineTo(ix, iy);
+          graphics.lineTo(ix + Math.cos(a + 2.3) * r * 0.2, iy + Math.sin(a + 2.3) * r * 0.2);
+          graphics.moveTo(ix, iy);
+          graphics.lineTo(ix + Math.cos(a - 2.3) * r * 0.2, iy + Math.sin(a - 2.3) * r * 0.2);
+        }
+      } else if (effect.kind === "killingIntent") {
+        // 杀心: a crimson blood-moon halo with inward fangs.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.6 + progress * 0.5);
+        beginFill(graphics, effect.color || "rgba(255,92,130,0.34)", 0.2 * fade);
+        graphics.drawCircle(effect.x, effect.y, r);
+        graphics.endFill();
+        setLine(graphics, 6 * fade, effect.accent || "rgba(255,240,246,0.88)");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, 2.2 * fade, "#ff6c8c");
+        graphics.drawCircle(effect.x, effect.y, r * 0.66);
+        beginFill(graphics, effect.accent || "#fff0f6", 0.8 * fade);
+        for (let index = 0; index < 10; index += 1) {
+          const a = (Math.PI * 2 * index) / 10 - progress * 0.6;
+          const tipR = r * 0.78;
+          const baseR = r * 1.02;
+          graphics.drawPolygon([
+            effect.x + Math.cos(a) * tipR, effect.y + Math.sin(a) * tipR,
+            effect.x + Math.cos(a + 0.09) * baseR, effect.y + Math.sin(a + 0.09) * baseR,
+            effect.x + Math.cos(a - 0.09) * baseR, effect.y + Math.sin(a - 0.09) * baseR,
+          ]);
+        }
+        graphics.endFill();
+      } else if (effect.kind === "iceThorn") {
+        // 冰棘: the damage cap shatters into a ring of ice spikes as everything freezes.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.45 + progress * 0.7);
+        setLine(graphics, 5 * fade, effect.accent || "#eaffff");
+        graphics.drawCircle(effect.x, effect.y, r);
+        beginFill(graphics, effect.color || "rgba(176, 236, 255, 0.3)", 0.26 * fade);
+        for (let index = 0; index < 12; index += 1) {
+          const a = (Math.PI * 2 * index) / 12 + 0.12;
+          const tip = r * (1.18 + (index % 3) * 0.14);
+          const base = r * 0.82;
+          graphics.drawPolygon([
+            effect.x + Math.cos(a) * tip, effect.y + Math.sin(a) * tip,
+            effect.x + Math.cos(a + 0.16) * base, effect.y + Math.sin(a + 0.16) * base,
+            effect.x + Math.cos(a - 0.16) * base, effect.y + Math.sin(a - 0.16) * base,
+          ]);
+        }
+        graphics.endFill();
+        setLine(graphics, 2 * fade, "rgba(255,255,255,0.9)");
+        for (let index = 0; index < 6; index += 1) {
+          const a = (Math.PI * 2 * index) / 6;
+          graphics.moveTo(effect.x + Math.cos(a) * r * 0.3, effect.y + Math.sin(a) * r * 0.3);
+          graphics.lineTo(effect.x + Math.cos(a) * r * 0.92, effect.y + Math.sin(a) * r * 0.92);
+        }
+      } else if (effect.kind === "tulipArc") {
+        // 郁金雷网: a jagged bolt strung between two rods. Drawn as a fixed-seed zigzag so
+        // it stays put for its whole (very short) life instead of jittering.
+        const fade = 1 - progress;
+        const dx = effect.targetX - effect.x;
+        const dy = effect.targetY - effect.y;
+        const span = Math.hypot(dx, dy) || 1;
+        const px = -dy / span;
+        const py = dx / span;
+        const seed = Math.floor(effect.x + effect.targetY);
+        setLine(graphics, 7 * fade, "rgba(255, 171, 134, 0.25)");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(effect.targetX, effect.targetY);
+        setLine(graphics, 3 * fade, effect.color || "#ffab86");
+        graphics.moveTo(effect.x, effect.y);
+        for (let step = 1; step < 7; step += 1) {
+          const ratio = step / 7;
+          // Deterministic pseudo-random offset per segment.
+          const jitter = (((seed * step * 9301 + 49297) % 233280) / 233280 - 0.5) * span * 0.14;
+          graphics.lineTo(
+            effect.x + dx * ratio + px * jitter,
+            effect.y + dy * ratio + py * jitter,
+          );
+        }
+        graphics.lineTo(effect.targetX, effect.targetY);
+        setLine(graphics, 1.4 * fade, effect.accent || "#fff0d8");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(effect.targetX, effect.targetY);
+      } else if (effect.kind === "tulipOverload") {
+        // 雷池过载: a rod dumps its charge as a ring of thunder.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.4 + progress * 0.75);
+        setLine(graphics, 8 * fade, effect.color || "#ffab86");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, 3 * fade, effect.accent || "#ffffff");
+        graphics.drawCircle(effect.x, effect.y, r * 0.62);
+        for (let index = 0; index < 10; index += 1) {
+          const a = (Math.PI * 2 * index) / 10 + progress;
+          setLine(graphics, 2.4 * fade, "#fff0d8");
+          graphics.moveTo(effect.x + Math.cos(a) * r * 0.5, effect.y + Math.sin(a) * r * 0.5);
+          graphics.lineTo(effect.x + Math.cos(a + 0.2) * r, effect.y + Math.sin(a + 0.2) * r);
+        }
+      } else if (effect.kind === "scissorClose") {
+        // 剪刃藤蔓: the snap. A bright X slammed shut across the facing line.
+        const fade = 1 - progress;
+        const r = effect.radius;
+        const a = effect.facing ?? 0;
+        setLine(graphics, 10 * fade, "rgba(239, 104, 114, 0.4)");
+        graphics.moveTo(effect.x - Math.cos(a) * r * 0.2, effect.y - Math.sin(a) * r * 0.2);
+        graphics.lineTo(effect.x + Math.cos(a) * r, effect.y + Math.sin(a) * r);
+        setLine(graphics, 4 * fade, effect.accent || "#ffe4e6");
+        for (const side of [-1, 1]) {
+          const cut = a + side * 0.18 * progress;
+          graphics.moveTo(effect.x, effect.y);
+          graphics.lineTo(effect.x + Math.cos(cut) * r, effect.y + Math.sin(cut) * r);
+        }
+        beginFill(graphics, "#ffffff", 0.7 * fade);
+        drawStar(graphics, effect.x, effect.y, 16 * fade + 6, 5, 4);
+        graphics.endFill();
+      } else if (effect.kind === "gearEmbed") {
+        // 琥珀齿轮: amber chips kick out as the gear bites into the ground.
+        const fade = 1 - progress;
+        setLine(graphics, 5 * fade, effect.color || "#f1b86b");
+        graphics.drawCircle(effect.x, effect.y, effect.radius * (0.4 + progress * 0.7));
+        beginFill(graphics, effect.accent || "#fff0cf", 0.5 * fade);
+        for (let index = 0; index < 7; index += 1) {
+          const a = (Math.PI * 2 * index) / 7 + effect.x * 0.01;
+          const d = effect.radius * (0.6 + progress * 0.6);
+          graphics.drawCircle(effect.x + Math.cos(a) * d, effect.y + Math.sin(a) * d, 3.4 * fade);
+        }
+        graphics.endFill();
+      } else if (effect.kind === "prismBeam") {
+        // 大棱镜彗星: a hard-edged prism beam from the planted core.
+        const fade = 1 - progress;
+        const thickness = effect.thickness || 4;
+        setLine(graphics, thickness * 2.6 * fade, "rgba(114, 203, 255, 0.2)");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(effect.targetX, effect.targetY);
+        setLine(graphics, thickness * fade, effect.color || "#72cbff");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(effect.targetX, effect.targetY);
+        setLine(graphics, Math.max(1.4, thickness * 0.35) * fade, "#ffffff");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(effect.targetX, effect.targetY);
+      } else if (effect.kind === "antlerBurst") {
+        // 鹿角突刺: the charge spends itself in a goring burst — a shock ring plus a pair
+        // of antler-shaped gouges raking outward.
+        const fade = 1 - progress;
+        const crystal = effect.crystal || 0;
+        const r = effect.radius * (0.4 + progress * 0.75);
+        setLine(graphics, (6 + crystal * 2.5) * fade, effect.color || "#73d1ff");
+        graphics.drawCircle(effect.x, effect.y, r);
+        setLine(graphics, (2.6 + crystal) * fade, effect.accent || "#d8f4ff");
+        graphics.drawCircle(effect.x, effect.y, r * 0.58);
+        const tines = 6 + crystal * 2;
+        setLine(graphics, (3.4 + crystal) * fade, effect.accent || "#d8f4ff");
+        for (let index = 0; index < tines; index += 1) {
+          const a = (Math.PI * 2 * index) / tines + effect.x * 0.008;
+          const inner = r * 0.4;
+          const outer = r * (1.02 + (index % 2) * 0.18);
+          const bx = effect.x + Math.cos(a) * inner;
+          const by = effect.y + Math.sin(a) * inner;
+          const tx = effect.x + Math.cos(a) * outer;
+          const ty = effect.y + Math.sin(a) * outer;
+          graphics.moveTo(bx, by);
+          graphics.lineTo(tx, ty);
+          // Little forked tip so the gouge reads as an antler, not a generic spike.
+          graphics.moveTo(tx, ty);
+          graphics.lineTo(tx + Math.cos(a + 0.6) * r * 0.16, ty + Math.sin(a + 0.6) * r * 0.16);
+          graphics.moveTo(tx, ty);
+          graphics.lineTo(tx + Math.cos(a - 0.6) * r * 0.16, ty + Math.sin(a - 0.6) * r * 0.16);
+        }
+        if (progress < 0.35 && Math.random() < delta * (crystal > 0 ? 80 : 50)) {
+          const a = Math.random() * Math.PI * 2;
+          this.spawnParticle({
+            x: effect.x,
+            y: effect.y,
+            vx: Math.cos(a) * 110,
+            vy: Math.sin(a) * 110,
+            life: 0.4,
+            scale: 0.28,
+            color: crystal > 0 ? "#ffffff" : "#d8f4ff",
+            alpha: 0.6,
+            blendMode: SCREEN_BLEND,
+          });
+        }
+      } else if (effect.kind === "sporeCupLand") {
+        // 菌杯雾雷: the cup thumps down and puffs a little collar of spores.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.4 + progress * 0.7);
+        setLine(graphics, 4 * fade, effect.color || "#b8c978");
+        graphics.drawEllipse(effect.x, effect.y + r * 0.3, r, r * 0.42);
+        beginFill(graphics, effect.accent || "#f2ffd0", 0.3 * fade);
+        for (let index = 0; index < 6; index += 1) {
+          const a = (Math.PI * 2 * index) / 6;
+          graphics.drawCircle(effect.x + Math.cos(a) * r * 0.8, effect.y + r * 0.3 + Math.sin(a) * r * 0.3, r * 0.2 * fade);
+        }
+        graphics.endFill();
+      } else if (effect.kind === "sporeSpread") {
+        // 孢潮蔓延: a venom-green thread crossing from a poisoned body to its neighbour.
+        const fade = 1 - progress;
+        setLine(graphics, 3.2 * fade, effect.color || "#4fd962");
+        const midX = (effect.x + effect.targetX) / 2 + (effect.targetY - effect.y) * 0.18;
+        const midY = (effect.y + effect.targetY) / 2 - (effect.targetX - effect.x) * 0.18;
+        graphics.moveTo(effect.x, effect.y);
+        graphics.quadraticCurveTo(midX, midY, effect.targetX, effect.targetY);
+        const beadX = lerp(effect.x, effect.targetX, progress);
+        const beadY = lerp(effect.y, effect.targetY, progress);
+        beginFill(graphics, effect.color || "#4fd962", 0.3 * fade);
+        graphics.drawCircle(beadX, beadY, 7 * fade);
+        graphics.endFill();
+        beginFill(graphics, effect.accent || "#c8ffb8", 0.65 * fade);
+        graphics.drawCircle(beadX, beadY, 3.6 * fade);
+        graphics.endFill();
       } else if (effect.kind === "soulStrip") {
         // 灵魂剥离: a spectral ring tears open and wisps peel outward as the soul leaves.
         const fade = 1 - progress;
@@ -3174,6 +3506,199 @@ export class PixiRenderer {
     }
   }
 
+  // 凝时钟域 dials, painted on the floor. Drawn from the live strikes rather than from a
+  // per-frame skill effect so they sit on their own ground layer underneath enemies,
+  // nests, the hold zone and every bullet. The face is kept translucent for the same
+  // reason: the dial must never obscure what is standing on it.
+  drawClockDials(strikes) {
+    const graphics = this.layers.clockDials;
+    for (const strike of strikes) {
+      if (strike.kind !== "clockRewind") {
+        continue;
+      }
+      const p = clamp(strike.elapsed / Math.max(0.01, strike.windup), 0, 1);
+      const r = strike.radius;
+      const color = strike.color || "#f2c14b";
+      // Translucent plate that darkens a little as the hand closes in.
+      beginFill(graphics, color, 0.07 + p * 0.07);
+      graphics.drawCircle(strike.x, strike.y, r);
+      graphics.endFill();
+      setLine(graphics, 3.5, `rgba(242, 193, 75, ${0.5 + p * 0.3})`);
+      graphics.drawCircle(strike.x, strike.y, r);
+      setLine(graphics, 1.3, "rgba(255, 243, 196, 0.34)");
+      graphics.drawCircle(strike.x, strike.y, r * 0.72);
+      // Hour marks, quarters drawn longer like a real face.
+      for (let index = 0; index < 12; index += 1) {
+        const a = (Math.PI * 2 * index) / 12;
+        const quarter = index % 3 === 0;
+        const inner = r * (quarter ? 0.76 : 0.84);
+        const outer = r * 0.96;
+        setLine(graphics, quarter ? 3 : 1.8, `rgba(255, 243, 196, ${quarter ? 0.72 : 0.5})`);
+        graphics.moveTo(strike.x + Math.cos(a) * inner, strike.y + Math.sin(a) * inner);
+        graphics.lineTo(strike.x + Math.cos(a) * outer, strike.y + Math.sin(a) * outer);
+      }
+      // Swept sector: the time already spent fills in behind the hand.
+      const handAngle = -Math.PI / 2 + p * Math.PI * 2;
+      beginFill(graphics, "rgba(255, 243, 196, 0.12)");
+      graphics.moveTo(strike.x, strike.y);
+      graphics.arc(strike.x, strike.y, r * 0.9, -Math.PI / 2, handAngle);
+      graphics.lineTo(strike.x, strike.y);
+      graphics.endFill();
+      // The hand and hub.
+      setLine(graphics, 4, "rgba(255,255,255,0.8)");
+      graphics.moveTo(strike.x, strike.y);
+      graphics.lineTo(strike.x + Math.cos(handAngle) * r * 0.82, strike.y + Math.sin(handAngle) * r * 0.82);
+      beginFill(graphics, "rgba(255, 243, 196, 0.85)");
+      graphics.drawCircle(strike.x, strike.y, 5 + p * 4);
+      graphics.endFill();
+      // Closing ring: a second read on how little time is left.
+      setLine(graphics, 2.5 + p * 4, `rgba(242, 193, 75, ${0.45 + p * 0.35})`);
+      graphics.drawCircle(strike.x, strike.y, r * (1 - p) * 0.86 + r * 0.1);
+    }
+  }
+
+  // 剪刃藤蔓: the open blades are the telegraph, so they are drawn on the ground layer
+  // where they can't be lost behind bodies. They swing shut as the timer runs.
+  drawScissorBlades(strikes) {
+    const graphics = this.layers.clockDials;
+    for (const strike of strikes) {
+      if (strike.kind !== "scissorSnap") continue;
+      const t = clamp(strike.elapsed / Math.max(0.01, strike.closeTime), 0, 1);
+      // Blades start at the full spread and converge on the facing line.
+      const open = strike.spread * (1 - t);
+      const length = strike.armLength;
+      // Danger wedge the cut will sweep.
+      beginFill(graphics, strike.color || "#ef6872", 0.08 + t * 0.14);
+      graphics.moveTo(strike.x, strike.y);
+      graphics.arc(strike.x, strike.y, length, strike.facing - strike.spread, strike.facing + strike.spread);
+      graphics.lineTo(strike.x, strike.y);
+      graphics.endFill();
+      for (const side of [-1, 1]) {
+        const a = strike.facing + open * side;
+        const tipX = strike.x + Math.cos(a) * length;
+        const tipY = strike.y + Math.sin(a) * length;
+        // Blade body: thick near the pivot, tapering to the tip.
+        setLine(graphics, 9 - t * 3, "rgba(239, 104, 114, 0.5)");
+        graphics.moveTo(strike.x, strike.y);
+        graphics.lineTo(tipX, tipY);
+        setLine(graphics, 3.4, "#ffe4e6");
+        graphics.moveTo(strike.x, strike.y);
+        graphics.lineTo(tipX, tipY);
+        // Leaf serrations along the edge, so it reads as a vine blade not a laser.
+        setLine(graphics, 2, "rgba(255, 228, 230, 0.7)");
+        for (let step = 1; step <= 4; step += 1) {
+          const ratio = step / 5;
+          const px = strike.x + Math.cos(a) * length * ratio;
+          const py = strike.y + Math.sin(a) * length * ratio;
+          graphics.moveTo(px, py);
+          graphics.lineTo(px + Math.cos(a + side * 1.2) * 13, py + Math.sin(a + side * 1.2) * 13);
+        }
+      }
+      // Pivot hub.
+      beginFill(graphics, "#ffe4e6", 0.85);
+      graphics.drawCircle(strike.x, strike.y, 6 + t * 4);
+      graphics.endFill();
+    }
+  }
+
+  // 郁金雷网: the rods themselves. The arcs between them are spawned as skill effects,
+  // so this pass only has to draw the standing tulip rods and their charge state.
+  drawTulipRods(rods, delta) {
+    const graphics = this.layers.clockDials;
+    const sway = this.getMotionTime(0.0022);
+    for (const rod of rods) {
+      const lean = Math.sin(sway + rod.x * 0.01) * 0.12;
+      const r = rod.radius;
+      // Stem.
+      setLine(graphics, 4, "#8fbf63");
+      graphics.moveTo(rod.x, rod.y + r * 0.9);
+      graphics.quadraticCurveTo(rod.x + lean * 10, rod.y, rod.x + lean * 16, rod.y - r * 1.5);
+      // Tulip cup acting as the lightning rod.
+      const cupX = rod.x + lean * 16;
+      const cupY = rod.y - r * 1.5;
+      beginFill(graphics, rod.color || "#ffab86", 0.92);
+      graphics.drawPolygon([
+        cupX - r * 0.62, cupY,
+        cupX - r * 0.34, cupY - r * 0.95,
+        cupX, cupY - r * 0.6,
+        cupX + r * 0.34, cupY - r * 0.95,
+        cupX + r * 0.62, cupY,
+      ]);
+      graphics.endFill();
+      setLine(graphics, 1.8, "#fff0d8");
+      graphics.drawCircle(cupX, cupY - r * 0.1, r * 0.3);
+      // Charge ring: how close this rod is to an overload discharge.
+      if (rod.overloadLevel > 0) {
+        const charge = clamp(rod.charge / 12, 0, 1);
+        setLine(graphics, 2.4, `rgba(255, 240, 216, ${0.3 + charge * 0.6})`);
+        graphics.drawCircle(cupX, cupY, r * (1.1 + charge * 0.5));
+      }
+      // Base glow on the floor so the rod's footprint is visible in a crowd.
+      beginFill(graphics, rod.color || "#ffab86", 0.14);
+      graphics.drawEllipse(rod.x, rod.y + r * 0.9, r * 1.1, r * 0.4);
+      graphics.endFill();
+      if (Math.random() < delta * 6) {
+        this.spawnParticle({
+          x: cupX,
+          y: cupY,
+          vx: (Math.random() - 0.5) * 18,
+          vy: -22 - Math.random() * 14,
+          life: 0.4,
+          scale: 0.2,
+          color: "#ffe0b8",
+          alpha: 0.5,
+          blendMode: SCREEN_BLEND,
+        });
+      }
+    }
+  }
+
+  // 琥珀齿轮: a spinning amber cog. Flying gears sit above the floor; embedded ones are
+  // drawn with a ground shadow so you can tell which phase they're in.
+  drawGears(gears) {
+    const graphics = this.layers.mines;
+    for (const gear of gears) {
+      const r = gear.radius;
+      if (!gear.flying) {
+        beginFill(graphics, "rgba(90, 60, 20, 0.22)");
+        graphics.drawEllipse(gear.x, gear.y + r * 0.5, r * 1.05, r * 0.4);
+        graphics.endFill();
+      }
+      // Teeth.
+      const teeth = 10;
+      beginFill(graphics, gear.color || "#f1b86b", gear.flying ? 0.95 : 0.88);
+      for (let index = 0; index < teeth; index += 1) {
+        const a = gear.spin + (Math.PI * 2 * index) / teeth;
+        graphics.drawPolygon([
+          gear.x + Math.cos(a - 0.12) * r * 0.82, gear.y + Math.sin(a - 0.12) * r * 0.82,
+          gear.x + Math.cos(a) * r * 1.16, gear.y + Math.sin(a) * r * 1.16,
+          gear.x + Math.cos(a + 0.12) * r * 0.82, gear.y + Math.sin(a + 0.12) * r * 0.82,
+        ]);
+      }
+      graphics.endFill();
+      // Body + hub.
+      beginFill(graphics, gear.color || "#f1b86b", 0.95);
+      graphics.drawCircle(gear.x, gear.y, r * 0.82);
+      graphics.endFill();
+      setLine(graphics, 2.4, "#fff0cf");
+      graphics.drawCircle(gear.x, gear.y, r * 0.82);
+      beginFill(graphics, "rgba(120, 70, 20, 0.6)");
+      graphics.drawCircle(gear.x, gear.y, r * 0.26);
+      graphics.endFill();
+      // Spokes, so the rotation is legible.
+      setLine(graphics, 2, "rgba(255, 240, 207, 0.75)");
+      for (let index = 0; index < 4; index += 1) {
+        const a = gear.spin * 0.6 + (Math.PI * index) / 2;
+        graphics.moveTo(gear.x + Math.cos(a) * r * 0.3, gear.y + Math.sin(a) * r * 0.3);
+        graphics.lineTo(gear.x + Math.cos(a) * r * 0.74, gear.y + Math.sin(a) * r * 0.74);
+      }
+      if (gear.sawLevel > 0 && !gear.flying) {
+        setLine(graphics, 2, "rgba(255, 230, 170, 0.5)");
+        graphics.drawCircle(gear.x, gear.y, r * 1.5);
+      }
+    }
+  }
+
   // Wave objective markers. These are navigation aids first and decoration second, so
   // both kinds carry an off-screen direction hint drawn at the edge of the player's view.
   drawWaveMarkers(markers, player, delta) {
@@ -3285,6 +3810,71 @@ export class PixiRenderer {
   drawStrikes(strikes, delta) {
     const graphics = this.layers.strikes;
     for (const strike of strikes) {
+      // 菌杯雾雷: an upturned cup that swells between eruptions and throws an expanding
+      // mist ring. The damage is in the ring edge, so the edge is the brightest thing.
+      if (strike.kind === "sporeGeyser") {
+        const pulse = this.getMotionTime(0.0024);
+        // The cup itself: a squat dome that swells as the next eruption charges.
+        const charge = strike.ringActive
+          ? 0
+          : clamp(1 - strike.clock / Math.max(0.2, strike.interval), 0, 1);
+        const cupR = 15 + charge * 7;
+        beginFill(graphics, "rgba(120, 150, 70, 0.3)");
+        graphics.drawEllipse(strike.x, strike.y + cupR * 0.4, cupR * 1.15, cupR * 0.42);
+        graphics.endFill();
+        beginFill(graphics, strike.color, 0.82);
+        graphics.drawEllipse(strike.x, strike.y, cupR, cupR * 0.78);
+        graphics.endFill();
+        setLine(graphics, 2.4, "#f2ffd0");
+        graphics.drawEllipse(strike.x, strike.y, cupR, cupR * 0.78);
+        // Stem + remaining-eruption pips so the cup's budget is readable.
+        setLine(graphics, 3, "rgba(242, 255, 208, 0.8)");
+        graphics.moveTo(strike.x, strike.y + cupR * 0.7);
+        graphics.lineTo(strike.x, strike.y + cupR * 1.25);
+        beginFill(graphics, "#f2ffd0", 0.85);
+        for (let index = 0; index < Math.max(0, strike.eruptsLeft); index += 1) {
+          graphics.drawCircle(strike.x - 9 + index * 6, strike.y - cupR - 7, 2.1);
+        }
+        graphics.endFill();
+
+        if (strike.ringActive) {
+          const fade = 1 - clamp(strike.ringRadius / Math.max(1, strike.radius), 0, 1);
+          // Thick stroked band rather than a filled annulus — Graphics has no hole fill,
+          // and a wide line is both cheaper and a better match for the damage window.
+          setLine(graphics, SPORE_RING_BAND_WIDTH, `rgba(190, 220, 130, ${0.2 + fade * 0.16})`);
+          graphics.drawCircle(strike.x, strike.y, Math.max(1, strike.ringRadius - SPORE_RING_BAND_WIDTH * 0.5));
+          // The leading wall of mist.
+          setLine(graphics, 7 + fade * 4, "#dff3a8");
+          graphics.drawCircle(strike.x, strike.y, strike.ringRadius);
+          setLine(graphics, 2.2, "rgba(255,255,255,0.75)");
+          graphics.drawCircle(strike.x, strike.y, strike.ringRadius - 4);
+          // Puffs riding the wavefront.
+          for (let index = 0; index < 10; index += 1) {
+            const a = (Math.PI * 2 * index) / 10 + pulse * 0.5;
+            const px = strike.x + Math.cos(a) * strike.ringRadius;
+            const py = strike.y + Math.sin(a) * strike.ringRadius;
+            beginFill(graphics, "#eaffc0", 0.26 + fade * 0.2);
+            graphics.drawCircle(px, py, 7 + fade * 5);
+            graphics.endFill();
+          }
+          if (Math.random() < delta * 30) {
+            const a = Math.random() * Math.PI * 2;
+            this.spawnParticle({
+              x: strike.x + Math.cos(a) * strike.ringRadius,
+              y: strike.y + Math.sin(a) * strike.ringRadius,
+              vx: Math.cos(a) * 26,
+              vy: Math.sin(a) * 26 - 14,
+              life: 0.5,
+              scale: 0.3,
+              color: "#e8ffbe",
+              alpha: 0.42,
+              blendMode: SCREEN_BLEND,
+            });
+          }
+        }
+        continue;
+      }
+
       // Reworked skills carry their own spawnSkillEffect visuals; skip the generic diamond stamp.
       if (strike.kind === "stormSweep" || strike.kind === "clockRewind" || strike.kind === "moonWell") {
         continue;

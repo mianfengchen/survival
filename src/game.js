@@ -178,6 +178,106 @@ const BOSS_CHARGE_MAX_HP_FRACTION = 0.35;
 // radius near 270px, i.e. a broad scythe arc rather than a tight loop.
 const MOTH_BLADE_TURN_RATE = 1.5;
 
+// ── 凝时钟域 / 时间折叠 ───────────────────────────────────────────────────────
+// Trash caught by the dial is simply frozen. Elites and bosses can't be hard-frozen on
+// demand without trivialising them, so instead they accumulate 时间折叠: each stack steals
+// a slice of their action economy (attacks, specials and telegraph windups all stretch),
+// which is a real tempo advantage without being yet another damage multiplier. When the
+// stacks cap out they collapse all at once and pay the stolen time back as a hard stun.
+const CLOCK_FREEZE_SECONDS = 5;
+const CLOCK_DIAL_COLOR = "#f2c14b";
+const CLOCK_DIAL_ACCENT = "#fff3c4";
+// Hard ceiling on the in-dial drag so an enemy is never slowed to a complete stop (that
+// would make escaping impossible and turn the countdown into a guaranteed catch).
+const CLOCK_GRIP_MAX = 0.78;
+// The fold window has to outlast the gap between two casts (cooldown + countdown is
+// roughly 8-11.5s), or the stacks would always lapse before the next dial resolved and
+// the whole stacking mechanic would be unreachable. Every fresh catch refreshes it.
+const TIME_FOLD_DURATION = 12;
+const TIME_FOLD_BASE_CAP = 4;
+// Each stack stretches the target's action intervals by this much.
+const TIME_FOLD_SLOW_PER_STACK = 0.15;
+// Cashing out: the collapse stun and the damage multiple applied per stack consumed.
+const TIME_FOLD_COLLAPSE_STUN = 2.2;
+const TIME_FOLD_COLLAPSE_DAMAGE_PER_STACK = 0.55;
+
+// ── 郁金雷网 ──────────────────────────────────────────────────────────────────
+// Rods are harmless on their own; the damage is on the arcs between them, so the skill
+// is about where you plant them. Capped so repeat casts can't build an unbounded mesh.
+const TULIP_ROD_MAX_LIVE = 10;
+// Arc hits charge both endpoints; a full rod dumps a 雷池 ring (雷池过载 only).
+const TULIP_OVERLOAD_CHARGE = 12;
+
+// ── 剪刃藤蔓 ──────────────────────────────────────────────────────────────────
+// How far the closing blades drag whatever they catch toward the pivot.
+const SCISSOR_PULL = 46;
+const SCISSOR_BLEED_SECONDS = 3.2;
+
+// ── 蜜弹爆溅 ──────────────────────────────────────────────────────────────────
+// Honey is near-root terrain rather than a soft slow, which is what separates it from
+// every other "stand in the circle" field in the set.
+const HONEY_GRIP = 0.82;
+// Two pools whose centres are closer than this fraction of their combined radii merge.
+const HONEY_MERGE_RATIO = 0.75;
+const HONEY_MERGE_MAX_RADIUS = 210;
+
+// ── 琥珀齿轮 ──────────────────────────────────────────────────────────────────
+const GEAR_MAX_LIVE = 6;
+// Saw teeth flung by 嵌地锯盘.
+const GEAR_TOOTH_INTERVAL = 0.55;
+
+// ── Knockback / displacement ─────────────────────────────────────────────────
+// How much of an incoming shove each weight class ignores. Trash gets thrown around
+// freely; elites and bosses only get nudged so they keep closing on the player instead
+// of being parked in a corner. Anything flagged `immovable` (虫巢) ignores shoves entirely.
+const KNOCKBACK_RESIST_ELITE = 0.88;
+const KNOCKBACK_RESIST_BOSS = 0.96;
+
+// ── 破甲 (armor shred) ────────────────────────────────────────────────────────
+// Deliberately a different shape from 易伤 (vulnerableMult), which is a non-stacking
+// Math.max multiplier: shred *stacks*, so it rewards staying on one target instead of
+// re-applying a flat debuff. Capped so a long carry can't spiral into a one-shot.
+const ARMOR_SHRED_PER_STACK = 0.06;
+const ARMOR_SHRED_MAX_STACKS = 8;
+const ARMOR_SHRED_DURATION = 5;
+
+// ── 鹿角突刺: deer-phantom charge ─────────────────────────────────────────────
+// The charge is governed by 冲撞耐力 rather than a travel range. Three drains:
+// distance covered, each impact, and every second spent carrying a speared enemy.
+// Elites and bosses cost far more on the last two, so ramming a boss is a short burst
+// of burst damage rather than a free ride across the arena.
+const ANTLER_STAMINA_PER_PIXEL = 0.1;
+const ANTLER_STAMINA_PER_HIT = 7;
+const ANTLER_STAMINA_PER_CARRY_SECOND = 10;
+const ANTLER_HEAVY_COST_MULTIPLIER = 5;
+// Carrying steers toward the next victim; this is how hard it can turn while loaded.
+const ANTLER_CARRY_TURN_RATE = 2.6;
+const ANTLER_CARRY_SEEK_RANGE = 540;
+// 晶华鹿角 discount per level, the shred stacks each impact applies, and the ceiling that
+// level buys. The ceiling has to scale with the level or both levels would converge on the
+// same +48% and the second point would only make you reach it faster.
+const ANTLER_CRYSTAL_COST_REDUCTION = 0.18;
+const ANTLER_CRYSTAL_SHRED_STACKS = 2;
+const ANTLER_CRYSTAL_SHRED_CAP_PER_LEVEL = 4;
+
+// ── 菌杯雾雷: spore geyser ────────────────────────────────────────────────────
+// Damage lives in the expanding ring edge, not in a static puddle, so the cup has to be
+// placed where enemies will still be a second later.
+const SPORE_RING_THICKNESS = 42;
+const SPORE_RING_EXPAND_SPEED = 230;
+const SPORE_POISON_PER_STACK = 0.055;
+const SPORE_POISON_MAX_STACKS = 10;
+const SPORE_POISON_DURATION = 4.5;
+// 孢潮蔓延 contagion: how often a poisoned enemy infects neighbours, and how far.
+const SPORE_CONTAGION_INTERVAL = 0.9;
+const SPORE_CONTAGION_RANGE = 96;
+// Venom green, distinct from the cup's olive, so contagion reads as poison not mist.
+const SPORE_CONTAGION_COLOR = "#4fd962";
+const SPORE_CONTAGION_ACCENT = "#c8ffb8";
+// A high-level cup lasts longer than its own cooldown, so geysers deliberately overlap.
+// This is only the backstop against 多重/连锁 stacking them without limit.
+const SPORE_GEYSER_MAX_LIVE = 8;
+
 // ── Wave pacing ───────────────────────────────────────────────────────────────
 // The run is split into waves separated by short intermissions so the round has an
 // actual rhythm (pressure -> relief -> decision) instead of one flat ramp.
@@ -431,6 +531,10 @@ export class GameRuntime {
     // Ground markers owned by the current wave objective (净土圈 / 灵露).
     this.waveMarkers = [];
     this.waveShopOffers = [];
+    // 郁金雷网 rods and 琥珀齿轮 gears: both are persistent placed objects rather than
+    // projectiles, so they get their own pools.
+    this.tulipRods = [];
+    this.gears = [];
     this.orbitAngle = 0;
     this.lastTimestamp = 0;
     this.hudClock = 0;
@@ -707,6 +811,8 @@ export class GameRuntime {
     this.bossHazards = [];
     this.waveMarkers = [];
     this.waveShopOffers = [];
+    this.tulipRods = [];
+    this.gears = [];
     this.orbitAngle = 0;
     this.pendingChoices = [];
     this.screenShake = 0;
@@ -1294,6 +1400,8 @@ export class GameRuntime {
     this.updatePulses(delta);
     this.updateFields(delta);
     this.updateStrikes(delta);
+    this.updateTulipGrid(delta);
+    this.updateGears(delta);
     this.updateMines(delta);
     this.updateSkillEffects(delta);
     this.updateDamageNumbers(delta);
@@ -1436,20 +1544,26 @@ export class GameRuntime {
       0,
     );
 
+    let huntIndex = 0;
     return order.map((typeId, index) => {
       const type = getWaveTypeDefinition(typeId);
       // Wave 1 is always calm so the opening can never roll unfair.
       const modifierId = index === 0
         ? "calm"
         : WAVE_MODIFIER_LIBRARY[Math.floor(Math.random() * WAVE_MODIFIER_LIBRARY.length)].id;
+      // Hunt waves ramp. With elite HP sized for a ~35s focused kill, a pair finished
+      // well inside the wave timer, so the first hunt now asks for 3 and the second 4.
+      let eliteGoal = type.eliteGoal || 0;
+      if (typeId === "hunt") {
+        huntIndex += 1;
+        eliteGoal = huntIndex === 1 ? 3 : 4;
+      }
       return {
         typeId,
         modifierId,
         duration: Math.round((combatBudget * (type.durationWeight || 1)) / totalWeight),
         intermissionSeconds,
-        // Both hunts ask for the full pair. The first hunt used to be cut to a single
-        // target, but that was papering over elite HP being ~6x too high.
-        eliteGoal: type.eliteGoal || 0,
+        eliteGoal,
       };
     });
   }
@@ -1933,6 +2047,33 @@ export class GameRuntime {
       freezeTimer: 0,
       vulnerableTimer: 0,
       vulnerableMult: 0,
+      // 破甲 from 晶华鹿角: stacking, unlike the non-stacking 易伤 above.
+      armorShredStacks: 0,
+      armorShredTimer: 0,
+      // 时间折叠 from 凝时钟域: only elites/bosses accumulate these.
+      timeFoldStacks: 0,
+      timeFoldTimer: 0,
+      // Shared "grip" slow: a fraction of movement removed on a short refreshing timer.
+      // Written by 凝时钟域's dial and 蜜弹爆溅's mire, which both want a near-root rather
+      // than the soft 0.68 factor that slowTimer gives.
+      gripSlow: 0,
+      gripTimer: 0,
+      // 孢毒 from 菌杯雾雾: stacking DoT that can spread with 孢潮蔓延.
+      sporeStacks: 0,
+      sporeTimer: 0,
+      sporeTickDamage: 0,
+      sporeBloom: 0,
+      sporeSpreadClock: 0,
+      // 鹿角突刺: set while a charge has this enemy speared on its antlers.
+      carriedBy: null,
+      // Displacement weight class. Heavy enemies resist shoves so they can't be pushed
+      // across the arena; `immovable` opts out of displacement completely.
+      immovable: Boolean(definition.immovable),
+      knockbackResist: definition.boss
+        ? KNOCKBACK_RESIST_BOSS
+        : definition.elite
+          ? KNOCKBACK_RESIST_ELITE
+          : 0,
       hitCooldowns: {},
       attackClock: definition.boss ? Math.max(0.55, 2.1 - (definition.bossTier || 1) * 0.08) : 0,
       attackPhase: 0,
@@ -1998,6 +2139,21 @@ export class GameRuntime {
       freezeTimer: 0,
       vulnerableTimer: 0,
       vulnerableMult: 0,
+      armorShredStacks: 0,
+      armorShredTimer: 0,
+      timeFoldStacks: 0,
+      timeFoldTimer: 0,
+      gripSlow: 0,
+      gripTimer: 0,
+      sporeStacks: 0,
+      sporeTimer: 0,
+      sporeTickDamage: 0,
+      sporeBloom: 0,
+      sporeSpreadClock: 0,
+      // A soul can't be speared or shoved; it only replays the body's path.
+      carriedBy: null,
+      immovable: true,
+      knockbackResist: 1,
       markedForExplosion: 0,
       specialPhase: Math.random() * Math.PI * 2,
       // A soul is a passive echo: it carries none of the boss's shield/charge machinery.
@@ -2958,16 +3114,23 @@ export class GameRuntime {
     if (skillId === "clockIvyLash") return this.castClockIvyLash(state, stats);
     if (skillId === "moonwellSnare") return this.castMoonwellSnare(state, stats);
     if (skillId === "pearlRoll") return this.castPearlRoll(state, stats);
+    if (skillId === "antlerBolt") return this.castAntlerCharge(state, stats);
+    if (skillId === "sporeTeacupMine") return this.castSporeGeyser(state, stats);
+    if (skillId === "tulipThunder") return this.castTulipGrid(state, stats);
+    if (skillId === "scissorVine") return this.castScissorSnap(state, stats);
+    if (skillId === "honeyBomb") return this.castHoneyMire(state, stats);
+    if (skillId === "amberGearBurst") return this.castAmberGear(state, stats);
+    if (skillId === "grandPrismMeteor") return this.castPrismMeteor(state, stats);
 
+    // Shared handlers, kept only for the behaviours that still have two or more genuinely
+    // differentiated users. "lobbedBomb", "strike" and "snare" are gone: their last users
+    // (蜜弹爆溅 / 琥珀齿轮, 郁金雷网, 剪刃藤蔓) now have dedicated handlers.
     const behavior = definition.advancedBehavior;
     if (behavior === "beam") this.castAdvancedBeam(skillId, state, stats);
-    if (behavior === "lobbedBomb") this.castAdvancedBomb(skillId, state, stats);
     if (behavior === "field") this.castAdvancedField(skillId, state, stats);
     if (behavior === "meteor") this.castAdvancedMeteor(skillId, state, stats);
     if (behavior === "boomerang") this.castAdvancedBoomerang(skillId, state, stats);
     if (behavior === "mine") this.castAdvancedMine(skillId, state, stats);
-    if (behavior === "strike") this.castAdvancedStrike(skillId, state, stats);
-    if (behavior === "snare") this.castAdvancedSnare(skillId, state, stats);
     if (behavior === "pulse") this.castAdvancedPulse(skillId, state, stats);
   }
 
@@ -2985,7 +3148,6 @@ export class GameRuntime {
     const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
     const splinterLevel = state?.exclusives?.glassPrismRaySplinter || 0;
     const pyreLevel = state?.exclusives?.lanternSparkPyre || 0;
-    const goreLevel = state?.exclusives?.antlerBoltGore || 0;
     const needlePierceLevel = state?.exclusives?.auroraNeedlePierce || 0;
 
     if (skillId === "auroraNeedle") {
@@ -3030,49 +3192,13 @@ export class GameRuntime {
         speed,
         radius: stats.size * this.player.projectileSizeMultiplier,
         damage: this.rollDamage(stats.damage),
-        pierce: skillId === "antlerBolt" ? (stats.pierce + 1 + goreLevel) : stats.pierce,
+        pierce: stats.pierce,
         maxDistance: stats.range * this.player.rangeMultiplier,
         distanceTravelled: 0,
         color: definitionColor(skillId),
         recentHits: {},
         ...(skillId === "glassPrismRay" ? { refractCount: 2 + splinterLevel * 2, prismSplinter: splinterLevel } : {}),
         ...(skillId === "lanternSpark" ? { markEnemy: true, pyreLevel } : {}),
-        ...(skillId === "antlerBolt" ? { splitSide: 1 + goreLevel } : {}),
-      });
-    }
-  }
-
-  castAdvancedBomb(skillId, state, stats) {
-    const target = this.findNearestEnemy(this.player.x, this.player.y);
-    if (!target) return;
-    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
-    const mireLevel = state?.exclusives?.honeyBombMire || 0;
-    const sawLevel = state?.exclusives?.amberGearBurstSaw || 0;
-    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
-    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
-    for (let index = 0; index < totalCount; index += 1) {
-      const aim = this.getProjectileAim(target, index, totalCount, 0.18, assignedTargets);
-      if (!aim) continue;
-      const speed = stats.speed * this.player.projectileSpeedMultiplier;
-      this.projectiles.push({
-        id: crypto.randomUUID(),
-        skillId,
-        sourceSkillId: skillId,
-        x: this.player.x,
-        y: this.player.y,
-        vx: aim.direction.x * speed,
-        vy: aim.direction.y * speed,
-        speed,
-        radius: stats.size * this.player.projectileSizeMultiplier,
-        damage: this.rollDamage(stats.damage),
-        splash: stats.splash * this.player.rangeMultiplier * (1 + focus * 0.12),
-        maxDistance: stats.range * this.player.rangeMultiplier,
-        distanceTravelled: 0,
-        color: definitionColor(skillId),
-        advancedBomb: true,
-        splitLevel: focus,
-        slowLevel: 1 + tempo,
-        mireLevel: mireLevel + sawLevel,
       });
     }
   }
@@ -3184,7 +3310,10 @@ export class GameRuntime {
 
   castAdvancedMine(skillId, state, stats) {
     if (skillId === "dewdropMine") {
-      const totalCount = stats.count + this.getSummonCountBonus(skillId);
+      // 涟露成串 was previously never read, so the skill's own starter exclusive did
+      // literally nothing. Its whole description is "+1 seed per level".
+      const countLevel = state.exclusives.dewChainCount || 0;
+      const totalCount = stats.count + countLevel + this.getSummonCountBonus(skillId);
       const baseAngle = this.orbitAngle + Math.PI / Math.max(1, totalCount);
       const hopLevel = state.exclusives.dewChainHop || 0;
       const mendLevel = state.exclusives.dewChainMend || 0;
@@ -3274,82 +3403,6 @@ export class GameRuntime {
     }
   }
 
-  castAdvancedStrike(skillId, state, stats) {
-    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
-    const webLevel = state?.exclusives?.stormRibbonWeb || 0;
-    const fieldSignatureLevel = state?.exclusives?.tulipThunderField || 0;
-    const totalCount = stats.count;
-    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
-    for (let index = 0; index < totalCount; index += 1) {
-      const anchor = anchors[index % Math.max(1, anchors.length)] || this.player;
-      const angle = (Math.PI * 2 * index) / Math.max(1, totalCount);
-      this.strikes.push({
-        id: crypto.randomUUID(),
-        sourceSkillId: skillId,
-        x: clamp(anchor.x + Math.cos(angle) * 24, 28, ARENA.width - 28),
-        y: clamp(anchor.y + Math.sin(angle) * 24, 28, ARENA.height - 28),
-        radius: stats.radius * this.player.rangeMultiplier,
-        delay: Math.max(0.2, stats.delay - tempo * 0.04),
-        damage: this.rollDamage(stats.damage),
-        chainLevel: focus + webLevel * 2,
-        fieldLevel: tempo + fieldSignatureLevel * 2,
-        color: definitionColor(skillId),
-      });
-    }
-  }
-
-  castAdvancedSnare(skillId, state, stats) {
-    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
-    const moonmarkLevel = state?.exclusives?.moonwellSnareMoonmark || 0;
-    const freezeLevel = state?.exclusives?.clockIvyLashFreeze || 0;
-    const crossLevel = state?.exclusives?.scissorVineCross || 0;
-    const bloomBonus = focus + crossLevel;
-    const totalCount = stats.count + focus;
-    const maxRange = stats.range * this.player.rangeMultiplier;
-    const targets = this.findNearestEnemies(this.player.x, this.player.y, totalCount * 2)
-      .filter((enemy) => circleDistance(enemy, this.player) <= maxRange + enemy.radius)
-      .slice(0, totalCount);
-    for (const target of targets) {
-      const damage = this.rollDamage(stats.damage);
-      this.damageEnemy(target, damage, skillId);
-      target.slowTimer = Math.max(target.slowTimer, stats.root + tempo * 0.36);
-      if (moonmarkLevel > 0) {
-        this.applyVulnerable(target, 0.2 + moonmarkLevel * 0.16, 3.2 + moonmarkLevel * 0.7);
-      }
-      if (freezeLevel > 0) {
-        target.freezeTimer = Math.max(target.freezeTimer || 0, 0.5 + freezeLevel * 0.45);
-      }
-      if (crossLevel > 0) {
-        target.burnTimer = Math.max(target.burnTimer, 1.6 + crossLevel * 0.6);
-        target.burnDamage = Math.max(target.burnDamage, damage * 0.12 * crossLevel);
-      }
-      this.spawnSkillEffect({
-        kind: "vineWhip",
-        x: this.player.x,
-        y: this.player.y,
-        targetX: target.x,
-        targetY: target.y,
-        duration: 0.18,
-        color: definitionColor(skillId),
-        accent: "#ffffff",
-        thickness: 4 + focus,
-      });
-      const bloomRadius = stats.bloomRadius * (1 + bloomBonus * 0.16);
-      if (bloomBonus > 0) {
-        const bloomEchoSource = this.normalizeDamageSource(skillId);
-        this.spawnSkillEffect({ kind: "vineBloom", x: target.x, y: target.y, radius: bloomRadius, duration: 0.28, color: definitionColor(skillId), accent: "#fff6df" });
-        for (const enemy of this.enemies) {
-          if (enemy.id !== target.id && circleDistance(enemy, target) <= bloomRadius + enemy.radius) {
-            this.damageEnemy(enemy, damage * (0.28 + bloomBonus * 0.1), bloomEchoSource || skillId);
-            if (crossLevel > 0) {
-              enemy.burnTimer = Math.max(enemy.burnTimer, 1.2 + crossLevel * 0.5);
-              enemy.burnDamage = Math.max(enemy.burnDamage, damage * 0.08 * crossLevel);
-            }
-          }
-        }
-      }
-    }
-  }
 
   castAdvancedPulse(skillId, state, stats) {
     const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
@@ -3522,7 +3575,10 @@ export class GameRuntime {
     }
   }
 
-  // ── 时藤鞭击: the whip lashes a zone, locks it in time, then snaps back and detonates ──
+  // ── 凝时钟域: drop a gold dial on the ground and let it count down ──
+  // No whip and no travel: the dial simply appears where the enemies are. Standing in it
+  // gets progressively slower, and anything still inside when the hand reaches zero is
+  // caught — frozen outright if it's trash, folded in time if it's an elite or a boss.
   castClockIvyLash(state, stats) {
     const skillId = "clockIvyLash";
     const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
@@ -3532,39 +3588,36 @@ export class GameRuntime {
     const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount * 2)
       .filter((enemy) => circleDistance(enemy, this.player) <= maxRange + enemy.radius)
       .slice(0, totalCount);
-    const color = definitionColor(skillId);
     const spots = anchors.length ? anchors : [{ x: this.player.x + randomBetween(-60, 60), y: this.player.y + randomBetween(-60, 60) }];
     for (const spot of spots) {
       const zoneX = clamp(spot.x, 26, ARENA.width - 26);
       const zoneY = clamp(spot.y, 26, ARENA.height - 26);
-      const zoneRadius = stats.bloomRadius * (1 + focus * 0.16) + 12;
-      // Initial lash: whip + immediate slow so the target is caught before the rewind.
-      this.spawnSkillEffect({
-        kind: "vineWhip",
-        x: this.player.x,
-        y: this.player.y,
-        targetX: zoneX,
-        targetY: zoneY,
-        duration: 0.2,
-        color,
-        accent: "#e7ffe0",
-        thickness: 5 + focus,
-      });
-      // A time-locked clock zone: builds up, then snaps shut for a burst.
       this.strikes.push({
         id: crypto.randomUUID(),
         kind: "clockRewind",
         sourceSkillId: skillId,
         x: zoneX,
         y: zoneY,
-        radius: zoneRadius,
-        windup: Math.max(0.5, 0.95 - tempo * 0.06),
+        radius: stats.bloomRadius * this.player.rangeMultiplier * (1 + focus * 0.12),
+        // 拨快时针 shortens the countdown, which is a real buff here: less time for the
+        // target to walk out of the dial.
+        windup: Math.max(1.1, (stats.countdown || 2.4) - tempo * 0.18),
         elapsed: 0,
         damage: this.rollDamage(stats.damage),
         freezeLevel,
         focusLevel: focus,
         tickClock: 0,
-        color,
+        color: CLOCK_DIAL_COLOR,
+      });
+      // The dial lands with a chime ring rather than being whipped into place.
+      this.spawnSkillEffect({
+        kind: "clockDialDrop",
+        x: zoneX,
+        y: zoneY,
+        radius: stats.bloomRadius * this.player.rangeMultiplier * (1 + focus * 0.12),
+        duration: 0.34,
+        color: CLOCK_DIAL_COLOR,
+        accent: CLOCK_DIAL_ACCENT,
       });
     }
   }
@@ -3682,6 +3735,748 @@ export class GameRuntime {
         }
       }
     }
+  }
+
+  // ── 鹿角突刺: a deer phantom that charges in a straight line and carries what it ──
+  // ── fails to kill onward into the next target, until its stamina runs out.       ──
+  castAntlerCharge(state, stats) {
+    const skillId = "antlerBolt";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const crystalLevel = state?.exclusives?.antlerBoltGore || 0;
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!target) return;
+
+    // The cast direction is locked here and never re-aimed during the free charge — this
+    // skill is a committed lance, not a homing missile. Extra projectiles fan out around
+    // that same heading rather than picking their own targets.
+    const baseAngle = Math.atan2(target.y - this.player.y, target.x - this.player.x);
+    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
+    const spread = 0.17;
+    const costScale = Math.max(0.3, 1 - crystalLevel * ANTLER_CRYSTAL_COST_REDUCTION);
+    // 蓄力一击 doubles damage/range/size for other skills; for a charge the equivalent
+    // currency is stamina, so a charged cast gets twice the runway as well.
+    const charged = Boolean(this.activeSkillTrigger?.snapshot?.chargedStrikeActive);
+    const stamina = (stats.stamina || 100) * (1 + tempo * 0.15) * (charged ? 2 : 1);
+
+    for (let index = 0; index < totalCount; index += 1) {
+      const angle = baseAngle - (spread * (totalCount - 1)) / 2 + spread * index;
+      const speed = stats.speed * this.player.projectileSpeedMultiplier;
+      this.projectiles.push({
+        id: crypto.randomUUID(),
+        skillId,
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        speed,
+        // The phantom is a body, not a dart: 晶华鹿角 makes it visibly bigger again.
+        radius: stats.size * (1 + focus * 0.08 + crystalLevel * 0.16) * this.player.projectileSizeMultiplier,
+        damage: this.rollDamage(stats.damage),
+        // Stamina is the real lifetime, so neither pierce nor range may end the charge.
+        pierce: Number.POSITIVE_INFINITY,
+        maxDistance: Number.POSITIVE_INFINITY,
+        distanceTravelled: 0,
+        color: crystalLevel > 0 ? "#9be7ff" : definitionColor(skillId),
+        antlerCharge: true,
+        stamina,
+        staminaMax: stamina,
+        staminaCostScale: costScale,
+        crystalLevel,
+        focusLevel: focus,
+        carriedEnemyId: null,
+        recentHits: {},
+      });
+    }
+  }
+
+  // Stamina drain helper: elites and bosses are "heavy", costing several times more to
+  // ram and to carry, so a charge spends itself fast on a big target.
+  antlerStaminaCost(projectile, baseCost, enemy) {
+    const heavy = enemy && (enemy.elite || enemy.boss || enemy.nest);
+    return baseCost * (heavy ? ANTLER_HEAVY_COST_MULTIPLIER : 1) * (projectile.staminaCostScale ?? 1);
+  }
+
+  releaseAntlerCarry(projectile) {
+    if (!projectile.carriedEnemyId) return null;
+    const carried = this.findEnemyById(projectile.carriedEnemyId);
+    projectile.carriedEnemyId = null;
+    if (carried && carried.carriedBy === projectile.id) {
+      carried.carriedBy = null;
+    }
+    return carried;
+  }
+
+  // The charge ends in a burst at the phantom's position. Whatever was being carried
+  // eats the slam too, which is what makes a long carry worth setting up.
+  endAntlerCharge(projectile) {
+    const crystal = projectile.crystalLevel || 0;
+    const radius = projectile.radius * (2.2 + crystal * 0.5);
+    const carried = this.releaseAntlerCarry(projectile);
+    this.spawnSkillEffect({
+      kind: "antlerBurst",
+      x: projectile.x,
+      y: projectile.y,
+      radius,
+      duration: 0.38,
+      color: projectile.color || "#73d1ff",
+      accent: crystal > 0 ? "#ffffff" : "#d8f4ff",
+      crystal,
+    });
+    this.addScreenShake(7 + crystal * 3);
+    for (const enemy of this.enemies) {
+      if (circleDistance(projectile, enemy) <= radius + enemy.radius) {
+        const slam = projectile.damage * (0.7 + crystal * 0.25) * (enemy === carried ? 1.6 : 1);
+        this.damageEnemy(enemy, slam, projectile);
+        this.applyAntlerShred(enemy, crystal);
+      }
+    }
+  }
+
+  // ── 菌杯雾雷: upturned teacups that pulse expanding spore rings ──
+  castSporeGeyser(state, stats) {
+    const skillId = "sporeTeacupMine";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const bloomLevel = state?.exclusives?.sporeTeacupMineBloom || 0;
+    const color = definitionColor(skillId);
+    // At max level a cup outlives its own cooldown, so overlapping geysers are intended —
+    // but 多重/连锁 procs could otherwise pile up without bound, so hold a hard ceiling.
+    const liveCups = this.strikes.reduce(
+      (count, strike) => (strike.kind === "sporeGeyser" && strike.sourceSkillId === skillId ? count + 1 : count),
+      0,
+    );
+    const totalCount = Math.min(
+      stats.count + this.getSummonCountBonus(skillId),
+      Math.max(0, SPORE_GEYSER_MAX_LIVE - liveCups),
+    );
+    if (totalCount <= 0) return;
+    // Cups are planted on enemy clusters rather than ringed around the player: the ring
+    // edge is the damage, so the cup wants to be where the crowd is.
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
+
+    for (let index = 0; index < totalCount; index += 1) {
+      const anchor = anchors[index] || null;
+      const spotX = anchor ? anchor.x : this.player.x + randomBetween(-90, 90);
+      const spotY = anchor ? anchor.y : this.player.y + randomBetween(-90, 90);
+      this.strikes.push({
+        id: crypto.randomUUID(),
+        kind: "sporeGeyser",
+        sourceSkillId: skillId,
+        x: clamp(spotX, 30, ARENA.width - 30),
+        y: clamp(spotY, 30, ARENA.height - 30),
+        // `radius` is how far a ring reaches before it dissipates.
+        radius: stats.radius * this.player.rangeMultiplier * (1 + bloomLevel * 0.12),
+        damage: this.rollDamage(stats.damage),
+        eruptsLeft: (stats.erupts || 3) + tempo,
+        interval: Math.max(0.5, (stats.interval || 1.1) - tempo * 0.06),
+        // First eruption waits a beat so the cup visibly lands and swells first.
+        clock: 0.42,
+        ringRadius: 0,
+        ringActive: false,
+        hitIds: new Set(),
+        focusLevel: focus,
+        bloomLevel,
+        color,
+      });
+      this.spawnSkillEffect({
+        kind: "sporeCupLand",
+        x: clamp(spotX, 30, ARENA.width - 30),
+        y: clamp(spotY, 30, ARENA.height - 30),
+        radius: 34,
+        duration: 0.42,
+        color,
+        accent: "#f2ffd0",
+      });
+    }
+  }
+
+  // One geyser tick: either counting down to the next eruption, or growing a live ring.
+  updateSporeGeyser(strike, delta) {
+    if (strike.ringActive) {
+      const previous = strike.ringRadius;
+      strike.ringRadius += SPORE_RING_EXPAND_SPEED * delta;
+      // Damage lives in the annulus the ring edge swept this frame, so an enemy is hit
+      // once as the wall passes over it rather than continuously.
+      for (const enemy of this.enemies) {
+        if (strike.hitIds.has(enemy.id)) continue;
+        const distance = Math.hypot(enemy.x - strike.x, enemy.y - strike.y);
+        if (distance + enemy.radius < previous || distance - enemy.radius > strike.ringRadius) continue;
+        strike.hitIds.add(enemy.id);
+        this.damageEnemy(enemy, strike.damage, strike);
+        this.applySporePoison(
+          enemy,
+          1 + strike.focusLevel,
+          strike.damage * SPORE_POISON_PER_STACK * (1 + strike.focusLevel * 0.35),
+          strike.bloomLevel,
+        );
+      }
+      if (strike.ringRadius >= strike.radius) {
+        strike.ringActive = false;
+        strike.ringRadius = 0;
+        strike.hitIds = new Set();
+        strike.clock = strike.interval;
+        // The cup collapses once its last ring has finished travelling.
+        if (strike.eruptsLeft <= 0) return false;
+      }
+      return true;
+    }
+
+    strike.clock -= delta;
+    if (strike.clock <= 0) {
+      strike.eruptsLeft -= 1;
+      strike.ringActive = true;
+      strike.ringRadius = 0;
+      strike.hitIds = new Set();
+    }
+    return true;
+  }
+
+  // 孢潮蔓延: a poisoned enemy seeds the nearest clean neighbour, at a reduced stack count
+  // so the contagion thins out instead of blanketing the whole field.
+  spreadSporePoison(source) {
+    if (!source || !(source.sporeStacks > 0)) return;
+    let infected = 0;
+    for (const enemy of this.enemies) {
+      if (infected >= source.sporeBloom) break;
+      if (enemy.id === source.id || enemy.isSoul) continue;
+      if (enemy.sporeStacks > 0) continue;
+      if (Math.hypot(enemy.x - source.x, enemy.y - source.y) > SPORE_CONTAGION_RANGE) continue;
+      this.applySporePoison(enemy, 1, source.sporeTickDamage * 0.7, source.sporeBloom);
+      infected += 1;
+      // Poison green rather than the cup's olive, so contagion reads as venom spreading.
+      this.spawnSkillEffect({
+        kind: "sporeSpread",
+        x: source.x,
+        y: source.y,
+        targetX: enemy.x,
+        targetY: enemy.y,
+        radius: 16,
+        duration: 0.3,
+        color: SPORE_CONTAGION_COLOR,
+        accent: SPORE_CONTAGION_ACCENT,
+      });
+    }
+  }
+
+  // 孢潮蔓延: a poisoned body pops into a short-lived cup that fires one more ring.
+  burstSporeCorpse(enemy) {
+    const bloom = enemy.sporeBloom || 0;
+    if (bloom <= 0) return;
+    this.strikes.push({
+      id: crypto.randomUUID(),
+      kind: "sporeGeyser",
+      sourceSkillId: "sporeTeacupMine",
+      x: enemy.x,
+      y: enemy.y,
+      radius: 110 + bloom * 26,
+      damage: enemy.sporeTickDamage * 6 * bloom,
+      eruptsLeft: 0,
+      interval: 1,
+      clock: 0.12,
+      ringRadius: 0,
+      ringActive: false,
+      hitIds: new Set(),
+      focusLevel: 0,
+      // Corpse cups don't re-apply contagion, or one poisoned pack would chain forever.
+      bloomLevel: 0,
+      // Venom green: this ring comes from the contagion, not from a planted cup.
+      color: SPORE_CONTAGION_COLOR,
+    });
+  }
+
+  // ── 郁金雷网: plant rods; the damage lives on the arcs between them ──
+  castTulipGrid(state, stats) {
+    const skillId = "tulipThunder";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const overloadLevel = state?.exclusives?.tulipThunderField || 0;
+    const color = definitionColor(skillId);
+    const wanted = stats.count + this.getSummonCountBonus(skillId) + (overloadLevel > 0 ? 1 : 0);
+    const totalCount = Math.min(wanted, Math.max(0, TULIP_ROD_MAX_LIVE - this.tulipRods.length));
+    if (totalCount <= 0) return;
+
+    // Rods are planted on the crowd, because a rod with no neighbour is worthless.
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
+    for (let index = 0; index < totalCount; index += 1) {
+      const anchor = anchors[index] || null;
+      const spotX = anchor ? anchor.x : this.player.x + randomBetween(-110, 110);
+      const spotY = anchor ? anchor.y : this.player.y + randomBetween(-110, 110);
+      this.tulipRods.push({
+        id: crypto.randomUUID(),
+        sourceSkillId: skillId,
+        x: clamp(spotX, 28, ARENA.width - 28),
+        y: clamp(spotY, 28, ARENA.height - 28),
+        radius: 15,
+        duration: stats.duration + tempo * 0.9,
+        linkRange: stats.linkRange * this.player.rangeMultiplier * (1 + focus * 0.12),
+        damage: this.rollDamage(stats.damage),
+        tickInterval: stats.tickInterval,
+        tickClock: randomBetween(0, stats.tickInterval),
+        overloadLevel,
+        charge: 0,
+        bloom: 0,
+        color,
+      });
+    }
+  }
+
+  // One pass over every rod: age them out, then damage along each arc. Arcs are shared
+  // between two rods, so the pairwise loop runs once per unordered pair.
+  updateTulipGrid(delta) {
+    if (this.tulipRods.length === 0) return;
+    const alive = [];
+    for (const rod of this.tulipRods) {
+      rod.duration -= delta;
+      rod.tickClock -= delta;
+      if (rod.bloom > 0) rod.bloom = Math.max(0, rod.bloom - delta);
+      if (rod.duration > 0) alive.push(rod);
+    }
+    this.tulipRods = alive;
+
+    for (let i = 0; i < alive.length; i += 1) {
+      const a = alive[i];
+      if (a.tickClock > 0) continue;
+      a.tickClock += a.tickInterval;
+      for (let j = i + 1; j < alive.length; j += 1) {
+        const b = alive[j];
+        const span = Math.hypot(b.x - a.x, b.y - a.y);
+        if (span > Math.min(a.linkRange, b.linkRange)) continue;
+        // Anything standing on the segment between the two rods gets zapped.
+        for (const enemy of this.enemies) {
+          if (enemy.isSoul) continue;
+          if (pointToSegmentDistance(enemy.x, enemy.y, a.x, a.y, b.x, b.y) > enemy.radius + 14) continue;
+          this.damageEnemy(enemy, a.damage, a);
+          enemy.slowTimer = Math.max(enemy.slowTimer, 0.4);
+          if (a.overloadLevel > 0) {
+            // 雷池过载: every zap charges both endpoints toward a discharge.
+            a.charge += 1;
+            b.charge += 1;
+          }
+        }
+        this.spawnSkillEffect({
+          kind: "tulipArc",
+          x: a.x,
+          y: a.y,
+          targetX: b.x,
+          targetY: b.y,
+          radius: 10,
+          duration: a.tickInterval * 0.8,
+          color: a.color,
+          accent: "#fff0d8",
+        });
+      }
+    }
+
+    // Discharge any rod that filled up.
+    for (const rod of alive) {
+      if (rod.overloadLevel <= 0 || rod.charge < TULIP_OVERLOAD_CHARGE) continue;
+      rod.charge = 0;
+      rod.bloom = 0.4;
+      const radius = 86 + rod.overloadLevel * 26;
+      this.spawnSkillEffect({
+        kind: "tulipOverload",
+        x: rod.x,
+        y: rod.y,
+        radius,
+        duration: 0.36,
+        color: rod.color,
+        accent: "#ffffff",
+      });
+      for (const enemy of this.enemies) {
+        if (circleDistance(rod, enemy) <= radius + enemy.radius) {
+          this.damageEnemy(enemy, rod.damage * (1.6 + rod.overloadLevel * 0.5), rod);
+          enemy.slowTimer = Math.max(enemy.slowTimer, 0.9);
+        }
+      }
+    }
+  }
+
+  // ── 剪刃藤蔓: a pair of blades that opens wide, then snaps shut ──
+  castScissorSnap(state, stats) {
+    const skillId = "scissorVine";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const crossLevel = state?.exclusives?.scissorVineCross || 0;
+    const maxRange = stats.range * this.player.rangeMultiplier;
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, stats.count * 2)
+      .filter((enemy) => circleDistance(enemy, this.player) <= maxRange + enemy.radius)
+      .slice(0, stats.count);
+    const spots = anchors.length
+      ? anchors
+      : [{ x: this.player.x + randomBetween(-80, 80), y: this.player.y + randomBetween(-80, 80) }];
+
+    for (const spot of spots) {
+      // The blades straddle the line from the player to the pivot, so the cut closes
+      // across the approach lane rather than at a random angle.
+      const facing = Math.atan2(spot.y - this.player.y, spot.x - this.player.x);
+      this.strikes.push({
+        id: crypto.randomUUID(),
+        kind: "scissorSnap",
+        sourceSkillId: skillId,
+        x: clamp(spot.x, 30, ARENA.width - 30),
+        y: clamp(spot.y, 30, ARENA.height - 30),
+        facing,
+        spread: 1.15,
+        armLength: stats.armLength * this.player.rangeMultiplier * (1 + focus * 0.12),
+        closeTime: Math.max(0.26, stats.closeTime - tempo * 0.06),
+        elapsed: 0,
+        damage: this.rollDamage(stats.damage),
+        crossLevel,
+        // 交叉裂创 buys a second snip, but only if the first one was worth it.
+        snipsLeft: crossLevel,
+        bleedStacks: 0,
+        radius: stats.armLength,
+        color: definitionColor(skillId),
+      });
+    }
+  }
+
+  updateScissorSnap(strike, delta) {
+    strike.elapsed += delta;
+    const t = Math.min(1, strike.elapsed / strike.closeTime);
+    if (t < 1) {
+      return true;
+    }
+
+    // Closed. Everything inside the swept wedge is cut and dragged toward the pivot.
+    const caught = [];
+    for (const enemy of this.enemies) {
+      if (enemy.isSoul) continue;
+      const dx = enemy.x - strike.x;
+      const dy = enemy.y - strike.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > strike.armLength + enemy.radius) continue;
+      // The wedge the blades swept: within the opening half-angle of the facing line.
+      let offset = Math.atan2(dy, dx) - strike.facing;
+      while (offset > Math.PI) offset -= Math.PI * 2;
+      while (offset < -Math.PI) offset += Math.PI * 2;
+      if (Math.abs(offset) > strike.spread) continue;
+      caught.push(enemy);
+    }
+
+    strike.bleedStacks += 1;
+    for (const enemy of caught) {
+      this.damageEnemy(enemy, strike.damage, strike);
+      // Dragged toward the pivot — resisted for heavyweights by the shared weight rules.
+      const dx = strike.x - enemy.x;
+      const dy = strike.y - enemy.y;
+      const length = Math.hypot(dx, dy) || 1;
+      this.applyKnockback(enemy, dx / length, dy / length, SCISSOR_PULL);
+      if (strike.crossLevel > 0) {
+        enemy.burnTimer = Math.max(enemy.burnTimer, SCISSOR_BLEED_SECONDS);
+        enemy.burnDamage = Math.max(
+          enemy.burnDamage,
+          strike.damage * 0.1 * strike.crossLevel * strike.bleedStacks,
+        );
+      }
+    }
+
+    this.spawnSkillEffect({
+      kind: "scissorClose",
+      x: strike.x,
+      y: strike.y,
+      radius: strike.armLength,
+      facing: strike.facing,
+      duration: 0.22,
+      color: strike.color,
+      accent: "#ffe4e6",
+    });
+    this.addScreenShake(caught.length > 0 ? 5 : 2);
+
+    // 交叉裂创: a cut that caught a crowd is worth repeating immediately.
+    if (strike.snipsLeft > 0 && caught.length >= 2) {
+      strike.snipsLeft -= 1;
+      strike.elapsed = 0;
+      strike.closeTime *= 0.7;
+      return true;
+    }
+    return false;
+  }
+
+  // ── 蜜弹爆溅: a lobbed glob that leaves a merging, near-rooting mire ──
+  castHoneyMire(state, stats) {
+    const skillId = "honeyBomb";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const mireLevel = state?.exclusives?.honeyBombMire || 0;
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!target) return;
+    const totalCount = stats.count + this.getProjectileCountBonus(skillId);
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    for (let index = 0; index < totalCount; index += 1) {
+      const aim = this.getProjectileAim(target, index, totalCount, 0.2, assignedTargets);
+      if (!aim) continue;
+      const speed = stats.speed * this.player.projectileSpeedMultiplier;
+      this.projectiles.push({
+        id: crypto.randomUUID(),
+        skillId,
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        vx: aim.direction.x * speed,
+        vy: aim.direction.y * speed,
+        speed,
+        radius: stats.size * this.player.projectileSizeMultiplier,
+        damage: this.rollDamage(stats.damage),
+        splash: stats.splash * this.player.rangeMultiplier * (1 + focus * 0.12),
+        maxDistance: stats.range * this.player.rangeMultiplier,
+        distanceTravelled: 0,
+        color: definitionColor(skillId),
+        advancedBomb: true,
+        honeyGlob: true,
+        mireRadius: stats.mireRadius * this.player.rangeMultiplier * (1 + focus * 0.14),
+        mireDuration: stats.mireDuration + tempo * 0.7,
+        mireLevel,
+        slowLevel: 1,
+        recentHits: {},
+      });
+    }
+  }
+
+  // Pools merge instead of stacking, so repeated casts build one wide swamp. That is the
+  // whole point of the skill: terrain you shape over time.
+  spawnHoneyMire(x, y, radius, duration, mireLevel, damage) {
+    const existing = this.fields.find(
+      (field) =>
+        field.honeyMire &&
+        Math.hypot(field.x - x, field.y - y) <= (field.radius + radius) * HONEY_MERGE_RATIO,
+    );
+    if (existing) {
+      // Absorb: the merged pool is bigger, longer-lived and keeps the stronger signature.
+      const merged = Math.min(HONEY_MERGE_MAX_RADIUS, Math.sqrt(existing.radius ** 2 + radius ** 2));
+      existing.x = (existing.x + x) / 2;
+      existing.y = (existing.y + y) / 2;
+      existing.radius = merged;
+      existing.maxRadius = merged;
+      existing.duration = Math.max(existing.duration, duration) + 0.6;
+      existing.mireLevel = Math.max(existing.mireLevel || 0, mireLevel);
+      existing.damage = Math.max(existing.damage, damage);
+      return existing;
+    }
+    this.spawnField({
+      sourceSkillId: "honeyBomb",
+      x,
+      y,
+      radius,
+      duration,
+      tickInterval: 0.4,
+      damage,
+      slowLevel: 0,
+      healLevel: 0,
+      burnLevel: 0,
+      color: "rgba(240, 185, 95, 0.26)",
+      edgeColor: "rgba(255, 228, 150, 0.9)",
+    });
+    const field = this.fields[this.fields.length - 1];
+    field.honeyMire = true;
+    field.mireLevel = mireLevel;
+    return field;
+  }
+
+  // ── 琥珀齿轮: a gear that embeds where it lands and grinds toward the crowd ──
+  castAmberGear(state, stats) {
+    const skillId = "amberGearBurst";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const sawLevel = state?.exclusives?.amberGearBurstSaw || 0;
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!target) return;
+    const wanted = stats.count + this.getProjectileCountBonus(skillId);
+    const totalCount = Math.min(wanted, Math.max(0, GEAR_MAX_LIVE - this.gears.length));
+    if (totalCount <= 0) return;
+    const assignedTargets = totalCount > 1 ? this.findNearestEnemies(this.player.x, this.player.y, totalCount) : [];
+    for (let index = 0; index < totalCount; index += 1) {
+      const aim = this.getProjectileAim(target, index, totalCount, 0.24, assignedTargets);
+      if (!aim) continue;
+      const speed = stats.speed * this.player.projectileSpeedMultiplier;
+      this.gears.push({
+        id: crypto.randomUUID(),
+        sourceSkillId: skillId,
+        x: this.player.x,
+        y: this.player.y,
+        vx: aim.direction.x * speed,
+        vy: aim.direction.y * speed,
+        radius: stats.size * this.player.projectileSizeMultiplier * (1 + focus * 0.1 + sawLevel * 0.08),
+        damage: this.rollDamage(stats.damage),
+        // Flight phase first; it embeds once it has covered its range.
+        flying: true,
+        travel: 0,
+        maxTravel: stats.range * this.player.rangeMultiplier,
+        duration: stats.duration + tempo * 0.8,
+        driftSpeed: stats.driftSpeed * (1 + sawLevel * 0.35),
+        grindInterval: stats.grindInterval,
+        grindClock: 0,
+        sawLevel,
+        toothClock: GEAR_TOOTH_INTERVAL,
+        spin: 0,
+        hitCooldowns: {},
+        color: definitionColor(skillId),
+      });
+    }
+  }
+
+  updateGears(delta) {
+    if (this.gears.length === 0) return;
+    const alive = [];
+    for (const gear of this.gears) {
+      gear.spin += delta * (gear.flying ? 16 : 9 + gear.sawLevel * 4);
+      for (const key of Object.keys(gear.hitCooldowns)) {
+        gear.hitCooldowns[key] -= delta;
+        if (gear.hitCooldowns[key] <= 0) delete gear.hitCooldowns[key];
+      }
+
+      if (gear.flying) {
+        const step = Math.hypot(gear.vx * delta, gear.vy * delta);
+        gear.x = clamp(gear.x + gear.vx * delta, gear.radius, ARENA.width - gear.radius);
+        gear.y = clamp(gear.y + gear.vy * delta, gear.radius, ARENA.height - gear.radius);
+        gear.travel += step;
+        if (gear.travel >= gear.maxTravel) {
+          // Embed: from here on it is a slow grinder, not a projectile.
+          gear.flying = false;
+          this.spawnSkillEffect({
+            kind: "gearEmbed",
+            x: gear.x,
+            y: gear.y,
+            radius: gear.radius * 1.8,
+            duration: 0.28,
+            color: gear.color,
+            accent: "#fff0cf",
+          });
+        }
+      } else {
+        gear.duration -= delta;
+        // Grind toward whatever is nearest; this is what keeps it relevant after landing.
+        const prey = this.findNearestEnemy(gear.x, gear.y);
+        if (prey) {
+          const direction = this.getDirectionVector(prey.x - gear.x, prey.y - gear.y);
+          gear.x = clamp(gear.x + direction.x * gear.driftSpeed * delta, gear.radius, ARENA.width - gear.radius);
+          gear.y = clamp(gear.y + direction.y * gear.driftSpeed * delta, gear.radius, ARENA.height - gear.radius);
+        }
+        // 嵌地锯盘: fling saw teeth while it spins.
+        if (gear.sawLevel > 0) {
+          gear.toothClock -= delta;
+          if (gear.toothClock <= 0) {
+            gear.toothClock = GEAR_TOOTH_INTERVAL / gear.sawLevel;
+            this.flingGearTeeth(gear);
+          }
+        }
+        if (gear.duration <= 0) {
+          this.spawnSkillEffect({
+            kind: "gearEmbed",
+            x: gear.x,
+            y: gear.y,
+            radius: gear.radius * 2.2,
+            duration: 0.3,
+            color: gear.color,
+            accent: "#fff0cf",
+          });
+          continue;
+        }
+      }
+
+      // Contact grinding, on a per-enemy cooldown so a gear can't shred in one frame.
+      gear.grindClock -= delta;
+      if (gear.grindClock <= 0) {
+        gear.grindClock = gear.grindInterval;
+        for (const enemy of this.enemies) {
+          if (gear.hitCooldowns[enemy.id] > 0) continue;
+          if (circleDistance(gear, enemy) > gear.radius + enemy.radius) continue;
+          gear.hitCooldowns[enemy.id] = gear.grindInterval * 1.5;
+          this.damageEnemy(enemy, gear.damage, gear);
+          enemy.slowTimer = Math.max(enemy.slowTimer, 0.3);
+        }
+      }
+
+      alive.push(gear);
+    }
+    this.gears = alive;
+  }
+
+  flingGearTeeth(gear) {
+    const teeth = 3 + gear.sawLevel;
+    for (let index = 0; index < teeth; index += 1) {
+      const angle = gear.spin + (Math.PI * 2 * index) / teeth;
+      const speed = 300;
+      this.projectiles.push({
+        id: crypto.randomUUID(),
+        skillId: "amberGearTooth",
+        sourceSkillId: "amberGearBurst",
+        x: gear.x,
+        y: gear.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        speed,
+        radius: Math.max(5, gear.radius * 0.3),
+        damage: gear.damage * 0.5,
+        pierce: 1,
+        maxDistance: 150 + gear.sawLevel * 50,
+        distanceTravelled: 0,
+        color: gear.color,
+        recentHits: {},
+      });
+    }
+  }
+
+  // ── 大棱镜彗星: a huge impact that leaves the core behind as a beam turret ──
+  castPrismMeteor(state, stats) {
+    const skillId = "grandPrismMeteor";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const shatterLevel = state?.exclusives?.grandPrismMeteorShatter || 0;
+    const totalCount = stats.count;
+    const anchors = this.findNearestEnemies(this.player.x, this.player.y, totalCount);
+    for (let index = 0; index < totalCount; index += 1) {
+      const anchor = anchors[index] || null;
+      const targetX = clamp(anchor ? anchor.x : this.player.x + randomBetween(-120, 120), 30, ARENA.width - 30);
+      const targetY = clamp(anchor ? anchor.y : this.player.y + randomBetween(-120, 120), 30, ARENA.height - 30);
+      this.meteors.push({
+        id: crypto.randomUUID(),
+        sourceSkillId: skillId,
+        startX: targetX + randomBetween(-240, 240),
+        startY: targetY - (320 + randomBetween(60, 180)),
+        targetX,
+        targetY,
+        radius: stats.radius * this.player.rangeMultiplier,
+        damage: this.rollDamage(stats.damage),
+        fallTime: Math.max(0.35, stats.fallTime - tempo * 0.05),
+        progress: 0,
+        spin: randomBetween(-2.4, 2.4),
+        scorchLevel: 0,
+        shardLevel: 0,
+        bloom: null,
+        vulnLevel: 0,
+        slowLevel: 0,
+        pollenLevel: 0,
+        // The core survives the impact and keeps firing.
+        prismTurret: {
+          duration: stats.duration + tempo * 0.6,
+          beamInterval: Math.max(0.2, stats.beamInterval - tempo * 0.03),
+          beamDamage: this.rollDamage(stats.beamDamage * (1 + focus * 0.16)),
+          beams: 1 + shatterLevel,
+          shatterLevel,
+          range: stats.radius * this.player.rangeMultiplier * 4.2,
+        },
+        color: definitionColor(skillId),
+      });
+    }
+  }
+
+  plantPrismTurret(meteor) {
+    const config = meteor.prismTurret;
+    this.beacons.push({
+      id: crypto.randomUUID(),
+      kind: "prismTurret",
+      sourceSkillId: "grandPrismMeteor",
+      x: meteor.targetX,
+      y: meteor.targetY,
+      radius: 22,
+      duration: config.duration,
+      shotInterval: config.beamInterval,
+      shotClock: config.beamInterval * 0.5,
+      pulse: 0,
+      damage: config.beamDamage,
+      beams: config.beams,
+      shatterLevel: config.shatterLevel,
+      range: config.range,
+      chainLevel: 0,
+      wardLevel: 0,
+      color: meteor.color || "#72cbff",
+    });
   }
 
   castFlyingSword(skillId, state, stats) {
@@ -4027,18 +4822,35 @@ export class GameRuntime {
       const burstEvery = Math.max(4, (stats.burstEvery || 9) - burstLevel * 2);
       if (burstLevel > 0 && companion.zapCount >= burstEvery) {
         companion.zapCount = 0;
+        // 蓄雷爆放 detonates on the target, not on the sprite. The sprite orbits the
+        // player, so bursting at its own position put the damage where the enemies
+        // weren't — it was effectively a self-centred nova on a ranged skill.
+        const burstX = previous.x;
+        const burstY = previous.y;
         const burstRadius = stats.range * 0.55 * (1 + burstLevel * 0.12);
         this.spawnSkillEffect({
           kind: "thunderBurst",
-          x: companion.x,
-          y: companion.y,
+          x: burstX,
+          y: burstY,
           radius: burstRadius,
           duration: 0.3,
           color: definitionColor("thunderSprite"),
           accent: "#ffffff",
         });
+        // A visible bolt from the sprite down to the detonation, so the cause is readable.
+        this.spawnSkillEffect({
+          kind: "thunderArc",
+          x: companion.x,
+          y: companion.y,
+          targetX: burstX,
+          targetY: burstY,
+          duration: 0.2,
+          color: definitionColor("thunderSprite"),
+          accent: "#ffffff",
+          thickness: 4.2 + burstLevel,
+        });
         for (const enemy of this.enemies) {
-          if (Math.hypot(enemy.x - companion.x, enemy.y - companion.y) <= burstRadius + enemy.radius) {
+          if (Math.hypot(enemy.x - burstX, enemy.y - burstY) <= burstRadius + enemy.radius) {
             this.damageEnemy(enemy, damage * (0.55 + burstLevel * 0.18), thunderSource);
           }
         }
@@ -4473,12 +5285,55 @@ export class GameRuntime {
         }
       }
 
+      // 鹿角突刺: while something is speared on the antlers the phantom steers toward the
+      // next victim. That is the only time it turns — the free charge stays a straight line.
+      if (projectile.antlerCharge && projectile.carriedEnemyId) {
+        const carried = this.findEnemyById(projectile.carriedEnemyId);
+        if (!carried || carried.health <= 0) {
+          this.releaseAntlerCarry(projectile);
+        } else {
+          const nextTarget = this.findNearestEnemyExcluding(projectile.x, projectile.y, carried.id, ANTLER_CARRY_SEEK_RANGE);
+          if (nextTarget) {
+            const desired = Math.atan2(nextTarget.y - projectile.y, nextTarget.x - projectile.x);
+            const current = Math.atan2(projectile.vy, projectile.vx);
+            let diff = desired - current;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            const turn = clamp(diff, -ANTLER_CARRY_TURN_RATE * delta, ANTLER_CARRY_TURN_RATE * delta);
+            const angle = current + turn;
+            projectile.vx = Math.cos(angle) * projectile.speed;
+            projectile.vy = Math.sin(angle) * projectile.speed;
+          }
+          // Pushing a body forward is the most expensive thing a charge can do.
+          projectile.stamina -= this.antlerStaminaCost(projectile, ANTLER_STAMINA_PER_CARRY_SECOND * delta, carried);
+        }
+      }
+
       const previousX = projectile.x;
       const previousY = projectile.y;
       projectile.x += projectile.vx * delta;
       projectile.y += projectile.vy * delta;
       projectile.distanceTravelled += Math.hypot(projectile.vx * delta, projectile.vy * delta);
       let removed = false;
+
+      if (projectile.antlerCharge) {
+        const stepped = Math.hypot(projectile.x - previousX, projectile.y - previousY);
+        projectile.stamina -= stepped * ANTLER_STAMINA_PER_PIXEL * (projectile.staminaCostScale ?? 1);
+        // Drag the speared enemy along, pinned just ahead of the antlers.
+        const carried = projectile.carriedEnemyId ? this.findEnemyById(projectile.carriedEnemyId) : null;
+        if (carried) {
+          const heading = Math.atan2(projectile.vy, projectile.vx);
+          const reach = projectile.radius + carried.radius * 0.5;
+          carried.x = clamp(projectile.x + Math.cos(heading) * reach, carried.radius, ARENA.width - carried.radius);
+          carried.y = clamp(projectile.y + Math.sin(heading) * reach, carried.radius, ARENA.height - carried.radius);
+          // Pinned enemies can't act while being carried.
+          carried.slowTimer = Math.max(carried.slowTimer, 0.2);
+        }
+        if (projectile.stamina <= 0) {
+          this.endAntlerCharge(projectile);
+          removed = true;
+        }
+      }
 
       // 珍珠滚碾: the pearl rolls on a timer and ricochets off the arena bounds.
       if (projectile.rollingPearl) {
@@ -4583,9 +5438,61 @@ export class GameRuntime {
           continue;
         }
 
+        // The carried enemy rides on the antler tip, so it overlaps every single frame.
+        // It is damaged by the slams it is driven into, never by simply being held.
+        if (projectile.antlerCharge && projectile.carriedEnemyId === enemy.id) {
+          continue;
+        }
+
         if (projectile.recentHits) {
           // The slow rolling pearl lingers on targets, so it needs a longer re-hit gate.
           projectile.recentHits[enemy.id] = projectile.rollingPearl ? 0.42 : boomerangProjectile ? 0.24 : 0.12;
+        }
+
+        // 鹿角突刺: pay for the impact, shred armour, then either spear the survivor or —
+        // if already loaded — ram the two bodies together and swap passengers.
+        if (projectile.antlerCharge) {
+          projectile.stamina -= this.antlerStaminaCost(projectile, ANTLER_STAMINA_PER_HIT, enemy);
+          const crystal = projectile.crystalLevel || 0;
+          const carried = projectile.carriedEnemyId ? this.findEnemyById(projectile.carriedEnemyId) : null;
+          // A loaded charge hits harder: the passenger is the weapon.
+          const impact = projectile.damage * (carried ? 1.45 : 1);
+          this.damageEnemy(enemy, impact, projectile);
+          this.applyAntlerShred(enemy, crystal);
+          // Anything too heavy to spear gets gored in place and shoved a little. The
+          // resistance in applyKnockback keeps an elite from being driven off-screen and
+          // a boss barely budges, so both can still walk back in.
+          if (!this.canCarryEnemy(enemy)) {
+            const heading = Math.atan2(projectile.vy, projectile.vx);
+            this.applyKnockback(enemy, Math.cos(heading), Math.sin(heading), projectile.radius * 2.4);
+          }
+          if (carried) {
+            this.damageEnemy(carried, impact * 0.8, projectile);
+            this.applyAntlerShred(carried, crystal);
+            this.releaseAntlerCarry(projectile);
+            this.addScreenShake(5 + crystal * 2);
+            this.spawnSkillEffect({
+              kind: "antlerBurst",
+              x: enemy.x,
+              y: enemy.y,
+              radius: projectile.radius * 1.5,
+              duration: 0.24,
+              color: projectile.color,
+              accent: crystal > 0 ? "#ffffff" : "#d8f4ff",
+              crystal,
+            });
+          }
+          // Spear whatever survived, so the charge keeps a passenger to drive onward.
+          if (enemy.health > 0 && !projectile.carriedEnemyId && this.canCarryEnemy(enemy)) {
+            projectile.carriedEnemyId = enemy.id;
+            enemy.carriedBy = projectile.id;
+          }
+          if (projectile.stamina <= 0) {
+            this.endAntlerCharge(projectile);
+            removed = true;
+            break;
+          }
+          continue;
         }
 
         this.damageEnemy(enemy, projectile.damage, projectile);
@@ -4685,31 +5592,6 @@ export class GameRuntime {
         if (projectile.markEnemy) {
           enemy.markedForExplosion = (enemy.markedForExplosion || 0) + 1 + (projectile.pyreLevel || 0);
           enemy.markPyreLevel = Math.max(enemy.markPyreLevel || 0, projectile.pyreLevel || 0);
-        }
-
-        if (projectile.splitSide > 0) {
-          for (let si = 0; si < 2; si += 1) {
-            const splitAngle = (si === 0 ? -0.4 : 0.4);
-            const angle = Math.atan2(projectile.vy, projectile.vx) + splitAngle;
-            const splitSpeed = projectile.speed * 0.7;
-            this.projectiles.push({
-              id: crypto.randomUUID(),
-              skillId: projectile.skillId,
-              sourceSkillId: projectile.sourceSkillId,
-              x: projectile.x,
-              y: projectile.y,
-              vx: Math.cos(angle) * splitSpeed,
-              vy: Math.sin(angle) * splitSpeed,
-              speed: splitSpeed,
-              radius: projectile.radius * 0.7,
-              damage: Math.ceil(projectile.damage * 0.4),
-              pierce: 0,
-              maxDistance: projectile.maxDistance * 0.5,
-              distanceTravelled: 0,
-              color: projectile.color,
-              recentHits: {},
-            });
-          }
         }
 
         projectile.pierce -= 1;
@@ -4820,21 +5702,17 @@ export class GameRuntime {
       }
     }
 
-    if (projectile.mireLevel > 0) {
-      this.spawnField({
-        sourceSkillId: projectile.sourceSkillId || projectile.skillId,
-        x: projectile.x,
-        y: projectile.y,
-        radius: projectile.splash * (0.9 + projectile.mireLevel * 0.15),
-        duration: 2.4 + projectile.mireLevel * 1.1,
-        tickInterval: 0.4,
-        damage: projectile.damage * 0.18,
-        slowLevel: 1 + projectile.mireLevel,
-        healLevel: 0,
-        burnLevel: 0,
-        color: `${projectile.color || "#f0b95f"}30`,
-        edgeColor: projectile.color || "rgba(240, 200, 120, 0.85)",
-      });
+    // 蜜弹爆溅 always leaves a mire (that is its identity, not an upgrade), and the pool
+    // merges with any it overlaps rather than stacking a second circle on top.
+    if (projectile.honeyGlob) {
+      this.spawnHoneyMire(
+        projectile.x,
+        projectile.y,
+        projectile.mireRadius,
+        projectile.mireDuration,
+        projectile.mireLevel || 0,
+        projectile.damage * 0.16,
+      );
     }
   }
 
@@ -4880,6 +5758,22 @@ export class GameRuntime {
       field.tickClock -= delta;
       if (field.growRate > 0 && field.maxRadius > field.radius) {
         field.radius = Math.min(field.maxRadius, field.radius + field.growRate * delta);
+      }
+
+      // 蜜沼: near-root grip applied every frame (not on the damage tick) so the pool
+      // feels sticky the instant you touch it. 黏稠蜜沼 also drags toward the centre.
+      if (field.honeyMire) {
+        for (const enemy of this.enemies) {
+          if (enemy.isSoul) continue;
+          if (circleDistance(field, enemy) > field.radius + enemy.radius) continue;
+          this.applyGrip(enemy, HONEY_GRIP, 0.25);
+          if (field.mireLevel > 0) {
+            const dx = field.x - enemy.x;
+            const dy = field.y - enemy.y;
+            const length = Math.hypot(dx, dy) || 1;
+            this.applyKnockback(enemy, dx / length, dy / length, field.mireLevel * 26 * delta);
+          }
+        }
       }
 
       if (field.tickClock <= 0) {
@@ -4945,6 +5839,14 @@ export class GameRuntime {
       }
       if (strike.kind === "moonWell") {
         if (this.updateMoonWell(strike, delta)) next.push(strike);
+        continue;
+      }
+      if (strike.kind === "sporeGeyser") {
+        if (this.updateSporeGeyser(strike, delta)) next.push(strike);
+        continue;
+      }
+      if (strike.kind === "scissorSnap") {
+        if (this.updateScissorSnap(strike, delta)) next.push(strike);
         continue;
       }
 
@@ -5070,42 +5972,49 @@ export class GameRuntime {
   updateClockRewind(strike, delta) {
     strike.elapsed += delta;
     strike.tickClock -= delta;
-    const t = strike.elapsed / strike.windup;
-    // While winding up, drag enemies to a crawl inside the zone.
+    const t = Math.min(1, strike.elapsed / strike.windup);
+    // The dial drags harder the closer the hand gets to zero, so the pressure to leave
+    // ramps up exactly as leaving becomes harder. 凝滞时刻 deepens the drag.
     if (strike.tickClock <= 0) {
-      strike.tickClock = 0.12;
+      strike.tickClock = 0.1;
+      // Fraction of movement speed removed, clamped so nothing is ever driven backwards.
+      const grip = Math.min(CLOCK_GRIP_MAX, (0.3 + t * 0.45) * (1 + strike.freezeLevel * 0.2));
       for (const enemy of this.enemies) {
         if (circleDistance(strike, enemy) <= strike.radius + enemy.radius) {
-          enemy.slowTimer = Math.max(enemy.slowTimer, 0.3);
-          if (strike.freezeLevel > 0 && t > 0.4) {
-            enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, 0.2);
-          }
+          this.applyGrip(enemy, grip);
+        }
+      }
+      // Slowed time applies to everything inside the dial, bullets included — a wall of
+      // enemy fire crawling through the gold plate is the clearest read of what the
+      // skill does, and it makes the dial a defensive tool as well as a lockdown.
+      for (const bullet of this.enemyProjectiles) {
+        if (Math.hypot(bullet.x - strike.x, bullet.y - strike.y) <= strike.radius + (bullet.radius || 0)) {
+          this.applyGrip(bullet, grip);
         }
       }
     }
-    // Pulsing rewind ring visual.
-    this.spawnSkillEffect({
-      kind: "clockRewind",
-      x: strike.x,
-      y: strike.y,
-      radius: strike.radius,
-      progress: Math.min(1, t),
-      duration: 0.1,
-      color: strike.color,
-      accent: "#eaffe2",
-    });
+    // The dial itself is painted by the renderer's ground layer straight off this strike,
+    // so there is no per-frame effect to spawn here.
     if (strike.elapsed < strike.windup) {
       return true;
     }
-    // Snap: time collapses inward, dealing a heavy burst and freezing survivors.
+
+    // Midnight. Everything still standing in the dial is caught.
     const burstDamage = strike.damage * (1.7 + strike.focusLevel * 0.35);
     for (const enemy of this.enemies) {
-      if (circleDistance(strike, enemy) <= strike.radius + enemy.radius) {
-        this.damageEnemy(enemy, burstDamage, strike);
-        if (strike.freezeLevel > 0) {
-          enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, 0.6 + strike.freezeLevel * 0.45);
-        }
-        enemy.slowTimer = Math.max(enemy.slowTimer, 1.2);
+      if (circleDistance(strike, enemy) > strike.radius + enemy.radius) {
+        continue;
+      }
+      this.damageEnemy(enemy, burstDamage, strike);
+      if (enemy.isSoul) {
+        continue;
+      }
+      if (enemy.elite || enemy.boss) {
+        // Heavyweights can't just be frozen for five seconds; they bank a fold instead.
+        this.applyTimeFold(enemy, strike.freezeLevel, strike.damage);
+      } else {
+        enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, CLOCK_FREEZE_SECONDS + strike.freezeLevel);
+        enemy.slowTimer = Math.max(enemy.slowTimer, CLOCK_FREEZE_SECONDS + strike.freezeLevel + 1);
       }
     }
     this.spawnSkillEffect({
@@ -5113,10 +6022,11 @@ export class GameRuntime {
       x: strike.x,
       y: strike.y,
       radius: strike.radius,
-      duration: 0.3,
+      duration: 0.34,
       color: strike.color,
       accent: "#ffffff",
     });
+    this.addScreenShake(5);
     return false;
   }
 
@@ -5450,6 +6360,11 @@ export class GameRuntime {
       if (meteor.shardLevel > 0) {
         this.spawnMeteorShards(meteor);
       }
+
+      // 大棱镜彗星: the core stays planted and keeps firing after the impact.
+      if (meteor.prismTurret) {
+        this.plantPrismTurret(meteor);
+      }
     }
 
     this.meteors = next;
@@ -5489,6 +6404,45 @@ export class GameRuntime {
             });
           }
 
+          if (beacon.duration > 0) {
+            next.push(beacon);
+          }
+          continue;
+        }
+
+        // 大棱镜彗星: the planted core fires piercing beams at whatever is nearest.
+        // 棱镜碎界 adds beams, each locking a different target.
+        if (beacon.kind === "prismTurret") {
+          const marks = this.findNearestEnemies(beacon.x, beacon.y, beacon.beams).filter(
+            (enemy) => circleDistance(beacon, enemy) <= beacon.range + enemy.radius,
+          );
+          for (const mark of marks) {
+            // The beam pierces: everything on the segment out to the mark is hit.
+            const reach = Math.hypot(mark.x - beacon.x, mark.y - beacon.y);
+            const dirX = (mark.x - beacon.x) / (reach || 1);
+            const dirY = (mark.y - beacon.y) / (reach || 1);
+            const endX = beacon.x + dirX * (reach + 40);
+            const endY = beacon.y + dirY * (reach + 40);
+            for (const enemy of this.enemies) {
+              if (enemy.isSoul) continue;
+              if (pointToSegmentDistance(enemy.x, enemy.y, beacon.x, beacon.y, endX, endY) > enemy.radius + 12) continue;
+              this.damageEnemy(enemy, beacon.damage, beacon);
+              if (beacon.shatterLevel > 0) {
+                this.applyVulnerable(enemy, 0.16 + beacon.shatterLevel * 0.12, 2.8 + beacon.shatterLevel * 0.6);
+              }
+            }
+            this.spawnSkillEffect({
+              kind: "prismBeam",
+              x: beacon.x,
+              y: beacon.y,
+              targetX: endX,
+              targetY: endY,
+              duration: 0.18,
+              color: beacon.color,
+              accent: "#ffffff",
+              thickness: 4 + beacon.shatterLevel * 1.6,
+            });
+          }
           if (beacon.duration > 0) {
             next.push(beacon);
           }
@@ -5831,6 +6785,51 @@ export class GameRuntime {
         }
       }
 
+      if (enemy.armorShredTimer > 0) {
+        enemy.armorShredTimer = Math.max(0, enemy.armorShredTimer - delta);
+        if (enemy.armorShredTimer <= 0) {
+          enemy.armorShredStacks = 0;
+        }
+      }
+
+      // 时间折叠 decays as a whole: let the window lapse and the banked stacks are lost
+      // without collapsing, so the skill rewards re-applying the dial in time.
+      if (enemy.timeFoldTimer > 0) {
+        enemy.timeFoldTimer = Math.max(0, enemy.timeFoldTimer - delta);
+        if (enemy.timeFoldTimer <= 0) {
+          enemy.timeFoldStacks = 0;
+        }
+      }
+
+      // Grip lapses shortly after leaving whatever applied it, so walking out of a dial
+      // or a honey pool is a real escape rather than a lingering debuff.
+      if (enemy.gripTimer > 0) {
+        enemy.gripTimer = Math.max(0, enemy.gripTimer - delta);
+        if (enemy.gripTimer <= 0) {
+          enemy.gripSlow = 0;
+        }
+      }
+
+      // 孢毒 ticks straight off health (it must not re-enter damageEnemy, or a DoT would
+      // roll crits and re-trigger 残响 every frame).
+      if (enemy.sporeTimer > 0 && enemy.sporeStacks > 0) {
+        enemy.sporeTimer = Math.max(0, enemy.sporeTimer - delta);
+        enemy.health -= enemy.sporeTickDamage * enemy.sporeStacks * delta;
+        // 孢潮蔓延: a poisoned body keeps seeding its neighbours.
+        if (enemy.sporeBloom > 0) {
+          enemy.sporeSpreadClock -= delta;
+          if (enemy.sporeSpreadClock <= 0) {
+            enemy.sporeSpreadClock = SPORE_CONTAGION_INTERVAL;
+            this.spreadSporePoison(enemy);
+          }
+        }
+        if (enemy.sporeTimer <= 0) {
+          enemy.sporeStacks = 0;
+          enemy.sporeTickDamage = 0;
+          enemy.sporeBloom = 0;
+        }
+      }
+
       if (enemy.freezeTimer > 0) {
         enemy.freezeTimer = Math.max(0, enemy.freezeTimer - delta);
         enemy.slowTimer = Math.max(enemy.slowTimer, enemy.freezeTimer);
@@ -5839,7 +6838,10 @@ export class GameRuntime {
       }
 
       const direction = this.getDirectionVector(this.player.x - enemy.x, this.player.y - enemy.y);
-      const slowFactor = enemy.slowTimer > 0 ? 0.68 : 1;
+      // 时间折叠 also drags on movement, which is the only action economy an elite has,
+      // and grip (钟域 dial / 蜜沼) removes a flat fraction on top of that.
+      const grip = enemy.gripTimer > 0 ? enemy.gripSlow || 0 : 0;
+      const slowFactor = ((enemy.slowTimer > 0 ? 0.68 : 1) / this.getTimeFoldStretch(enemy)) * (1 - grip);
       enemy.slowTimer = Math.max(0, enemy.slowTimer - delta);
       enemy.contactCooldown = Math.max(0, enemy.contactCooldown - delta);
       if (enemy.boss) {
@@ -5879,10 +6881,13 @@ export class GameRuntime {
     if (enemy.bossVulnerableFor > 0) {
       enemy.bossVulnerableFor = Math.max(0, enemy.bossVulnerableFor - delta);
     }
+    // 时间折叠 stretches every clock the boss runs on. The stagger window above is
+    // deliberately excluded — that one belongs to the player.
+    const foldDelta = delta / this.getTimeFoldStretch(enemy);
     // While winding up a charge the boss plants itself, so the telegraphed lane matches
     // the dash that follows and the player gets a clear tell.
     if (enemy.bossWindupFor > 0) {
-      enemy.bossWindupFor = Math.max(0, enemy.bossWindupFor - delta);
+      enemy.bossWindupFor = Math.max(0, enemy.bossWindupFor - foldDelta);
     }
 
     // Phase transitions at two thirds and one third health.
@@ -5904,7 +6909,7 @@ export class GameRuntime {
       }
     } else if (enemy.bossVulnerableFor <= 0) {
       // Shield cycle — only while not already shielded or staggered.
-      enemy.bossShieldClock -= delta;
+      enemy.bossShieldClock -= foldDelta;
       if (enemy.bossShieldClock <= 0) {
         this.raiseBossShield(enemy);
       }
@@ -5912,7 +6917,7 @@ export class GameRuntime {
 
     // Telegraphed specials take the place of some bullet volleys.
     if (enemy.bossVulnerableFor <= 0) {
-      enemy.bossSpecialClock -= delta;
+      enemy.bossSpecialClock -= foldDelta;
       if (enemy.bossSpecialClock <= 0) {
         enemy.bossSpecialClock = Math.max(3.2, BOSS_SPECIAL_INTERVAL - (enemy.bossPhase || 1) * 1.1);
         this.fireBossSpecial(enemy, profile);
@@ -5921,7 +6926,7 @@ export class GameRuntime {
 
     // Guard summons from phase 2 onward give the player something to clear.
     if ((enemy.bossPhase || 1) >= 2 && enemy.bossVulnerableFor <= 0) {
-      enemy.bossSummonClock -= delta;
+      enemy.bossSummonClock -= foldDelta;
       if (enemy.bossSummonClock <= 0) {
         enemy.bossSummonClock = (enemy.bossPhase || 1) >= 3 ? 12 : 17;
         this.summonBossGuards(enemy);
@@ -6168,7 +7173,9 @@ export class GameRuntime {
       return;
     }
 
-    enemy.attackClock -= delta;
+    // 时间折叠 slows the clock itself rather than the boss's stats, so every stack
+    // literally costs it volleys.
+    enemy.attackClock -= delta / this.getTimeFoldStretch(enemy);
     if (enemy.attackClock > 0) {
       return;
     }
@@ -6225,6 +7232,9 @@ export class GameRuntime {
       splitRadius: config.splitRadius ?? Math.max(4, (config.radius ?? 9) * 0.55),
       splitKind: config.splitKind ?? "seed",
       spawnedChildren: false,
+      // 凝时钟域 slows bullets too; refreshed while inside a dial.
+      gripSlow: 0,
+      gripTimer: 0,
     });
   }
 
@@ -6865,9 +7875,19 @@ export class GameRuntime {
         projectile.vy = (projectile.vy / length) * projectile.speed;
       }
 
-      projectile.x += projectile.vx * delta;
-      projectile.y += projectile.vy * delta;
-      projectile.life -= delta;
+      // 凝时钟域: bullets caught in a dial crawl. The lifetime is slowed by the same
+      // factor, so a slowed bullet doesn't simply expire early inside the zone.
+      if (projectile.gripTimer > 0) {
+        projectile.gripTimer = Math.max(0, projectile.gripTimer - delta);
+        if (projectile.gripTimer <= 0) {
+          projectile.gripSlow = 0;
+        }
+      }
+      const bulletDelta = delta * (1 - (projectile.gripTimer > 0 ? projectile.gripSlow || 0 : 0));
+
+      projectile.x += projectile.vx * bulletDelta;
+      projectile.y += projectile.vy * bulletDelta;
+      projectile.life -= bulletDelta;
       if (this.specialState.frostBudZone) {
         this.pushEnemyProjectileOutOfFrostBud(projectile, this.specialState.frostBudZone);
       }
@@ -6953,6 +7973,29 @@ export class GameRuntime {
       vacuuming: false,
       spin: Math.random() * Math.PI * 2,
     });
+
+    // 孢潮蔓延: a poisoned body pops into one more spore ring on the way out.
+    if (enemy.sporeStacks > 0 && enemy.sporeBloom > 0) {
+      this.burstSporeCorpse(enemy);
+    }
+
+    // 黏稠蜜沼: dying inside a mire splits off a small fresh pool, so a honey build keeps
+    // its own terrain topped up as long as it keeps killing in it.
+    const mire = this.fields.find(
+      (field) => field.honeyMire && field.mireLevel > 0 && circleDistance(field, enemy) <= field.radius,
+    );
+    if (mire) {
+      this.spawnHoneyMire(enemy.x, enemy.y, mire.radius * 0.45, 2.2 + mire.mireLevel * 0.6, mire.mireLevel, mire.damage);
+    }
+
+    // 鹿角突刺: if this body was speared, free the charge so it stops dragging a corpse.
+    if (enemy.carriedBy) {
+      const carrier = this.projectiles.find((projectile) => projectile.id === enemy.carriedBy);
+      if (carrier) {
+        carrier.carriedEnemyId = null;
+      }
+      enemy.carriedBy = null;
+    }
 
     this.spawnRegionalKinBurst(enemy);
 
@@ -7142,6 +8185,11 @@ export class GameRuntime {
     if (enemy.vulnerableTimer > 0 && enemy.vulnerableMult > 0) {
       finalDamage *= 1 + enemy.vulnerableMult;
     }
+    // 破甲 is additive per stack and multiplies alongside 易伤, so the two can be stacked
+    // by different builds without either one being redundant.
+    if (enemy.armorShredTimer > 0 && enemy.armorShredStacks > 0) {
+      finalDamage *= 1 + enemy.armorShredStacks * ARMOR_SHRED_PER_STACK;
+    }
     // Boss stagger window: damage is amplified while the broken shield leaves it exposed.
     if (enemy.bossVulnerableFor > 0) {
       finalDamage *= BOSS_VULNERABLE_DAMAGE_BONUS;
@@ -7204,6 +8252,123 @@ export class GameRuntime {
     if (!enemy || amount <= 0) return;
     enemy.vulnerableMult = Math.max(enemy.vulnerableMult || 0, amount);
     enemy.vulnerableTimer = Math.max(enemy.vulnerableTimer || 0, duration);
+  }
+
+  // Shove an enemy along a unit vector, scaled down by its weight class. Shared by every
+  // displacement source so weight rules stay in one place. Returns the distance applied.
+  applyKnockback(enemy, dirX, dirY, distance) {
+    if (!enemy || enemy.immovable || !(distance > 0)) {
+      return 0;
+    }
+    const applied = distance * (1 - (enemy.knockbackResist || 0));
+    if (applied <= 0.01) {
+      return 0;
+    }
+    enemy.x = clamp(enemy.x + dirX * applied, enemy.radius, ARENA.width - enemy.radius);
+    enemy.y = clamp(enemy.y + dirY * applied, enemy.radius, ARENA.height - enemy.radius);
+    return applied;
+  }
+
+  // Only light enemies can be speared and driven around. A charge that grabbed an elite
+  // could drag it half the arena, which both trivialised positioning and stranded the
+  // elite in a corner where it could no longer reach the player.
+  canCarryEnemy(enemy) {
+    return Boolean(enemy) && !enemy.isSoul && !enemy.immovable && !enemy.elite && !enemy.boss;
+  }
+
+  // 破甲: stacks add up to a cap and share one refreshing timer. The caller can pass a
+  // lower ceiling than the global one so an upgrade level can buy a higher ceiling.
+  applyArmorShred(enemy, stacks, duration = ARMOR_SHRED_DURATION, maxStacks = ARMOR_SHRED_MAX_STACKS) {
+    if (!enemy || !(stacks > 0)) return;
+    const ceiling = Math.min(ARMOR_SHRED_MAX_STACKS, maxStacks);
+    enemy.armorShredStacks = Math.min(ceiling, (enemy.armorShredStacks || 0) + stacks);
+    enemy.armorShredTimer = Math.max(enemy.armorShredTimer || 0, duration);
+  }
+
+  // Shared grip slow: removes a flat fraction of movement on a short refreshing timer.
+  // Used by anything that wants a near-root rather than slowTimer's soft 0.68 factor,
+  // and by enemy bullets (which have no slowTimer at all).
+  applyGrip(target, amount, duration = 0.2) {
+    if (!target || !(amount > 0)) return;
+    target.gripSlow = Math.max(target.gripSlow || 0, amount);
+    target.gripTimer = Math.max(target.gripTimer || 0, duration);
+  }
+
+  // 时间折叠: the elite/boss answer to the clock dial. Stacks refresh one shared timer and
+  // collapse into a stun once they hit the cap, which 凝滞时刻 raises.
+  applyTimeFold(enemy, freezeLevel, damage) {
+    if (!enemy) return;
+    const cap = TIME_FOLD_BASE_CAP + freezeLevel;
+    enemy.timeFoldStacks = (enemy.timeFoldStacks || 0) + 1;
+    enemy.timeFoldTimer = TIME_FOLD_DURATION;
+    this.spawnSkillEffect({
+      kind: "timeFold",
+      x: enemy.x,
+      y: enemy.y,
+      radius: enemy.radius * 2.1,
+      stacks: enemy.timeFoldStacks,
+      duration: 0.5,
+      color: CLOCK_DIAL_COLOR,
+      accent: CLOCK_DIAL_ACCENT,
+    });
+    if (enemy.timeFoldStacks >= cap) {
+      this.collapseTimeFold(enemy, damage);
+    }
+  }
+
+  // The folds snap back: all the stolen time is returned at once as a hard stun plus a
+  // burst scaled by how many stacks were banked. This is the payoff that makes stacking
+  // folds on a boss worth doing, and it is why the per-stack effect doesn't need to be
+  // a damage buff.
+  collapseTimeFold(enemy, damage) {
+    const stacks = enemy.timeFoldStacks || 0;
+    if (stacks <= 0) return;
+    enemy.timeFoldStacks = 0;
+    enemy.timeFoldTimer = 0;
+    enemy.freezeTimer = Math.max(enemy.freezeTimer || 0, TIME_FOLD_COLLAPSE_STUN);
+    enemy.slowTimer = Math.max(enemy.slowTimer || 0, TIME_FOLD_COLLAPSE_STUN + 1);
+    if (damage > 0) {
+      this.damageEnemy(enemy, damage * TIME_FOLD_COLLAPSE_DAMAGE_PER_STACK * stacks, "clockIvyLash");
+    }
+    this.addScreenShake(9);
+    this.spawnSkillEffect({
+      kind: "timeSnap",
+      x: enemy.x,
+      y: enemy.y,
+      radius: enemy.radius * 3.4,
+      duration: 0.4,
+      color: CLOCK_DIAL_COLOR,
+      accent: "#ffffff",
+    });
+    this.callbacks.onToast?.("时间折叠崩解");
+  }
+
+  // Multiplier applied to an enemy's action timers. 1 means normal; higher means every
+  // attack, special and windup takes proportionally longer.
+  getTimeFoldStretch(enemy) {
+    const stacks = enemy?.timeFoldStacks || 0;
+    if (!(enemy?.timeFoldTimer > 0) || stacks <= 0) return 1;
+    return 1 + stacks * TIME_FOLD_SLOW_PER_STACK;
+  }
+
+  // 晶华鹿角 applies the shred; the level sets both the per-hit stacks and the ceiling.
+  applyAntlerShred(enemy, crystalLevel) {
+    if (!(crystalLevel > 0)) return;
+    this.applyArmorShred(
+      enemy,
+      ANTLER_CRYSTAL_SHRED_STACKS,
+      ARMOR_SHRED_DURATION,
+      ANTLER_CRYSTAL_SHRED_CAP_PER_LEVEL * crystalLevel,
+    );
+  }
+
+  // 孢毒: stacking DoT. tickDamage is per-stack-per-second, so stacks make it ramp.
+  applySporePoison(enemy, stacks, tickDamage, bloomLevel = 0) {
+    if (!enemy || !(stacks > 0)) return;
+    enemy.sporeStacks = Math.min(SPORE_POISON_MAX_STACKS, (enemy.sporeStacks || 0) + stacks);
+    enemy.sporeTimer = SPORE_POISON_DURATION;
+    enemy.sporeTickDamage = Math.max(enemy.sporeTickDamage || 0, tickDamage);
+    enemy.sporeBloom = Math.max(enemy.sporeBloom || 0, bloomLevel);
   }
 
   // Game-feel helpers ------------------------------------------------------
@@ -7422,6 +8587,24 @@ export class GameRuntime {
 
   findEnemyById(enemyId) {
     return this.enemies.find((enemy) => enemy.id === enemyId) || null;
+  }
+
+  // Used by 鹿角突刺 to pick the body it drives its current passenger into. Souls are
+  // skipped: ramming an inert echo would waste the whole charge.
+  findNearestEnemyExcluding(x, y, excludedId, maxRange = Number.POSITIVE_INFINITY) {
+    let target = null;
+    let bestDistance = maxRange;
+    for (const enemy of this.enemies) {
+      if (enemy.id === excludedId || enemy.isSoul) {
+        continue;
+      }
+      const distance = Math.hypot(enemy.x - x, enemy.y - y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        target = enemy;
+      }
+    }
+    return target;
   }
 
   projectileHitsEnemy(projectile, enemy, startX, startY, endX, endY) {

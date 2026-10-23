@@ -79,8 +79,11 @@ function normalizeTalentLevel(level) {
 // (more skills, higher skill levels, talent-driven attack multiplier), so boss HP grows
 // on the same order instead of the old near-linear blow-up that outran every build.
 // Target time-to-kill is ~60-120s at a build appropriate to that tier.
-export const BOSS_BASE_HEALTH = 60000;
-export const BOSS_HEALTH_PER_TIER = 16000;
+// Walked back from 60000/16000: the exp curve flattening (level ~25 -> high 30s) means a
+// build arrives at the boss with roughly 50% more growth picks than when those numbers
+// were set, so the same HP was reading as a longer fight than intended.
+export const BOSS_BASE_HEALTH = 44000;
+export const BOSS_HEALTH_PER_TIER = 11500;
 
 export function bossHealthForTier(tier) {
   const safeTier = Math.max(1, Math.round(Number(tier) || 1));
@@ -500,6 +503,9 @@ export const NEST_MONSTER_DEFINITION = {
   // 1600 x2 (非Boss倍率) = 3200 有效血量；三个巢约等于两个精英的工作量。
   health: 1600,
   healthGrowthScale: 0.5,
+  // A nest is rooted in the ground: nothing may displace it, or a charge could shove the
+  // 净化 objective into a corner (or off its spawn cluster) and break the wave.
+  immovable: true,
   speed: 0,
   damage: 12,
   radius: 30,

@@ -581,37 +581,42 @@ export const SKILL_LIBRARY = [
   {
     id: "honeyBomb",
     name: "蜜弹爆溅",
-    description: "丢出蜜糖炸弹，爆炸后留下蜜沼减速敌人。",
+    // Was a generic lobbed bomb identical to 琥珀齿轮. Its identity is now terrain: the
+    // glob leaves a mire that nearly roots whatever steps in, and overlapping mires merge
+    // into one bigger, longer-lasting pool — so repeated casts build a wall, not a stack
+    // of separate puddles.
+    description: "抛出蜜糖弹，炸开成一片蜜沼。踩进蜜沼的害虫几乎被粘在原地并持续受伤；两片蜜沼重叠时会融成一片更大、更持久的沼泽。",
     color: "#f0b95f",
-    advancedBehavior: "lobbedBomb",
+    advancedBehavior: "mire",
     unlockCost: 448,
     maxLevel: 5,
+    // `splash` is the burst radius, `mireRadius`/`mireDuration` the pool it leaves.
     statsByLevel: [
-      { cooldown: 3.2, damage: 52, count: 1, speed: 240, size: 14, splash: 50, range: 280 },
-      { cooldown: 2.9, damage: 66, count: 1, speed: 260, size: 15, splash: 56, range: 300 },
-      { cooldown: 2.6, damage: 82, count: 2, speed: 280, size: 16, splash: 62, range: 320 },
-      { cooldown: 2.35, damage: 100, count: 2, speed: 300, size: 17, splash: 68, range: 340 },
-      { cooldown: 2.1, damage: 122, count: 2, speed: 320, size: 18, splash: 76, range: 360 },
+      { cooldown: 3.6, damage: 52, count: 1, speed: 240, size: 14, splash: 56, range: 280, mireRadius: 78, mireDuration: 4.5 },
+      { cooldown: 3.3, damage: 66, count: 1, speed: 260, size: 15, splash: 62, range: 300, mireRadius: 84, mireDuration: 4.9 },
+      { cooldown: 3.0, damage: 82, count: 2, speed: 280, size: 16, splash: 68, range: 320, mireRadius: 90, mireDuration: 5.3 },
+      { cooldown: 2.75, damage: 100, count: 2, speed: 300, size: 17, splash: 74, range: 340, mireRadius: 96, mireDuration: 5.7 },
+      { cooldown: 2.5, damage: 122, count: 2, speed: 320, size: 18, splash: 82, range: 360, mireRadius: 104, mireDuration: 6.1 },
     ],
     exclusiveUpgrades: [
       {
         id: "honeyBombFocus",
         name: "蜜糖浓缩",
-        description: "提高蜜弹爆炸的基础伤害。",
+        description: "提高爆炸伤害与蜜沼范围。",
         maxLevel: 2,
         unlockCost: 128,
       },
       {
         id: "honeyBombTempo",
         name: "速调蜜浆",
-        description: "缩短蜜弹爆溅的冷却时间。",
+        description: "延长蜜沼持续时间并缩短冷却。",
         maxLevel: 2,
         unlockCost: 148,
       },
       {
         id: "honeyBombMire",
         name: "黏稠蜜沼",
-        description: "【专属】爆炸后原地留下持续数秒的蜜沼，踩入的敌人被牢牢粘住并持续受伤。",
+        description: "【专属】蜜沼会把沼内的害虫朝中心缓缓拖拽，且在蜜沼中死亡的害虫会炸开一小片新的蜜沼。",
         maxLevel: 2,
         unlockCost: 172,
       },
@@ -1010,38 +1015,41 @@ export const SKILL_LIBRARY = [
   },
   {
     id: "clockIvyLash",
-    name: "时藤鞭击",
-    description: "甩出时藤锁定一片区域将其困在时间里，缓速蓄力后猛地倒转时针，把积攒的时光一并炸开。",
-    color: "#7bc489",
-    advancedBehavior: "snare",
+    name: "凝时钟域",
+    // A placed zone rather than a lash: no whip, no travel, just a large gold clock face
+    // on the ground running a countdown. The cost of that reach is a long cooldown.
+    description: "在指定位置降下一面金色钟盘开始倒数。圈内的害虫越来越慢，若在倒数结束前没能走出钟域，杂兵会被时间彻底冻结 5 秒；精英与 Boss 则陷入可叠加的时间折叠，层层偷走它们的行动时间。",
+    color: "#f2c14b",
+    advancedBehavior: "clock",
     unlockCost: 756,
     maxLevel: 5,
+    // `countdown` is how long the dial runs before it resolves; `bloomRadius` is the dial.
     statsByLevel: [
-      { cooldown: 3.6, damage: 56, count: 2, range: 260, root: 0.7, bloomRadius: 50 },
-      { cooldown: 3.2, damage: 72, count: 2, range: 290, root: 0.82, bloomRadius: 54 },
-      { cooldown: 2.85, damage: 92, count: 3, range: 320, root: 0.94, bloomRadius: 58 },
-      { cooldown: 2.55, damage: 114, count: 3, range: 350, root: 1.06, bloomRadius: 62 },
-      { cooldown: 2.25, damage: 140, count: 3, range: 380, root: 1.2, bloomRadius: 68 },
+      { cooldown: 9.0, damage: 70, count: 1, range: 300, countdown: 2.4, bloomRadius: 150 },
+      { cooldown: 8.4, damage: 92, count: 1, range: 320, countdown: 2.5, bloomRadius: 162 },
+      { cooldown: 7.8, damage: 118, count: 2, range: 340, countdown: 2.6, bloomRadius: 174 },
+      { cooldown: 7.2, damage: 148, count: 2, range: 360, countdown: 2.7, bloomRadius: 186 },
+      { cooldown: 6.6, damage: 184, count: 2, range: 380, countdown: 2.8, bloomRadius: 200 },
     ],
     exclusiveUpgrades: [
       {
         id: "clockIvyLashFocus",
-        name: "时藤毒素",
-        description: "提高藤鞭伤害与爆炸范围。",
+        name: "鎏金钟盘",
+        description: "提高钟域伤害与钟盘半径。",
         maxLevel: 2,
         unlockCost: 172,
       },
       {
         id: "clockIvyLashFreeze",
         name: "凝滞时刻",
-        description: "【专属】藤鞭抽中的敌人被时间冻结，短暂彻底定身后再引爆。",
+        description: "【专属】钟域的减速更狠且冻结更久，并让时间折叠能多叠两层——折叠层数攒满时会一并崩解，把偷走的时间全部还成一次硬直。",
         maxLevel: 2,
         unlockCost: 196,
       },
       {
         id: "clockIvyLashTempo",
-        name: "藤蔓速长",
-        description: "缩短时藤鞭击的冷却时间。",
+        name: "拨快时针",
+        description: "缩短钟域倒数所需的时间与自身冷却。",
         maxLevel: 2,
         unlockCost: 192,
       },
@@ -1049,7 +1057,7 @@ export const SKILL_LIBRARY = [
   },
   {
     id: "operaMothBlade",
-    name: "a'a'a'a'a'a'a'a'a'a'a'a'a'w'w'w'w'w'w",
+    name: "蛾刃回旋",
     description: "放出蛾形飞刃沿螺旋轨迹盘旋切割，沿途洒落致幻鳞粉，飞远后折返归巢。",
     color: "#c6a0f2",
     advancedBehavior: "boomerang",
@@ -1089,37 +1097,40 @@ export const SKILL_LIBRARY = [
   {
     id: "antlerBolt",
     name: "鹿角突刺",
-    description: "射出鹿角标枪贯穿敌人，分裂追击两侧。",
+    // Stamina-driven charge: the phantom commits to the cast direction (no homing) and
+    // spends 冲撞耐力 on travel, impacts and carrying.精英与 Boss 的消耗远高于杂兵，
+    // 所以撞大怪是一次性的爆发，而不是无限连撞。
+    description: "召出鹿之虚影沿直线冲撞。未被撞杀的敌人会被鹿角挑起，带着一路撞向下一个目标；移动、撞击与顶着敌人前进都会消耗冲撞耐力，面对精英与 Boss 消耗大幅提高，耐力耗尽时轰然散开。",
     color: "#73d1ff",
-    advancedBehavior: "beam",
+    advancedBehavior: "charge",
     unlockCost: 812,
     maxLevel: 5,
     statsByLevel: [
-      { cooldown: 2.4, damage: 56, count: 1, speed: 500, pierce: 1, size: 9, range: 420 },
-      { cooldown: 2.15, damage: 72, count: 1, speed: 530, pierce: 1, size: 10, range: 450 },
-      { cooldown: 1.9, damage: 90, count: 2, speed: 560, pierce: 2, size: 11, range: 480 },
-      { cooldown: 1.7, damage: 112, count: 2, speed: 590, pierce: 2, size: 12, range: 510 },
-      { cooldown: 1.5, damage: 138, count: 2, speed: 620, pierce: 3, size: 13, range: 540 },
+      { cooldown: 2.4, damage: 56, count: 1, speed: 470, size: 16, stamina: 100 },
+      { cooldown: 2.15, damage: 72, count: 1, speed: 490, size: 17, stamina: 116 },
+      { cooldown: 1.9, damage: 90, count: 2, speed: 510, size: 18, stamina: 132 },
+      { cooldown: 1.7, damage: 112, count: 2, speed: 530, size: 19, stamina: 150 },
+      { cooldown: 1.5, damage: 138, count: 2, speed: 550, size: 20, stamina: 170 },
     ],
     exclusiveUpgrades: [
       {
         id: "antlerBoltFocus",
         name: "鹿角锋锐",
-        description: "提高标枪伤害与分裂范围。",
+        description: "提高冲撞伤害与鹿影体型。",
         maxLevel: 2,
         unlockCost: 180,
       },
       {
         id: "antlerBoltTempo",
-        name: "标枪快手",
-        description: "缩短鹿角突刺的冷却时间。",
+        name: "疾蹄奔游",
+        description: "提高鹿影冲撞耐力并缩短冷却时间。",
         maxLevel: 2,
         unlockCost: 200,
       },
       {
         id: "antlerBoltGore",
-        name: "枝角贯地",
-        description: "【专属】标枪贯穿力大增，命中时向两侧再岔出分叉鹿角追击更多敌人。",
+        name: "晶华鹿角",
+        description: "【专属】冲撞耐力消耗大幅降低，撞击附带可叠加的破甲，使目标承受的伤害持续提高。鹿影体型增大、色泽转为晶蓝，鹿角透出高光。",
         maxLevel: 2,
         unlockCost: 224,
       },
@@ -1128,37 +1139,40 @@ export const SKILL_LIBRARY = [
   {
     id: "sporeTeacupMine",
     name: "菌杯雾雷",
-    description: "埋下菌杯地雷，触发后释放持续伤害的菌雾。",
+    // Was literally the same mine behaviour as 孢子地雷 (one contact burst plus a static
+    // toxic puddle). Now it is a placed geyser that pulses expanding mist rings: the
+    // damage is in the moving ring edge, not in standing on a patch.
+    description: "抛出倒扣的菌杯化作孢雾喷泉，反复喷出向外扩张的雾环。被雾环扫过的敌人叠加孢毒持续掉血，叠得越高掉得越快。",
     color: "#b8c978",
-    advancedBehavior: "mine",
+    advancedBehavior: "geyser",
     unlockCost: 840,
     maxLevel: 5,
     statsByLevel: [
-      { cooldown: 5.0, damage: 68, radius: 60, count: 1, armTime: 0.52, duration: 7.0 },
-      { cooldown: 4.5, damage: 88, radius: 66, count: 1, armTime: 0.48, duration: 7.5 },
-      { cooldown: 4.0, damage: 110, radius: 72, count: 2, armTime: 0.44, duration: 8.0 },
-      { cooldown: 3.6, damage: 136, radius: 78, count: 2, armTime: 0.4, duration: 8.5 },
-      { cooldown: 3.2, damage: 166, radius: 86, count: 2, armTime: 0.36, duration: 9.0 },
+      { cooldown: 5.0, damage: 60, radius: 150, count: 1, erupts: 3, interval: 1.15 },
+      { cooldown: 4.5, damage: 78, radius: 162, count: 1, erupts: 4, interval: 1.1 },
+      { cooldown: 4.0, damage: 98, radius: 174, count: 2, erupts: 4, interval: 1.05 },
+      { cooldown: 3.6, damage: 120, radius: 186, count: 2, erupts: 5, interval: 1.0 },
+      { cooldown: 3.2, damage: 146, radius: 200, count: 2, erupts: 6, interval: 0.95 },
     ],
     exclusiveUpgrades: [
       {
         id: "sporeTeacupMineFocus",
         name: "菌孢浓雾",
-        description: "提高地雷与菌雾伤害。",
+        description: "提高雾环伤害与孢毒的每层掉血。",
         maxLevel: 2,
         unlockCost: 184,
       },
       {
         id: "sporeTeacupMineTempo",
         name: "速生菌床",
-        description: "缩短菌杯雾雷的冷却时间。",
+        description: "增加喷发次数并缩短菌杯雾雷的冷却时间。",
         maxLevel: 2,
         unlockCost: 204,
       },
       {
         id: "sporeTeacupMineBloom",
         name: "孢潮蔓延",
-        description: "【专属】菌雾范围显著扩大且持续更久，毒性随时间层层加深。",
+        description: "【专属】孢毒会传染：中毒的敌人不断把孢毒蔓延给身边的同类，而中毒者死亡时会炸开一朵小菌杯再喷一轮雾环。",
         maxLevel: 2,
         unlockCost: 228,
       },
@@ -1166,38 +1180,42 @@ export const SKILL_LIBRARY = [
   },
   {
     id: "tulipThunder",
-    name: "郁金雷击",
-    description: "召唤郁金花雷跳跃传导至附近敌人。",
+    name: "郁金雷网",
+    // Was a plain ground-zap sharing the generic strike handler. Now it plants rods and
+    // the damage lives on the arcs *between* them, so the shape is a web of line segments
+    // instead of yet another circle — and where you plant them matters.
+    description: "种下几株郁金雷花作为避雷针。相邻雷花之间会架起电弧，穿过电弧的害虫被持续电击并减速。雷花越密，网就越致命。",
     color: "#ffab86",
-    advancedBehavior: "strike",
+    advancedBehavior: "grid",
     unlockCost: 868,
     maxLevel: 5,
+    // `duration` is how long a rod stands; `linkRange` is how far two rods can arc.
     statsByLevel: [
-      { cooldown: 4.0, damage: 62, count: 1, radius: 50, delay: 0.44 },
-      { cooldown: 3.6, damage: 80, count: 1, radius: 56, delay: 0.38 },
-      { cooldown: 3.2, damage: 102, count: 2, radius: 62, delay: 0.32 },
-      { cooldown: 2.85, damage: 126, count: 2, radius: 68, delay: 0.26 },
-      { cooldown: 2.5, damage: 156, count: 2, radius: 76, delay: 0.2 },
+      { cooldown: 5.2, damage: 38, count: 2, duration: 5.0, linkRange: 230, tickInterval: 0.3 },
+      { cooldown: 4.9, damage: 48, count: 2, duration: 5.4, linkRange: 245, tickInterval: 0.29 },
+      { cooldown: 4.6, damage: 60, count: 3, duration: 5.8, linkRange: 260, tickInterval: 0.28 },
+      { cooldown: 4.3, damage: 74, count: 3, duration: 6.2, linkRange: 275, tickInterval: 0.27 },
+      { cooldown: 4.0, damage: 92, count: 4, duration: 6.6, linkRange: 290, tickInterval: 0.26 },
     ],
     exclusiveUpgrades: [
       {
         id: "tulipThunderFocus",
         name: "郁金蓄雷",
-        description: "提高雷击伤害与传导次数。",
+        description: "提高电弧伤害与雷花之间的连接距离。",
         maxLevel: 2,
         unlockCost: 188,
       },
       {
         id: "tulipThunderTempo",
         name: "雷花速绽",
-        description: "缩短郁金雷击的冷却时间。",
+        description: "延长雷花存活时间并缩短冷却。",
         maxLevel: 2,
         unlockCost: 208,
       },
       {
         id: "tulipThunderField",
-        name: "雷池残响",
-        description: "【专属】落雷点绽开残留雷池，持续电击并减速滞留其中的敌人。",
+        name: "雷池过载",
+        description: "【专属】电弧每次电到敌人都会为两端的雷花充能，充满时雷花原地放出一圈雷池；并额外多种一株雷花。",
         maxLevel: 2,
         unlockCost: 232,
       },
@@ -1284,37 +1302,41 @@ export const SKILL_LIBRARY = [
   {
     id: "scissorVine",
     name: "剪刃藤蔓",
-    description: "交叉长出刃状藤蔓剪切范围内的敌人。",
+    // Was an instant single-target whip sharing the snare handler. Now it is an actual
+    // pair of scissors: two blade arms open wide, then swing shut. The telegraph is the
+    // open blades, and everything between them when they meet gets cut.
+    description: "在敌群中张开一对刃状藤蔓，随后猛地合拢。合拢时夹在双刃之间的害虫被向交点拖拽并受到重创，剪口还会留下持续流血。",
     color: "#ef6872",
-    advancedBehavior: "snare",
+    advancedBehavior: "scissor",
     unlockCost: 952,
     maxLevel: 5,
+    // `armLength` is the blade reach; `closeTime` is how long the blades stay open.
     statsByLevel: [
-      { cooldown: 3.4, damage: 60, count: 2, range: 250, root: 0.64, bloomRadius: 54 },
-      { cooldown: 3.05, damage: 78, count: 2, range: 280, root: 0.76, bloomRadius: 58 },
-      { cooldown: 2.7, damage: 100, count: 3, range: 310, root: 0.88, bloomRadius: 62 },
-      { cooldown: 2.4, damage: 124, count: 3, range: 340, root: 1.0, bloomRadius: 66 },
-      { cooldown: 2.1, damage: 152, count: 3, range: 370, root: 1.14, bloomRadius: 72 },
+      { cooldown: 3.8, damage: 96, count: 1, range: 260, armLength: 150, closeTime: 0.72 },
+      { cooldown: 3.45, damage: 124, count: 1, range: 285, armLength: 162, closeTime: 0.68 },
+      { cooldown: 3.1, damage: 158, count: 2, range: 310, armLength: 174, closeTime: 0.64 },
+      { cooldown: 2.8, damage: 196, count: 2, range: 335, armLength: 186, closeTime: 0.6 },
+      { cooldown: 2.5, damage: 240, count: 2, range: 360, armLength: 200, closeTime: 0.56 },
     ],
     exclusiveUpgrades: [
       {
         id: "scissorVineFocus",
         name: "剪刃淬炼",
-        description: "提高藤蔓伤害与剪切范围。",
+        description: "提高剪切伤害与双刃长度。",
         maxLevel: 2,
         unlockCost: 200,
       },
       {
         id: "scissorVineTempo",
         name: "蔓剪速切",
-        description: "缩短剪刃藤蔓的冷却时间。",
+        description: "加快合拢速度并缩短冷却。",
         maxLevel: 2,
         unlockCost: 220,
       },
       {
         id: "scissorVineCross",
         name: "交叉裂创",
-        description: "【专属】双刃交叉处爆开裂创花棘，波及周围敌人并留下持续流血。",
+        description: "【专属】若一次剪到两个以上的目标，双刃会立刻张开再剪一次；每一刀都加深流血。",
         maxLevel: 2,
         unlockCost: 244,
       },
@@ -1362,37 +1384,41 @@ export const SKILL_LIBRARY = [
   {
     id: "amberGearBurst",
     name: "琥珀齿轮",
-    description: "发射旋转齿轮，嵌入原地持续切割触碰的敌人。",
+    // Was byte-identical to 蜜弹爆溅. The gear is now a solid, persistent object: it flies
+    // out, embeds where it stops, and then slowly grinds toward the nearest enemy. Honey
+    // is static terrain denial; the gear is a slow hunter that follows the crowd.
+    description: "甩出旋转的琥珀齿轮，飞到尽头后嵌进地里继续空转。嵌地的齿轮会缓缓朝最近的害虫碾过去，持续绞磨一切被它撞到的东西。",
     color: "#f1b86b",
-    advancedBehavior: "lobbedBomb",
+    advancedBehavior: "gear",
     unlockCost: 1008,
     maxLevel: 5,
+    // `duration` is how long an embedded gear grinds; `grindInterval` its damage tick.
     statsByLevel: [
-      { cooldown: 3.6, damage: 58, count: 1, speed: 220, size: 14, splash: 52, range: 260 },
-      { cooldown: 3.25, damage: 74, count: 1, speed: 240, size: 15, splash: 58, range: 280 },
-      { cooldown: 2.9, damage: 94, count: 2, speed: 260, size: 16, splash: 64, range: 300 },
-      { cooldown: 2.6, damage: 116, count: 2, speed: 280, size: 17, splash: 70, range: 320 },
-      { cooldown: 2.3, damage: 142, count: 2, speed: 300, size: 18, splash: 78, range: 340 },
+      { cooldown: 4.4, damage: 44, count: 1, speed: 320, size: 20, range: 260, duration: 5.0, driftSpeed: 44, grindInterval: 0.32 },
+      { cooldown: 4.1, damage: 56, count: 1, speed: 335, size: 21, range: 280, duration: 5.4, driftSpeed: 47, grindInterval: 0.31 },
+      { cooldown: 3.8, damage: 71, count: 2, speed: 350, size: 22, range: 300, duration: 5.8, driftSpeed: 50, grindInterval: 0.3 },
+      { cooldown: 3.5, damage: 88, count: 2, speed: 365, size: 23, range: 320, duration: 6.2, driftSpeed: 53, grindInterval: 0.29 },
+      { cooldown: 3.2, damage: 108, count: 2, speed: 380, size: 24, range: 340, duration: 6.6, driftSpeed: 56, grindInterval: 0.28 },
     ],
     exclusiveUpgrades: [
       {
         id: "amberGearBurstFocus",
         name: "齿轮锋锐",
-        description: "提高齿轮伤害与旋转切割时间。",
+        description: "提高绞磨伤害与齿轮体积。",
         maxLevel: 2,
         unlockCost: 208,
       },
       {
         id: "amberGearBurstTempo",
         name: "急速齿转",
-        description: "缩短琥珀齿轮的冷却时间。",
+        description: "延长嵌地空转时间并缩短冷却。",
         maxLevel: 2,
         unlockCost: 228,
       },
       {
         id: "amberGearBurstSaw",
         name: "嵌地锯盘",
-        description: "【专属】齿轮嵌地后化作锯盘力场，持续绞磨并减速停留其上的敌人。",
+        description: "【专属】齿轮转得更快、追得更紧，并不断朝四周甩出锯齿碎片。",
         maxLevel: 2,
         unlockCost: 252,
       },
@@ -1440,37 +1466,41 @@ export const SKILL_LIBRARY = [
   {
     id: "grandPrismMeteor",
     name: "大棱镜彗星",
-    description: "召来巨型棱镜彗星碎裂追踪敌人。",
+    // Was a third copy of the meteor handler alongside 兰彗坠闪 and 蚀瓣花雨. Now the
+    // impact is only the opening: the comet core stays planted as a prism that keeps
+    // firing beams. It is the one skill in the set that leaves a turret behind.
+    description: "召下巨型棱镜彗星。坠击本身造成大范围重伤，核心则会插在落点化作棱镜，持续向最近的害虫射出穿透光束，直到光芒耗尽。",
     color: "#72cbff",
-    advancedBehavior: "meteor",
+    advancedBehavior: "prismTurret",
     unlockCost: 1064,
     maxLevel: 5,
+    // `duration` is how long the prism keeps firing; `beamInterval` its fire rate.
     statsByLevel: [
-      { cooldown: 6.0, damage: 96, radius: 56, count: 1, fallTime: 0.7 },
-      { cooldown: 5.4, damage: 122, radius: 62, count: 1, fallTime: 0.62 },
-      { cooldown: 4.8, damage: 152, radius: 68, count: 2, fallTime: 0.54 },
-      { cooldown: 4.3, damage: 186, radius: 74, count: 2, fallTime: 0.46 },
-      { cooldown: 3.8, damage: 226, radius: 82, count: 2, fallTime: 0.38 },
+      { cooldown: 8.0, damage: 150, radius: 92, count: 1, fallTime: 0.8, duration: 5.0, beamInterval: 0.55, beamDamage: 54 },
+      { cooldown: 7.4, damage: 190, radius: 100, count: 1, fallTime: 0.74, duration: 5.5, beamInterval: 0.52, beamDamage: 70 },
+      { cooldown: 6.8, damage: 238, radius: 108, count: 1, fallTime: 0.68, duration: 6.0, beamInterval: 0.49, beamDamage: 88 },
+      { cooldown: 6.3, damage: 292, radius: 116, count: 2, fallTime: 0.62, duration: 6.5, beamInterval: 0.46, beamDamage: 108 },
+      { cooldown: 5.8, damage: 354, radius: 126, count: 2, fallTime: 0.56, duration: 7.0, beamInterval: 0.43, beamDamage: 132 },
     ],
     exclusiveUpgrades: [
       {
         id: "grandPrismMeteorFocus",
         name: "棱星碎裂",
-        description: "提高彗星与小棱星伤害。",
+        description: "提高坠击与光束伤害。",
         maxLevel: 2,
         unlockCost: 216,
       },
       {
         id: "grandPrismMeteorTempo",
         name: "彗星速召",
-        description: "缩短大棱镜彗星的冷却时间。",
+        description: "提高棱镜射速与存续时间，并缩短冷却。",
         maxLevel: 2,
         unlockCost: 236,
       },
       {
         id: "grandPrismMeteorShatter",
         name: "棱镜碎界",
-        description: "【专属】巨彗坠落时炸出成群追踪碎棱星，并令命中的敌人破碎易伤。",
+        description: "【专属】棱镜每次开火都分出多道光束同时锁定不同目标，被光束扫过的害虫陷入破碎易伤。",
         maxLevel: 2,
         unlockCost: 260,
       },
