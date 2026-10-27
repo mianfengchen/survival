@@ -204,9 +204,16 @@ function parseColor(value, fallback = 0xffffff, fallbackAlpha = 1) {
   return { color: fallback, alpha: fallbackAlpha };
 }
 
-function beginFill(graphics, value, fallback = 0xffffff, fallbackAlpha = 1) {
+// The third parameter was originally a fallback *colour*, but nearly every call site in
+// this file passes an alpha there instead — which parseColor silently ignored, so those
+// shapes all rendered fully opaque (most visibly the 祭坛 ring and the 凝时钟域 dial).
+// A number <= 1 is now treated as an alpha override; real colour fallbacks are written
+// as 0x... literals and are all far above 1, so they are unambiguous.
+function beginFill(graphics, value, fallbackOrAlpha = 0xffffff, fallbackAlpha = 1) {
+  const asAlpha = typeof fallbackOrAlpha === "number" && fallbackOrAlpha <= 1;
+  const fallback = asAlpha ? 0xffffff : fallbackOrAlpha;
   const { color, alpha } = parseColor(value, fallback, fallbackAlpha);
-  graphics.beginFill(color, alpha);
+  graphics.beginFill(color, asAlpha ? clamp(fallbackOrAlpha, 0, 1) : alpha);
 }
 
 function beginFillWithAlpha(graphics, value, alpha, fallback = 0xffffff) {
@@ -1061,6 +1068,7 @@ export class PixiRenderer {
     this.drawClockDials(runtime.strikes || []);
     this.drawScissorBlades(runtime.strikes || []);
     this.drawWildfire(runtime.flames || [], delta);
+    this.drawRoyalCourt(runtime.royalCourt, runtime.player);
     this.drawTulipRods(runtime.tulipRods || [], delta);
     this.drawGears(runtime.gears || []);
     this.drawMeteors(runtime.meteors || [], delta);
@@ -1224,6 +1232,32 @@ export class PixiRenderer {
     if (enemy.nest) {
       return this.getCachedTexture("garden-nest", 140, 36, (graphics, x, y, radius) => {
         paintGardenNest(graphics, x, y, radius, enemy);
+      });
+    }
+
+    if (enemy.raider) {
+      // 突袭 target: a lean dart-shaped body so it reads as fast at a glance, which is
+      // the one thing the player needs to know about it.
+      return this.getCachedTexture("garden-raider", 110, 22, (graphics, x, y, radius) => {
+        setLine(graphics, radius * 0.16, enemy.accent);
+        for (const side of [-1, 1]) {
+          graphics.moveTo(x - radius * 0.5, y + side * radius * 0.2);
+          graphics.lineTo(x - radius * 1.0, y + side * radius * 0.62);
+        }
+        beginFill(graphics, enemy.color);
+        graphics.drawPolygon([
+          x + radius * 1.05, y,
+          x - radius * 0.35, y - radius * 0.55,
+          x - radius * 0.75, y,
+          x - radius * 0.35, y + radius * 0.55,
+        ]);
+        graphics.endFill();
+        beginFill(graphics, enemy.detailColor);
+        graphics.drawCircle(x + radius * 0.36, y, radius * 0.2);
+        graphics.endFill();
+        setLine(graphics, radius * 0.1, enemy.detailColor);
+        graphics.moveTo(x + radius * 1.05, y);
+        graphics.lineTo(x + radius * 0.3, y);
       });
     }
 
@@ -3203,6 +3237,39 @@ export class PixiRenderer {
           graphics.moveTo(effect.x + Math.cos(a) * r * 0.3, effect.y + Math.sin(a) * r * 0.3);
           graphics.lineTo(effect.x + Math.cos(a) * r * 0.92, effect.y + Math.sin(a) * r * 0.92);
         }
+      } else if (effect.kind === "resonanceNode") {
+        // 种脉共鸣: the moment a body becomes a relay for the next ring.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.5 + progress * 0.6);
+        setLine(graphics, 3 * fade, effect.color || "#badb69");
+        graphics.drawCircle(effect.x, effect.y, r);
+        beginFill(graphics, effect.accent || "#f2ffcf", 0.6 * fade);
+        drawStar(graphics, effect.x, effect.y, r * 0.42, r * 0.16, 6);
+        graphics.endFill();
+      } else if (effect.kind === "splitBurst") {
+        // 裂群: the body tears in two.
+        const fade = 1 - progress;
+        const r = effect.radius * (0.4 + progress * 0.8);
+        setLine(graphics, 3.4 * fade, effect.accent || "#ffe9f4");
+        for (const side of [-1, 1]) {
+          const a = side * 0.9;
+          graphics.moveTo(effect.x, effect.y);
+          graphics.lineTo(effect.x + Math.cos(a) * r, effect.y + Math.sin(a) * r);
+        }
+        beginFill(graphics, effect.color || "#ffffff", 0.3 * fade);
+        graphics.drawCircle(effect.x, effect.y, r * 0.4);
+        graphics.endFill();
+      } else if (effect.kind === "altarCharge") {
+        // 祭坛: a mote of offering drifting from the kill into the brazier.
+        const fade = 1 - progress;
+        const bx = lerp(effect.x, effect.targetX, progress);
+        const by = lerp(effect.y, effect.targetY, progress);
+        setLine(graphics, 2 * fade, effect.color || "#ffd98a");
+        graphics.moveTo(effect.x, effect.y);
+        graphics.lineTo(bx, by);
+        beginFill(graphics, effect.accent || "#fff6dc", 0.8 * fade);
+        graphics.drawCircle(bx, by, 4.5 * fade + 1.5);
+        graphics.endFill();
       } else if (effect.kind === "flameDie") {
         // 蓝焰燎原: a patch running out of fuel collapses into smoke.
         const fade = 1 - progress;
@@ -3673,6 +3740,42 @@ export class PixiRenderer {
     }
   }
 
+  // 皇庭威仪: the court follows the caster. Drawn on the ground layer so the crowd it is
+  // counting stays readable on top of it, with a crown pip per live 威仪 stack.
+  drawRoyalCourt(court, player) {
+    if (!court || !player) {
+      return;
+    }
+    const graphics = this.layers.clockDials;
+    const r = court.radius;
+    const breathe = (Math.sin(court.pulse || 0) + 1) / 2;
+    const stacks = player.majestyStacks || 0;
+    const charged = stacks > 0;
+    beginFill(graphics, court.color || "#a8d46b", 0.06 + breathe * 0.04);
+    graphics.drawCircle(player.x, player.y, r);
+    graphics.endFill();
+    setLine(graphics, charged ? 4 : 2.6, charged ? "#eaffc4" : "rgba(168, 212, 107, 0.6)");
+    graphics.drawCircle(player.x, player.y, r);
+    setLine(graphics, 1.4, "rgba(234, 255, 196, 0.35)");
+    graphics.drawCircle(player.x, player.y, r * 0.82);
+    // Crown points around the rim, one lit per stack of 威仪.
+    const points = Math.max(1, court.majestyCap || 8);
+    for (let index = 0; index < points; index += 1) {
+      const a = -Math.PI / 2 + (Math.PI * 2 * index) / points;
+      const lit = index < stacks;
+      const h = lit ? r * 0.16 : r * 0.08;
+      const bx = player.x + Math.cos(a) * r * 0.9;
+      const by = player.y + Math.sin(a) * r * 0.9;
+      beginFill(graphics, lit ? "#fff6c4" : "rgba(168, 212, 107, 0.45)", lit ? 0.9 : 0.4);
+      graphics.drawPolygon([
+        bx + Math.cos(a + 1.57) * r * 0.035, by + Math.sin(a + 1.57) * r * 0.035,
+        bx + Math.cos(a) * h, by + Math.sin(a) * h,
+        bx + Math.cos(a - 1.57) * r * 0.035, by + Math.sin(a - 1.57) * r * 0.035,
+      ]);
+      graphics.endFill();
+    }
+  }
+
   // 郁金雷网: the rods themselves. The arcs between them are spawned as skill effects,
   // so this pass only has to draw the standing tulip rods and their charge state.
   drawTulipRods(rods, delta) {
@@ -3814,6 +3917,112 @@ export class PixiRenderer {
           });
         }
         this.drawMarkerCompass(graphics, marker, player, color);
+        continue;
+      }
+
+      if (marker.kind === "altar") {
+        // 祭坛: a ring you have to kill *inside*. Drawn as an offering circle with an
+        // inward-facing rune ring so it reads differently from 坚守's sanctuary.
+        const r = marker.radius;
+        const spin = marker.pulse || 0;
+        beginFill(graphics, "#ffd98a", 0.09);
+        graphics.drawCircle(marker.x, marker.y, r);
+        graphics.endFill();
+        setLine(graphics, 4, "#ffd98a");
+        graphics.drawCircle(marker.x, marker.y, r);
+        setLine(graphics, 1.8, "rgba(255, 246, 220, 0.45)");
+        graphics.drawCircle(marker.x, marker.y, r * 0.78);
+        // Runes around the rim, rotating slowly.
+        for (let index = 0; index < 8; index += 1) {
+          const a = (Math.PI * 2 * index) / 8 + spin * 0.25;
+          const px = marker.x + Math.cos(a) * r * 0.88;
+          const py = marker.y + Math.sin(a) * r * 0.88;
+          beginFill(graphics, "#fff6dc", 0.7);
+          drawStar(graphics, px, py, 7, 3, 4);
+          graphics.endFill();
+        }
+        // The brazier at the centre, breathing.
+        const breathe = (Math.sin(spin) + 1) / 2;
+        beginFill(graphics, "#ffb866", 0.5 + breathe * 0.3);
+        graphics.drawCircle(marker.x, marker.y, 15 + breathe * 5);
+        graphics.endFill();
+        setLine(graphics, 2.4, "#fff6dc");
+        graphics.drawCircle(marker.x, marker.y, 20 + breathe * 4);
+        this.drawMarkerCompass(graphics, marker, player, "#ffd98a");
+        continue;
+      }
+
+      if (marker.kind === "sweepBand") {
+        // 禁域: a wall sweeping along one axis with a safe opening sliding across it. The
+        // gap is the counterplay, so it is drawn as a clearly-marked break in the wall
+        // rather than merely an absence of fill.
+        const w = marker.halfWidth;
+        const forward = marker.speed >= 0 ? 1 : -1;
+        const span = marker.crossSpan ?? (marker.vertical ? ARENA.width : ARENA.height);
+        const along = marker.offset;
+        const gapLo = (marker.gapCenter ?? span / 2) - (marker.gapHalfWidth ?? 0);
+        const gapHi = (marker.gapCenter ?? span / 2) + (marker.gapHalfWidth ?? 0);
+        // Two body segments, one either side of the opening.
+        const segments = [[0, Math.max(0, gapLo)], [Math.min(span, gapHi), span]];
+        for (const [from, to] of segments) {
+          if (to - from <= 0) continue;
+          beginFill(graphics, "#ff6b8a", 0.16);
+          if (marker.vertical) {
+            graphics.drawRect(from, along - w, to - from, w * 2);
+          } else {
+            graphics.drawRect(along - w, from, w * 2, to - from);
+          }
+          graphics.endFill();
+          // Leading edge bright, trailing edge dim, so travel direction is obvious.
+          for (const [edge, weight, colour] of [
+            [along + w * forward, 5, "#ffd0dc"],
+            [along - w * forward, 2.4, "rgba(255, 107, 138, 0.55)"],
+          ]) {
+            setLine(graphics, weight, colour);
+            if (marker.vertical) {
+              graphics.moveTo(from, edge);
+              graphics.lineTo(to, edge);
+            } else {
+              graphics.moveTo(edge, from);
+              graphics.lineTo(edge, to);
+            }
+          }
+          // Chevrons pointing the way it's travelling.
+          setLine(graphics, 2.4, "rgba(255, 208, 220, 0.7)");
+          const steps = Math.max(1, Math.round((to - from) / 220));
+          for (let step = 0; step <= steps; step += 1) {
+            const across = from + ((to - from) / steps) * step;
+            const tip = along + w * 0.55 * forward;
+            const tail = along - w * 0.35 * forward;
+            if (marker.vertical) {
+              graphics.moveTo(across - 14, tail);
+              graphics.lineTo(across, tip);
+              graphics.lineTo(across + 14, tail);
+            } else {
+              graphics.moveTo(tail, across - 14);
+              graphics.lineTo(tip, across);
+              graphics.lineTo(tail, across + 14);
+            }
+          }
+        }
+        // The opening: green jambs plus a soft safe-zone tint, so it reads as "go here".
+        beginFill(graphics, "#8ef0b4", 0.1);
+        if (marker.vertical) {
+          graphics.drawRect(gapLo, along - w, gapHi - gapLo, w * 2);
+        } else {
+          graphics.drawRect(along - w, gapLo, w * 2, gapHi - gapLo);
+        }
+        graphics.endFill();
+        setLine(graphics, 4, "#8ef0b4");
+        for (const jamb of [gapLo, gapHi]) {
+          if (marker.vertical) {
+            graphics.moveTo(jamb, along - w);
+            graphics.lineTo(jamb, along + w);
+          } else {
+            graphics.moveTo(along - w, jamb);
+            graphics.lineTo(along + w, jamb);
+          }
+        }
         continue;
       }
 

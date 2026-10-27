@@ -514,6 +514,27 @@ export const NEST_MONSTER_DEFINITION = {
   shapeId: "gardenNest",
 };
 
+// 突袭波的目标：快、脆、疼的刺客。Deliberately the opposite weight class to the elite —
+// an elite is a slow wall you grind down, a raider is a scalpel you must answer at once.
+export const RAIDER_MONSTER_DEFINITION = {
+  id: "gardenRaider",
+  name: "疾影刺虫",
+  description: "贴地疾行的刺客害虫，速度极快、血量很薄，但撞上来极疼。突袭波中必须尽快清掉。",
+  color: "#ff8a6b",
+  accent: "#7a2a18",
+  detailColor: "#ffe0d2",
+  // 360 x2 (非Boss倍率) = 720 有效血量：一两次技能命中就能解决。Lowered along with the
+  // move to batched spawning — the pack is now 18+ strong, so each one has to stay cheap.
+  health: 360,
+  healthGrowthScale: 0.6,
+  speed: 128,
+  damage: 26,
+  radius: 15,
+  exp: 24,
+  raider: true,
+  shapeId: "gardenRaider",
+};
+
 export const GENERAL_UPGRADES = [
   {
     id: "attackGrowth",

@@ -937,38 +937,44 @@ export const SKILL_LIBRARY = [
   },
   {
     id: "seedvaultPulse",
-    name: "种库脉冲",
-    description: "释放种库脉冲，发射追踪芽种追击敌人。",
+    name: "种脉共鸣",
+    // Was a plain expanding ring, i.e. 向日脉冲 with a different colour, and its old
+    // description promised homing seeds that were never implemented. The ring now
+    // *cascades*: every enemy it passes becomes a relay that emits its own smaller ring,
+    // so a packed crowd chain-reacts across the screen while a lone target gets one hit.
+    description: "放出一圈种脉波纹。被波纹扫过的害虫会成为共鸣节点，原地再放出一圈更小的波纹，在密集虫群里层层接力扩散开去；虫越密，连锁越夸张。",
     color: "#badb69",
-    advancedBehavior: "pulse",
+    advancedBehavior: "resonance",
     unlockCost: 700,
     maxLevel: 5,
+    // `relayScale` is how much of the parent a relay ring inherits; `relayDepth` caps the
+    // chain so a dense field can't cascade without bound.
     statsByLevel: [
-      { cooldown: 4.4, damage: 36, radius: 120, waves: 1, growth: 300 },
-      { cooldown: 4.0, damage: 50, radius: 140, waves: 1, growth: 320 },
-      { cooldown: 3.6, damage: 66, radius: 160, waves: 2, growth: 340 },
-      { cooldown: 3.2, damage: 84, radius: 180, waves: 2, growth: 360 },
-      { cooldown: 2.9, damage: 106, radius: 200, waves: 2, growth: 380 },
+      { cooldown: 5.0, damage: 34, radius: 150, growth: 330, relayDepth: 1, relayScale: 0.62 },
+      { cooldown: 4.7, damage: 46, radius: 162, growth: 345, relayDepth: 1, relayScale: 0.66 },
+      { cooldown: 4.4, damage: 60, radius: 174, growth: 360, relayDepth: 2, relayScale: 0.58 },
+      { cooldown: 4.1, damage: 76, radius: 186, growth: 375, relayDepth: 2, relayScale: 0.62 },
+      { cooldown: 3.8, damage: 96, radius: 200, growth: 390, relayDepth: 2, relayScale: 0.66 },
     ],
     exclusiveUpgrades: [
       {
         id: "seedvaultPulseFocus",
         name: "种库丰收",
-        description: "提高脉冲与芽种伤害。",
+        description: "提高波纹伤害与半径。",
         maxLevel: 2,
         unlockCost: 164,
       },
       {
         id: "seedvaultPulseTempo",
         name: "脉冲加速",
-        description: "缩短种库脉冲的冷却时间。",
+        description: "加快波纹扩散并缩短冷却。",
         maxLevel: 2,
         unlockCost: 184,
       },
       {
         id: "seedvaultPulseParasite",
         name: "寄生芽孢",
-        description: "【专属】脉冲扫过的敌人被种下寄生芽孢，持续侵蚀生命并为角色回血。",
+        description: "【专属】共鸣再多传一层，且节点会被种下寄生芽孢——持续侵蚀生命，并把养分回流给自己。",
         maxLevel: 2,
         unlockCost: 208,
       },
@@ -1309,20 +1315,21 @@ export const SKILL_LIBRARY = [
     id: "scissorVine",
     name: "剪刃藤蔓",
     // Was an instant single-target whip sharing the snare handler. Now it is an actual
-    // pair of scissors: two blade arms open wide, then swing shut. The telegraph is the
-    // open blades, and everything between them when they meet gets cut.
-    description: "在敌群中张开一对刃状藤蔓，随后猛地合拢。合拢时夹在双刃之间的害虫被向交点拖拽并受到重创，剪口还会留下持续流血。",
+    // pair of scissors rooted in the caster: two blade arms open wide, then swing shut.
+    // The telegraph is the open blades, and everything between them when they meet is cut.
+    description: "从自身两侧抽出一对刃状藤蔓并张开，随后猛地合拢。合拢时夹在双刃扇形内的害虫被挤向刃口并受到重创，剪口还会留下持续流血。藤蔓跟着角色移动，多重施放时会朝不同方向张开。",
     color: "#ef6872",
     advancedBehavior: "scissor",
     unlockCost: 952,
     maxLevel: 5,
-    // `armLength` is the blade reach; `closeTime` is how long the blades stay open.
+    // `armLength` is the blade reach (there is no separate cast range any more — the
+    // blades grow from the caster); `closeTime` is how long they stay open.
     statsByLevel: [
-      { cooldown: 3.8, damage: 96, count: 1, range: 260, armLength: 150, closeTime: 0.72 },
-      { cooldown: 3.45, damage: 124, count: 1, range: 285, armLength: 162, closeTime: 0.68 },
-      { cooldown: 3.1, damage: 158, count: 2, range: 310, armLength: 174, closeTime: 0.64 },
-      { cooldown: 2.8, damage: 196, count: 2, range: 335, armLength: 186, closeTime: 0.6 },
-      { cooldown: 2.5, damage: 240, count: 2, range: 360, armLength: 200, closeTime: 0.56 },
+      { cooldown: 3.8, damage: 96, count: 1, armLength: 170, closeTime: 0.72 },
+      { cooldown: 3.45, damage: 124, count: 1, armLength: 184, closeTime: 0.68 },
+      { cooldown: 3.1, damage: 158, count: 2, armLength: 198, closeTime: 0.64 },
+      { cooldown: 2.8, damage: 196, count: 2, armLength: 212, closeTime: 0.6 },
+      { cooldown: 2.5, damage: 240, count: 2, armLength: 226, closeTime: 0.56 },
     ],
     exclusiveUpgrades: [
       {
@@ -1350,38 +1357,43 @@ export const SKILL_LIBRARY = [
   },
   {
     id: "royalBudPulse",
-    name: "皇室芽脉冲",
-    description: "释放皇室脉冲，覆盖范围内的技能获得伤害加成。",
+    name: "皇庭威仪",
+    // Was the same expanding ring again, and its description promised a damage buff that
+    // the shared pulse handler never implemented. Now it actually does: the cast opens a
+    // court around the player, and the player's damage scales with how many enemies are
+    // standing in it. It is the only skill in the set that rewards being surrounded.
+    description: "展开随身移动的皇庭。庭内每有一只害虫，便为自己累积一层威仪提高总伤害——被围得越狠，打得越重。庭内的害虫同时持续受伤。",
     color: "#a8d46b",
-    advancedBehavior: "pulse",
+    advancedBehavior: "court",
     unlockCost: 980,
     maxLevel: 5,
+    // `courtDuration` is how long the aura lasts; `majestyPerStack` the damage per enemy.
     statsByLevel: [
-      { cooldown: 5.0, damage: 44, radius: 110, waves: 1, growth: 290 },
-      { cooldown: 4.5, damage: 60, radius: 130, waves: 1, growth: 310 },
-      { cooldown: 4.0, damage: 80, radius: 150, waves: 2, growth: 330 },
-      { cooldown: 3.6, damage: 102, radius: 170, waves: 2, growth: 350 },
-      { cooldown: 3.2, damage: 128, radius: 190, waves: 2, growth: 370 },
+      { cooldown: 9.0, damage: 20, radius: 150, growth: 290, courtDuration: 5.0, tickInterval: 0.45, majestyPerStack: 0.035, majestyCap: 6 },
+      { cooldown: 8.6, damage: 27, radius: 162, growth: 310, courtDuration: 5.5, tickInterval: 0.44, majestyPerStack: 0.038, majestyCap: 7 },
+      { cooldown: 8.2, damage: 36, radius: 174, growth: 330, courtDuration: 6.0, tickInterval: 0.43, majestyPerStack: 0.041, majestyCap: 8 },
+      { cooldown: 7.8, damage: 46, radius: 186, growth: 350, courtDuration: 6.5, tickInterval: 0.42, majestyPerStack: 0.044, majestyCap: 9 },
+      { cooldown: 7.4, damage: 58, radius: 200, growth: 370, courtDuration: 7.0, tickInterval: 0.41, majestyPerStack: 0.047, majestyCap: 10 },
     ],
     exclusiveUpgrades: [
       {
         id: "royalBudPulseFocus",
         name: "皇室恩泽",
-        description: "提高脉冲伤害与增伤效果。",
+        description: "提高庭内伤害，并提高每层威仪的增伤。",
         maxLevel: 2,
         unlockCost: 204,
       },
       {
         id: "royalBudPulseTempo",
         name: "芽脉冲频",
-        description: "缩短皇室芽脉冲的冷却时间。",
+        description: "延长皇庭持续时间并缩短冷却。",
         maxLevel: 2,
         unlockCost: 224,
       },
       {
         id: "royalBudPulseGrace",
         name: "御苑回春",
-        description: "【专属】脉冲每扫过一个敌人便为角色回复生命，命中越多回血越多。",
+        description: "【专属】威仪每层额外提供生命回复，且在庭内击杀害虫会延长皇庭的持续时间——杀得够快就能一直撑着。",
         maxLevel: 2,
         unlockCost: 248,
       },

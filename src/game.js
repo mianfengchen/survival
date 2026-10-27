@@ -5,6 +5,7 @@ import {
   MONSTER_LIBRARY,
   NEST_MONSTER_DEFINITION,
   PLAYER_BASE,
+  RAIDER_MONSTER_DEFINITION,
   ROUND_DURATION_SECONDS,
   SKILL_LIBRARY,
   SPECIAL_BOON_LIBRARY,
@@ -309,22 +310,43 @@ const SPORE_GEYSER_MAX_LIVE = 8;
 const WAVE_INTERMISSION_SECONDS = 20;
 const WAVE_INTERMISSION_HEAL_RATIO = 0.15;
 
-// Fixed wave order. The three objective waves (净化 / 采集 / 坚守) are interleaved with
-// plain 歼灭 waves so there is always a familiar beat between the unusual ones, and the
-// two 猎杀 waves stay spread out to keep the special-boon cadence even.
-const WAVE_ORDER_FULL = Object.freeze(["cull", "hunt", "purge", "cull", "gather", "hunt", "hold", "surge"]);
-// The 3-minute tutorial region runs a compressed plan instead of being stretched into
-// eight twenty-second waves.
-const WAVE_ORDER_SHORT = Object.freeze(["cull", "hunt", "surge"]);
+// The plan is rolled fresh each run instead of being a fixed script, but three things are
+// pinned so the run still has a readable shape:
+//   1. 猎杀 sits in reserved slots, in order, with a fixed count ramp. That keeps the
+//      elite cadence — and therefore the special-boon cadence — identical every run.
+//   2. The opening slot is drawn from a gentle pool, so a run can never start on 禁域.
+//   3. The closing slot is drawn from a high-intensity pool, so it always crescendos
+//      into the boss.
+// Everything in between is drawn without replacement from the body pool and shuffled.
+const WAVE_SLOT_COUNT_FULL = 8;
+const WAVE_SLOT_COUNT_SHORT = 3;
+// 1-indexed slots reserved for 猎杀. Order and count are guaranteed by construction.
+const WAVE_ELITE_SLOTS_FULL = Object.freeze([2, 6]);
+const WAVE_ELITE_SLOTS_SHORT = Object.freeze([2]);
+// Elite count per hunt, in slot order. Index 0 is the first hunt of the run.
+const WAVE_ELITE_COUNTS = Object.freeze([3, 4]);
+// Low-spike types only: the player has one skill and no upgrades yet in slot 1.
+const WAVE_OPENER_POOL = Object.freeze(["cull", "gather", "altar"]);
+// High-pressure finishers for the last slot before the boss.
+const WAVE_FINALE_POOL = Object.freeze(["surge", "split", "raid"]);
+// Drawn without replacement for the middle slots; refilled if the slots outnumber it.
+const WAVE_BODY_POOL = Object.freeze(["cull", "purge", "gather", "hold", "altar", "sweep", "split", "raid"]);
 const WAVE_SHORT_ROUND_SECONDS = 360;
 const WAVE_SHORT_INTERMISSION_SECONDS = 8;
 
+// Note: the no-replacement draw this needs already exists as pickRandom(items, count)
+// near the top of the file, so there is no shuffle helper here on purpose.
+
 // 坚守 sanctuary tuning.
 const HOLD_ZONE_RADIUS = 168;
-// Leaving the circle bleeds progress back, but slower than it fills, so a forced
-// reposition costs you time rather than wiping the attempt.
-const HOLD_ZONE_DECAY = 0.55;
+// Leaving the circle bleeds progress back, but slower than it fills, so *choosing* to
+// leave costs you time rather than wiping the attempt.
+const HOLD_ZONE_DECAY = 0.3;
 const HOLD_ZONE_MOVE_SECONDS = 24;
+// Grace window after the circle relocates. The decay is meant to punish stepping out, not
+// to punish the forced walk to a new circle the player didn't ask for — crossing the arena
+// could previously eat several seconds of progress before you could possibly arrive.
+const HOLD_ZONE_TRAVEL_GRACE = 4.5;
 
 // 净化 nest tuning.
 const NEST_BROOD_INTERVAL = 3.4;
@@ -332,6 +354,54 @@ const NEST_BROOD_INTERVAL = 3.4;
 // 采集 dew tuning.
 const DEW_ORB_RADIUS = 20;
 const DEW_ORB_EXP = 30;
+
+// 祭坛 tuning: the ring only counts kills made inside it, so it is "fight here" rather
+// than 坚守's "stand here".
+const ALTAR_RADIUS = 190;
+const ALTAR_MOVE_SECONDS = 30;
+
+// 禁域 tuning: telegraphed walls that sweep the arena. A band spans the whole arena
+// perpendicular to its travel, and it moves faster than the player's base speed, so a
+// solid wall was unavoidable by construction — there was no direction to run. Every band
+// therefore carries a gap the player can move into, which is the actual counterplay.
+// Blink covers 110px, so the band is also narrow enough to blink straight through.
+const SWEEP_BAND_HALF_WIDTH = 46;
+const SWEEP_BAND_SPEED = 112;
+const SWEEP_BAND_DAMAGE_RATIO = 0.16;
+const SWEEP_BAND_HIT_COOLDOWN = 1.1;
+// The opening, measured across the band. Wide enough to stand in comfortably.
+const SWEEP_GAP_HALF_WIDTH = 190;
+// The gap slides along the band so you cannot park in one spot for the whole wave.
+const SWEEP_GAP_DRIFT_SPEED = 95;
+
+// ── 种脉共鸣 ──────────────────────────────────────────────────────────────────
+// Every enemy a ring sweeps relays a smaller ring. Capped because a packed field is
+// meant to cascade spectacularly, not to spawn rings faster than they retire.
+const RESONANCE_MAX_RINGS = 40;
+// A beat between generations so the chain reads as a cascade, not one flash.
+const RESONANCE_RELAY_DELAY = 0.09;
+
+// ── 皇庭威仪 ──────────────────────────────────────────────────────────────────
+// 御苑回春 can extend the court by killing in it; this is the ceiling so it can't become
+// permanent uptime.
+const ROYAL_COURT_MAX_DURATION = 14;
+
+// 突袭 tuning: the pack arrives in batches so the wave has a duration floor independent
+// of player DPS. A top-up also fires when the field is nearly clear, so a fast player is
+// never left standing around waiting for the next timer.
+const RAID_BATCH_SIZE = 4;
+const RAID_BATCH_INTERVAL = 10;
+// Top-up only once the field is genuinely empty. At a threshold of 2 a strong build
+// cleared each batch instantly and pulled the next one in early, which collapsed the
+// spawn schedule back to "all of them at once" and undid the pacing floor.
+const RAID_TOPUP_THRESHOLD = 0;
+
+// 裂群 tuning: trash splits once on death. One generation only — two generations turns a
+// single wave into an unbounded population explosion.
+const SPLIT_CHILD_COUNT = 2;
+const SPLIT_CHILD_HEALTH_RATIO = 0.3;
+const SPLIT_CHILD_SPEED_RATIO = 1.3;
+const SPLIT_CHILD_RADIUS_RATIO = 0.66;
 
 // 露金 income and 波间商店 tuning. Wave clears are the bulk of it; elites (+5), nests (+3)
 // and 灵露 (+1) top it up, which quietly pays objective waves better than plain culls.
@@ -403,6 +473,55 @@ const WAVE_TYPE_LIBRARY = Object.freeze({
     densityScale: 2.8,
     killGoalBase: 0,
     eliteGoal: 0,
+  },
+  raid: {
+    id: "raid",
+    name: "突袭",
+    objective: "清掉一波波袭来的疾影刺虫即可提前结束",
+    durationWeight: 0.9,
+    // Ambient spawns thin right out: the raiders are the entire threat.
+    densityScale: 0.5,
+    killGoalBase: 0,
+    eliteGoal: 0,
+    // Fast and fragile, so this reads as the opposite problem to 猎杀's slow walls.
+    // The pack arrives in batches rather than all at once: six raiders dumped on the
+    // field at cast time died in seconds to any developed build, so the wave was over
+    // almost before it started. Batching puts a floor on its length that raw DPS can't
+    // skip past, because the objective can't complete before the last batch has landed.
+    raiderGoal: 24,
+  },
+  altar: {
+    id: "altar",
+    name: "祭坛",
+    objective: "在祭坛范围内击杀害虫为其充能",
+    durationWeight: 1,
+    densityScale: 1.15,
+    killGoalBase: 0,
+    eliteGoal: 0,
+    // "Fight here", as opposed to 坚守's "stand here" — kills outside the ring don't count.
+    altarGoal: 26,
+  },
+  sweep: {
+    id: "sweep",
+    name: "禁域",
+    objective: "在扫过庭域的禁域屏障之间撑过本波",
+    durationWeight: 0.9,
+    densityScale: 0.85,
+    killGoalBase: 0,
+    eliteGoal: 0,
+    // No objective to finish: this one is pure positioning pressure on the timer.
+    sweepBands: 3,
+  },
+  split: {
+    id: "split",
+    name: "裂群",
+    objective: "击杀足够数量的害虫，但它们死后会一分为二",
+    durationWeight: 0.95,
+    densityScale: 0.8,
+    // The goal counts the children too, so it can afford to be high.
+    killGoalBase: 85,
+    eliteGoal: 0,
+    splitOnDeath: true,
   },
 });
 
@@ -492,6 +611,9 @@ function createPlayer() {
     projectileSizeMultiplier: PLAYER_BASE.projectileSizeMultiplier,
     projectileCountBonus: 0,
     summonCountBonus: 0,
+    // 皇庭威仪: live stacks from the surrounding crowd, and the damage multiplier they buy.
+    majestyStacks: 0,
+    majestyMultiplier: 1,
     expMultiplier: PLAYER_BASE.expMultiplier,
     critChance: PLAYER_BASE.critChance,
     critDamage: PLAYER_BASE.critDamage,
@@ -561,6 +683,8 @@ export class GameRuntime {
     this.tulipRods = [];
     this.gears = [];
     this.flames = [];
+    // 皇庭威仪: an aura that lives on the player rather than in the world.
+    this.royalCourt = null;
     this.orbitAngle = 0;
     this.lastTimestamp = 0;
     this.hudClock = 0;
@@ -800,14 +924,24 @@ export class GameRuntime {
       waveKillGoal: 0,
       waveEliteKills: 0,
       waveEliteGoal: 0,
-      // Objective counters for 净化 / 采集 / 坚守.
+      // Objective counters for 净化 / 采集 / 坚守 / 突袭 / 祭坛.
       waveNestGoal: 0,
       waveNestKills: 0,
       waveDewGoal: 0,
       waveDewCollected: 0,
       waveHoldRequired: 0,
       waveHoldProgress: 0,
+      waveHoldGrace: 0,
       waveZoneTimer: 0,
+      waveRaiderGoal: 0,
+      waveRaiderKills: 0,
+      waveRaiderSpawned: 0,
+      waveRaiderTimer: 0,
+      waveAltarGoal: 0,
+      waveAltarCharge: 0,
+      waveAltarTimer: 0,
+      // 裂群: trash splits once on death while this is set.
+      waveSplitOnDeath: false,
       intermissionTimer: 0,
       intermissionRewardTaken: false,
       intermissionShopTaken: false,
@@ -840,6 +974,7 @@ export class GameRuntime {
     this.tulipRods = [];
     this.gears = [];
     this.flames = [];
+    this.royalCourt = null;
     this.orbitAngle = 0;
     this.pendingChoices = [];
     this.screenShake = 0;
@@ -1430,6 +1565,7 @@ export class GameRuntime {
     this.updateTulipGrid(delta);
     this.updateGears(delta);
     this.updateWildfire(delta);
+    this.updateRoyalCourt(delta);
     this.updateMines(delta);
     this.updateSkillEffects(delta);
     this.updateDamageNumbers(delta);
@@ -1553,13 +1689,49 @@ export class GameRuntime {
   }
 
   // ── Wave pacing ─────────────────────────────────────────────────────────────
-  // Fixed structure with random per-wave modifiers: predictable pacing and a guaranteed
-  // elite cadence, but varied texture each run. Durations are fitted to the region's
-  // advertised round length so one plan serves both the tutorial and the campaign.
+  // Roll the slot order for this run. 猎杀 is placed first into its reserved slots so its
+  // order and count are guaranteed no matter what the draw does; the opener and finale
+  // come from curated pools; the rest is a no-replacement draw, shuffled.
+  rollWaveOrder(slotCount, eliteSlots) {
+    const order = new Array(slotCount).fill(null);
+    // Hunts go in first, so their slots and order can't be disturbed by the draw.
+    for (const slot of eliteSlots) {
+      if (slot >= 1 && slot <= slotCount) {
+        order[slot - 1] = "hunt";
+      }
+    }
+    if (order[0] === null) {
+      order[0] = pickRandom(WAVE_OPENER_POOL, 1)[0];
+    }
+    if (order[slotCount - 1] === null) {
+      order[slotCount - 1] = pickRandom(WAVE_FINALE_POOL, 1)[0];
+    }
+
+    // Remaining slots are drawn without replacement, so one run never repeats the same
+    // objective wave. pickRandom returns fewer than asked if the pool is smaller, so top
+    // up with extra draws when there are more slots than types.
+    const openSlots = [];
+    for (let index = 0; index < slotCount; index += 1) {
+      if (order[index] === null) {
+        openSlots.push(index);
+      }
+    }
+    const bag = pickRandom(WAVE_BODY_POOL, openSlots.length);
+    while (bag.length < openSlots.length) {
+      bag.push(...pickRandom(WAVE_BODY_POOL, openSlots.length - bag.length));
+    }
+    openSlots.forEach((slotIndex, pickIndex) => {
+      order[slotIndex] = bag[pickIndex];
+    });
+    return order;
+  }
+
   buildWavePlan() {
     const roundDuration = Math.max(60, this.session?.roundDurationSeconds || ROUND_DURATION_SECONDS);
     const short = roundDuration <= WAVE_SHORT_ROUND_SECONDS;
-    const order = short ? WAVE_ORDER_SHORT : WAVE_ORDER_FULL;
+    const slotCount = short ? WAVE_SLOT_COUNT_SHORT : WAVE_SLOT_COUNT_FULL;
+    const eliteSlots = short ? WAVE_ELITE_SLOTS_SHORT : WAVE_ELITE_SLOTS_FULL;
+    const order = this.rollWaveOrder(slotCount, eliteSlots);
     const intermissionSeconds = short ? WAVE_SHORT_INTERMISSION_SECONDS : WAVE_INTERMISSION_SECONDS;
     // Everything the intermissions don't eat is combat time, split by weight. The floor
     // keeps a pathologically short round from producing zero-second waves.
@@ -1579,12 +1751,12 @@ export class GameRuntime {
       const modifierId = index === 0
         ? "calm"
         : WAVE_MODIFIER_LIBRARY[Math.floor(Math.random() * WAVE_MODIFIER_LIBRARY.length)].id;
-      // Hunt waves ramp. With elite HP sized for a ~35s focused kill, a pair finished
-      // well inside the wave timer, so the first hunt now asks for 3 and the second 4.
+      // Hunt count ramps in slot order. Because the hunt slots are assigned before the
+      // random draw, this ramp is identical every run regardless of what else is rolled.
       let eliteGoal = type.eliteGoal || 0;
       if (typeId === "hunt") {
+        eliteGoal = WAVE_ELITE_COUNTS[huntIndex] ?? WAVE_ELITE_COUNTS[WAVE_ELITE_COUNTS.length - 1];
         huntIndex += 1;
-        eliteGoal = huntIndex === 1 ? 3 : 4;
       }
       return {
         typeId,
@@ -1599,7 +1771,7 @@ export class GameRuntime {
   // Wave count is plan-driven now (8 for a campaign round, 3 for the tutorial), so every
   // readout has to ask rather than assume.
   getWaveCount() {
-    return this.session?.wavePlan?.length || WAVE_ORDER_FULL.length;
+    return this.session?.wavePlan?.length || WAVE_SLOT_COUNT_FULL;
   }
 
   getCurrentWaveType() {
@@ -1640,7 +1812,17 @@ export class GameRuntime {
     session.waveDewCollected = 0;
     session.waveHoldRequired = type.holdSeconds || 0;
     session.waveHoldProgress = 0;
+    session.waveHoldGrace = 0;
     session.waveZoneTimer = 0;
+    // 突袭 scales its pack with the run so a late raid still threatens.
+    session.waveRaiderGoal = type.raiderGoal ? type.raiderGoal + Math.floor((index - 1) / 2) : 0;
+    session.waveRaiderKills = 0;
+    session.waveRaiderSpawned = 0;
+    session.waveRaiderTimer = 0;
+    session.waveAltarGoal = type.altarGoal ? Math.ceil(type.altarGoal * (1 + (index - 1) * 0.12)) : 0;
+    session.waveAltarCharge = 0;
+    session.waveAltarTimer = 0;
+    session.waveSplitOnDeath = Boolean(type.splitOnDeath);
     session.intermissionTimer = 0;
     session.intermissionRewardTaken = false;
     session.intermissionShopTaken = false;
@@ -1660,6 +1842,16 @@ export class GameRuntime {
     }
     if (session.waveHoldRequired > 0) {
       this.relocateHoldZone(false);
+    }
+    if (session.waveRaiderGoal > 0) {
+      // Only the first batch lands at wave start; the rest arrive on a timer.
+      this.spawnRaiderBatch();
+    }
+    if (session.waveAltarGoal > 0) {
+      this.relocateAltar(false);
+    }
+    if (type.sweepBands > 0) {
+      this.spawnSweepBands(type.sweepBands);
     }
 
     const modifierSuffix = modifier.id === "calm" ? "" : ` · ${modifier.name}`;
@@ -1687,6 +1879,12 @@ export class GameRuntime {
     }
     if (session.waveHoldRequired > 0) {
       return session.waveHoldProgress >= session.waveHoldRequired;
+    }
+    if (session.waveRaiderGoal > 0) {
+      return session.waveRaiderKills >= session.waveRaiderGoal;
+    }
+    if (session.waveAltarGoal > 0) {
+      return session.waveAltarCharge >= session.waveAltarGoal;
     }
     if (session.waveKillGoal > 0) {
       return session.kills - session.waveKillBaseline >= session.waveKillGoal;
@@ -1964,6 +2162,10 @@ export class GameRuntime {
       progress = ` 露 ${session.waveDewCollected}/${session.waveDewGoal}`;
     } else if (session.waveHoldRequired > 0) {
       progress = ` 净化 ${Math.floor((session.waveHoldProgress / session.waveHoldRequired) * 100)}%`;
+    } else if (session.waveRaiderGoal > 0) {
+      progress = ` 刺虫 ${session.waveRaiderKills}/${session.waveRaiderGoal}`;
+    } else if (session.waveAltarGoal > 0) {
+      progress = ` 充能 ${session.waveAltarCharge}/${session.waveAltarGoal}`;
     } else if (session.waveKillGoal > 0) {
       const done = Math.min(session.waveKillGoal, session.kills - session.waveKillBaseline);
       progress = ` ${done}/${session.waveKillGoal}`;
@@ -2062,6 +2264,10 @@ export class GameRuntime {
       // 净化 objective target: stationary, hatches brood until destroyed.
       nest: Boolean(definition.nest),
       nestBroodTimer: NEST_BROOD_INTERVAL,
+      // 突袭 objective target: fast, fragile assassin.
+      raider: Boolean(definition.raider),
+      // 裂群: set on a split child so it can't split again.
+      splitChild: false,
       bossTier: definition.bossTier || 0,
       shapeId: definition.shapeId || null,
       familyId: definition.familyId || null,
@@ -2328,6 +2534,184 @@ export class GameRuntime {
     });
   }
 
+  // 突袭: a raider sprints in from off-screen like normal trash, but it is fast, fragile
+  // and hits hard, so it has to be answered immediately rather than ground down.
+  spawnRaider() {
+    const raider = this.createEnemy(RAIDER_MONSTER_DEFINITION);
+    this.enemies.push(raider);
+    this.session.discoveries.monsters.add(RAIDER_MONSTER_DEFINITION.id);
+  }
+
+  // One batch of the raid pack, capped by whatever is left of the goal.
+  spawnRaiderBatch() {
+    const session = this.session;
+    if (!session) {
+      return 0;
+    }
+    const remaining = session.waveRaiderGoal - session.waveRaiderSpawned;
+    const batch = Math.min(RAID_BATCH_SIZE, Math.max(0, remaining));
+    for (let index = 0; index < batch; index += 1) {
+      this.spawnRaider();
+    }
+    session.waveRaiderSpawned += batch;
+    session.waveRaiderTimer = RAID_BATCH_INTERVAL;
+    if (batch > 0) {
+      this.callbacks.onToast?.(`疾影刺虫来袭 ${session.waveRaiderSpawned}/${session.waveRaiderGoal}`);
+    }
+    return batch;
+  }
+
+  // 祭坛: plant (or move) the offering ring. Only kills made inside it charge it.
+  relocateAltar(announce = true) {
+    const session = this.session;
+    if (!session) {
+      return;
+    }
+    session.waveAltarTimer = ALTAR_MOVE_SECONDS;
+    // Relocation should move the fight, not punish it: the new spot is deliberately kept
+    // within reach. The old `minDistance: 320` yanked the altar away from wherever the
+    // player was standing, so kills kept landing outside the ring right after a move.
+    const point = this.getInlandPoint(
+      ALTAR_RADIUS + 110,
+      announce ? { minDistance: 260, maxDistance: 680 } : { maxDistance: 560 },
+    );
+    const existing = this.waveMarkers.find((marker) => marker.kind === "altar");
+    if (existing) {
+      existing.x = point.x;
+      existing.y = point.y;
+      if (announce) {
+        this.callbacks.onToast?.("祭坛转移");
+      }
+      return;
+    }
+    this.waveMarkers.push({
+      id: crypto.randomUUID(),
+      kind: "altar",
+      x: point.x,
+      y: point.y,
+      radius: ALTAR_RADIUS,
+      pulse: 0,
+    });
+  }
+
+  // 禁域: slow walls that sweep the arena end to end and bounce back. Telegraphed and
+  // slow on purpose — the wave is a positioning tax, not a reaction test.
+  spawnSweepBands(count) {
+    for (let index = 0; index < count; index += 1) {
+      // Alternate between horizontal and vertical sweeps so the safe pockets move.
+      const vertical = index % 2 === 1;
+      const travelSpan = vertical ? ARENA.height : ARENA.width;
+      // The axis the band is stretched along — the gap slides down this one.
+      const crossSpan = vertical ? ARENA.width : ARENA.height;
+      this.waveMarkers.push({
+        id: crypto.randomUUID(),
+        kind: "sweepBand",
+        // Position along the sweep axis, spread so they don't arrive together.
+        offset: (travelSpan / count) * index,
+        span: travelSpan,
+        crossSpan,
+        vertical,
+        halfWidth: SWEEP_BAND_HALF_WIDTH,
+        speed: SWEEP_BAND_SPEED * (index % 2 === 0 ? 1 : -1),
+        // The opening, and where along the band it currently sits.
+        gapCenter: randomBetween(crossSpan * 0.25, crossSpan * 0.75),
+        gapHalfWidth: SWEEP_GAP_HALF_WIDTH,
+        gapSpeed: SWEEP_GAP_DRIFT_SPEED * (Math.random() < 0.5 ? 1 : -1),
+        hitCooldown: 0,
+        // Kept so generic marker code has something sane to read.
+        x: vertical ? ARENA.width / 2 : (travelSpan / count) * index,
+        y: vertical ? (travelSpan / count) * index : ARENA.height / 2,
+        radius: SWEEP_BAND_HALF_WIDTH,
+      });
+    }
+  }
+
+  updateSweepBands(delta) {
+    const damage = Math.max(
+      1,
+      Math.min(
+        this.player.maxHealth * SWEEP_BAND_DAMAGE_RATIO,
+        (this.session?.difficultyProfile?.monsterDamageMultiplier || 1) * 18,
+      ),
+    );
+    for (const band of this.waveMarkers) {
+      if (band.kind !== "sweepBand") {
+        continue;
+      }
+      band.offset += band.speed * delta;
+      // Bounce at the arena edge rather than wrapping, so a band is never a surprise.
+      if (band.offset < 0) {
+        band.offset = 0;
+        band.speed = Math.abs(band.speed);
+      } else if (band.offset > band.span) {
+        band.offset = band.span;
+        band.speed = -Math.abs(band.speed);
+      }
+      // The gap slides along the band and bounces too, so camping one lane fails.
+      band.gapCenter += band.gapSpeed * delta;
+      const gapMin = band.gapHalfWidth;
+      const gapMax = band.crossSpan - band.gapHalfWidth;
+      if (band.gapCenter < gapMin) {
+        band.gapCenter = gapMin;
+        band.gapSpeed = Math.abs(band.gapSpeed);
+      } else if (band.gapCenter > gapMax) {
+        band.gapCenter = gapMax;
+        band.gapSpeed = -Math.abs(band.gapSpeed);
+      }
+
+      if (band.vertical) {
+        band.y = band.offset;
+        band.x = ARENA.width / 2;
+      } else {
+        band.x = band.offset;
+        band.y = ARENA.height / 2;
+      }
+
+      band.hitCooldown = Math.max(0, band.hitCooldown - delta);
+      if (band.hitCooldown > 0) {
+        continue;
+      }
+      const travelAxis = band.vertical ? this.player.y : this.player.x;
+      const crossAxis = band.vertical ? this.player.x : this.player.y;
+      const inBand = Math.abs(travelAxis - band.offset) <= band.halfWidth + this.player.radius;
+      // Standing in the opening is safe, which is the whole counterplay.
+      const inGap = Math.abs(crossAxis - band.gapCenter) <= band.gapHalfWidth - this.player.radius;
+      if (inBand && !inGap) {
+        band.hitCooldown = SWEEP_BAND_HIT_COOLDOWN;
+        this.damagePlayer(damage);
+        this.addScreenShake(6);
+      }
+    }
+  }
+
+  // 裂群: one generation of children only. Letting children split again turns a single
+  // wave into an unbounded population explosion.
+  splitEnemyOnDeath(enemy) {
+    const definition = getMonsterDefinition(enemy.typeId);
+    for (let index = 0; index < SPLIT_CHILD_COUNT; index += 1) {
+      const angle = (Math.PI * 2 * index) / SPLIT_CHILD_COUNT + Math.random();
+      const child = this.createEnemy(definition || RAIDER_MONSTER_DEFINITION);
+      child.splitChild = true;
+      child.maxHealth = Math.max(1, Math.ceil(child.maxHealth * SPLIT_CHILD_HEALTH_RATIO));
+      child.health = child.maxHealth;
+      child.speed *= SPLIT_CHILD_SPEED_RATIO;
+      child.radius = Math.max(6, child.radius * SPLIT_CHILD_RADIUS_RATIO);
+      child.exp = Math.max(1, Math.floor(child.exp * 0.45));
+      child.x = clamp(enemy.x + Math.cos(angle) * (enemy.radius + 10), child.radius, ARENA.width - child.radius);
+      child.y = clamp(enemy.y + Math.sin(angle) * (enemy.radius + 10), child.radius, ARENA.height - child.radius);
+      this.enemies.push(child);
+    }
+    this.spawnSkillEffect({
+      kind: "splitBurst",
+      x: enemy.x,
+      y: enemy.y,
+      radius: enemy.radius * 2,
+      duration: 0.26,
+      color: enemy.color || "#ffffff",
+      accent: "#ffe9f4",
+    });
+  }
+
   // 坚守: plant (or move) the sanctuary circle. Relocating resets the move timer but
   // never the accumulated progress.
   relocateHoldZone(announce = true) {
@@ -2336,11 +2720,16 @@ export class GameRuntime {
       return;
     }
     session.waveZoneTimer = HOLD_ZONE_MOVE_SECONDS;
+    // Freeze the decay while the player travels to the new circle.
+    session.waveHoldGrace = HOLD_ZONE_TRAVEL_GRACE;
     // The opening circle lands close by so the wave doesn't start with a long walk;
     // later relocations are free to go anywhere.
+    // A relocation is bounded at both ends: far enough to be a real reposition, close
+    // enough that the walk fits inside the grace window. Unbounded before, the circle
+    // could land most of the arena away and the trip alone drained the bar.
     const point = this.getInlandPoint(
       HOLD_ZONE_RADIUS + 120,
-      announce ? { minDistance: 360 } : { maxDistance: 620 },
+      announce ? { minDistance: 300, maxDistance: 700 } : { maxDistance: 620 },
     );
     const existing = this.waveMarkers.find((marker) => marker.kind === "holdZone");
     if (existing) {
@@ -2385,11 +2774,15 @@ export class GameRuntime {
     if (session.waveHoldRequired > 0) {
       const zone = this.waveMarkers.find((marker) => marker.kind === "holdZone");
       if (zone) {
+        session.waveHoldGrace = Math.max(0, (session.waveHoldGrace || 0) - delta);
         const inside = Math.hypot(this.player.x - zone.x, this.player.y - zone.y) <= zone.radius;
         zone.occupied = inside;
+        zone.grace = session.waveHoldGrace;
         if (inside) {
           session.waveHoldProgress = Math.min(session.waveHoldRequired, session.waveHoldProgress + delta);
-        } else {
+          // Arriving ends the grace window early; from here on leaving is a choice.
+          session.waveHoldGrace = 0;
+        } else if (session.waveHoldGrace <= 0) {
           // Stepping out costs progress, but slower than it fills: a forced reposition
           // is a setback, not a reset.
           session.waveHoldProgress = Math.max(0, session.waveHoldProgress - delta * HOLD_ZONE_DECAY);
@@ -2400,6 +2793,31 @@ export class GameRuntime {
         }
       }
     }
+
+    // 突袭: keep feeding batches until the whole pack has been committed. The top-up on a
+    // nearly-clear field means a fast player isn't left waiting on the timer.
+    if (session.waveRaiderGoal > 0 && session.waveRaiderSpawned < session.waveRaiderGoal) {
+      session.waveRaiderTimer -= delta;
+      const aliveRaiders = this.enemies.reduce((count, enemy) => (enemy.raider ? count + 1 : count), 0);
+      if (session.waveRaiderTimer <= 0 || aliveRaiders <= RAID_TOPUP_THRESHOLD) {
+        this.spawnRaiderBatch();
+      }
+    }
+
+    // 祭坛: the ring drifts on a timer so the fight has to keep relocating with it.
+    if (session.waveAltarGoal > 0) {
+      session.waveAltarTimer -= delta;
+      if (session.waveAltarTimer <= 0 && session.waveAltarCharge < session.waveAltarGoal) {
+        this.relocateAltar();
+      }
+      const altar = this.waveMarkers.find((marker) => marker.kind === "altar");
+      if (altar) {
+        altar.pulse += delta * 2.2;
+      }
+    }
+
+    // 禁域: sweeping walls run every frame; they are the whole wave.
+    this.updateSweepBands(delta);
 
     if (session.waveDewGoal > 0) {
       const kept = [];
@@ -3161,6 +3579,8 @@ export class GameRuntime {
     if (skillId === "amberGearBurst") return this.castAmberGear(state, stats);
     if (skillId === "grandPrismMeteor") return this.castPrismMeteor(state, stats);
     if (skillId === "blueflameGarden") return this.castWildfire(state, stats);
+    if (skillId === "seedvaultPulse") return this.castSeedResonance(state, stats);
+    if (skillId === "royalBudPulse") return this.castRoyalCourt(state, stats);
 
     // Shared handlers, kept only for the behaviours that still have two or more genuinely
     // differentiated users. "lobbedBomb", "strike" and "snare" are gone: their last users
@@ -3171,7 +3591,6 @@ export class GameRuntime {
     if (behavior === "meteor") this.castAdvancedMeteor(skillId, state, stats);
     if (behavior === "boomerang") this.castAdvancedBoomerang(skillId, state, stats);
     if (behavior === "mine") this.castAdvancedMine(skillId, state, stats);
-    if (behavior === "pulse") this.castAdvancedPulse(skillId, state, stats);
   }
 
   getAdvancedExclusiveLevels(skillId, state) {
@@ -3443,35 +3862,6 @@ export class GameRuntime {
   }
 
 
-  castAdvancedPulse(skillId, state, stats) {
-    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
-    const parasiteLevel = state?.exclusives?.seedvaultPulseParasite || 0;
-    const graceLevel = state?.exclusives?.royalBudPulseGrace || 0;
-    const totalWaves = stats.waves + focus;
-    let healLevel = 0;
-    if (skillId === "seedvaultPulse") healLevel = 1 + focus + parasiteLevel;
-    else if (skillId === "royalBudPulse") healLevel = graceLevel * 2;
-    let scorchLevel = 0;
-    if (skillId === "royalBudPulse") scorchLevel = tempo;
-    else if (skillId === "seedvaultPulse") scorchLevel = parasiteLevel * 2;
-    for (let waveIndex = 0; waveIndex < totalWaves; waveIndex += 1) {
-      this.pulses.push({
-        id: crypto.randomUUID(),
-        sourceSkillId: skillId,
-        x: this.player.x,
-        y: this.player.y,
-        radius: 0,
-        maxRadius: stats.radius * this.player.rangeMultiplier,
-        growth: stats.growth,
-        damage: this.rollDamage(stats.damage),
-        healLevel,
-        scorchLevel,
-        delay: waveIndex * Math.max(0.1, 0.18 - tempo * 0.03),
-        hitSet: new Set(),
-        color: definitionColor(skillId),
-      });
-    }
-  }
 
   // ── 风暴绫带: a lightning ribbon that sweeps across the battlefield along a line ──
   castStormRibbon(state, stats) {
@@ -4129,30 +4519,33 @@ export class GameRuntime {
     }
   }
 
-  // ── 剪刃藤蔓: a pair of blades that opens wide, then snaps shut ──
+  // ── 剪刃藤蔓: blades that grow from the caster, open wide, then snap shut ──
+  // The pivot is the player, not a target. Rooting it on an enemy was wrong twice over:
+  // vines growing out of a bug makes no sense, and because the wedge opened *away* from
+  // the player while every enemy walks *toward* the player, targets reliably stepped
+  // behind the blades before they closed and the skill hit almost nothing.
   castScissorSnap(state, stats) {
     const skillId = "scissorVine";
     const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
     const crossLevel = state?.exclusives?.scissorVineCross || 0;
-    const maxRange = stats.range * this.player.rangeMultiplier;
-    const anchors = this.findNearestEnemies(this.player.x, this.player.y, stats.count * 2)
-      .filter((enemy) => circleDistance(enemy, this.player) <= maxRange + enemy.radius)
-      .slice(0, stats.count);
-    const spots = anchors.length
-      ? anchors
-      : [{ x: this.player.x + randomBetween(-80, 80), y: this.player.y + randomBetween(-80, 80) }];
+    const target = this.findNearestEnemy(this.player.x, this.player.y);
+    // Aim the first pair at the crowd; extra pairs fan around the player so a high-level
+    // cast covers several approach lanes instead of stacking on one.
+    const baseFacing = target
+      ? Math.atan2(target.y - this.player.y, target.x - this.player.x)
+      : randomBetween(0, Math.PI * 2);
+    const totalCount = stats.count;
 
-    for (const spot of spots) {
-      // The blades straddle the line from the player to the pivot, so the cut closes
-      // across the approach lane rather than at a random angle.
-      const facing = Math.atan2(spot.y - this.player.y, spot.x - this.player.x);
+    for (let index = 0; index < totalCount; index += 1) {
       this.strikes.push({
         id: crypto.randomUUID(),
         kind: "scissorSnap",
         sourceSkillId: skillId,
-        x: clamp(spot.x, 30, ARENA.width - 30),
-        y: clamp(spot.y, 30, ARENA.height - 30),
-        facing,
+        // Seeded from the caster and re-synced every frame, so the blades stay attached
+        // to the character even while they keep moving.
+        x: this.player.x,
+        y: this.player.y,
+        facing: baseFacing + (Math.PI * 2 * index) / Math.max(1, totalCount),
         spread: 1.15,
         armLength: stats.armLength * this.player.rangeMultiplier * (1 + focus * 0.12),
         closeTime: Math.max(0.26, stats.closeTime - tempo * 0.06),
@@ -4169,13 +4562,17 @@ export class GameRuntime {
   }
 
   updateScissorSnap(strike, delta) {
+    // Re-anchor on the caster every frame: the vines are rooted in the character, so they
+    // travel with them instead of being left behind at the cast position.
+    strike.x = this.player.x;
+    strike.y = this.player.y;
     strike.elapsed += delta;
     const t = Math.min(1, strike.elapsed / strike.closeTime);
     if (t < 1) {
       return true;
     }
 
-    // Closed. Everything inside the swept wedge is cut and dragged toward the pivot.
+    // Closed. Everything inside the swept wedge is cut and squeezed into the cut line.
     const caught = [];
     for (const enemy of this.enemies) {
       if (enemy.isSoul) continue;
@@ -4192,13 +4589,20 @@ export class GameRuntime {
     }
 
     strike.bleedStacks += 1;
+    const axisX = Math.cos(strike.facing);
+    const axisY = Math.sin(strike.facing);
     for (const enemy of caught) {
       this.damageEnemy(enemy, strike.damage, strike);
-      // Dragged toward the pivot — resisted for heavyweights by the shared weight rules.
-      const dx = strike.x - enemy.x;
-      const dy = strike.y - enemy.y;
-      const length = Math.hypot(dx, dy) || 1;
-      this.applyKnockback(enemy, dx / length, dy / length, SCISSOR_PULL);
+      // Squeezed onto the blade line rather than toward the pivot. Now that the pivot is
+      // the player, pulling inward would drag the whole catch onto the character.
+      const dx = enemy.x - strike.x;
+      const dy = enemy.y - strike.y;
+      // Perpendicular component: how far off the cut line the body sits.
+      const side = dx * -axisY + dy * axisX;
+      if (Math.abs(side) > 1) {
+        const direction = side > 0 ? -1 : 1;
+        this.applyKnockback(enemy, -axisY * direction, axisX * direction, Math.min(SCISSOR_PULL, Math.abs(side)));
+      }
       if (strike.crossLevel > 0) {
         enemy.burnTimer = Math.max(enemy.burnTimer, SCISSOR_BLEED_SECONDS);
         enemy.burnDamage = Math.max(
@@ -4516,6 +4920,184 @@ export class GameRuntime {
       wardLevel: 0,
       color: meteor.color || "#72cbff",
     });
+  }
+
+  // ── 种脉共鸣: a ring whose every victim relays a ring of its own ──
+  castSeedResonance(state, stats) {
+    const skillId = "seedvaultPulse";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const parasiteLevel = state?.exclusives?.seedvaultPulseParasite || 0;
+    this.spawnResonanceRing({
+      x: this.player.x,
+      y: this.player.y,
+      maxRadius: stats.radius * this.player.rangeMultiplier * (1 + focus * 0.1),
+      growth: stats.growth * (1 + tempo * 0.12),
+      damage: this.rollDamage(stats.damage),
+      // 寄生芽孢 buys an extra relay generation on top of the base depth.
+      depth: stats.relayDepth + parasiteLevel,
+      relayScale: stats.relayScale,
+      parasiteLevel,
+      color: definitionColor(skillId),
+    });
+  }
+
+  spawnResonanceRing(config) {
+    // Hard ceiling on live rings: a dense field is meant to cascade spectacularly, not
+    // to spawn rings faster than they can retire.
+    if (this.pulses.length >= RESONANCE_MAX_RINGS) {
+      return;
+    }
+    this.pulses.push({
+      id: crypto.randomUUID(),
+      sourceSkillId: "seedvaultPulse",
+      x: config.x,
+      y: config.y,
+      radius: 0,
+      maxRadius: config.maxRadius,
+      growth: config.growth,
+      damage: config.damage,
+      healLevel: 0,
+      scorchLevel: 0,
+      delay: config.delay || 0,
+      hitSet: new Set(),
+      // Resonance bookkeeping.
+      resonanceDepth: config.depth,
+      relayScale: config.relayScale,
+      parasiteLevel: config.parasiteLevel || 0,
+      color: config.color,
+    });
+  }
+
+  // Called from updatePulses when a resonance ring sweeps an enemy: that enemy becomes a
+  // relay and emits its own smaller ring.
+  relayResonance(pulse, enemy) {
+    if (!(pulse.resonanceDepth > 0)) {
+      return;
+    }
+    if (pulse.parasiteLevel > 0) {
+      // 寄生芽孢: the node is seeded, bleeding life back to the caster over time.
+      enemy.burnTimer = Math.max(enemy.burnTimer, 2.4 + pulse.parasiteLevel * 0.8);
+      enemy.burnDamage = Math.max(enemy.burnDamage, pulse.damage * 0.12 * pulse.parasiteLevel);
+      this.player.health = Math.min(this.player.maxHealth, this.player.health + 0.6 * pulse.parasiteLevel);
+    }
+    this.spawnResonanceRing({
+      x: enemy.x,
+      y: enemy.y,
+      maxRadius: pulse.maxRadius * pulse.relayScale,
+      growth: pulse.growth,
+      damage: pulse.damage * pulse.relayScale,
+      depth: pulse.resonanceDepth - 1,
+      relayScale: pulse.relayScale,
+      parasiteLevel: pulse.parasiteLevel,
+      // A beat of delay so the chain reads as a cascade rather than one big flash.
+      delay: RESONANCE_RELAY_DELAY,
+      color: pulse.color,
+    });
+    this.spawnSkillEffect({
+      kind: "resonanceNode",
+      x: enemy.x,
+      y: enemy.y,
+      radius: enemy.radius * 1.9,
+      duration: 0.3,
+      color: pulse.color || "#badb69",
+      accent: "#f2ffcf",
+    });
+  }
+
+  // ── 皇庭威仪: an aura that converts being surrounded into damage ──
+  castRoyalCourt(state, stats) {
+    const skillId = "royalBudPulse";
+    const { focus, tempo } = this.getAdvancedExclusiveLevels(skillId, state);
+    const graceLevel = state?.exclusives?.royalBudPulseGrace || 0;
+    const radius = stats.radius * this.player.rangeMultiplier * (1 + focus * 0.08);
+
+    // Opening flourish, so the cast still reads as a pulse.
+    this.pulses.push({
+      id: crypto.randomUUID(),
+      sourceSkillId: skillId,
+      x: this.player.x,
+      y: this.player.y,
+      radius: 0,
+      maxRadius: radius,
+      growth: stats.growth,
+      damage: this.rollDamage(stats.damage),
+      healLevel: 0,
+      scorchLevel: 0,
+      delay: 0,
+      hitSet: new Set(),
+      color: definitionColor(skillId),
+    });
+
+    // The court itself lives on the player, not in the world: it follows them around.
+    this.royalCourt = {
+      radius,
+      duration: stats.courtDuration + tempo * 0.8,
+      tickInterval: stats.tickInterval,
+      tickClock: stats.tickInterval,
+      damage: this.rollDamage(stats.damage) * 0.5,
+      majestyPerStack: stats.majestyPerStack * (1 + focus * 0.22),
+      majestyCap: stats.majestyCap,
+      graceLevel,
+      color: definitionColor(skillId),
+      pulse: 0,
+    };
+  }
+
+  updateRoyalCourt(delta) {
+    const court = this.royalCourt;
+    if (!court) {
+      this.player.majestyStacks = 0;
+      this.player.majestyMultiplier = 1;
+      return;
+    }
+
+    court.duration -= delta;
+    court.pulse += delta * 2.4;
+    if (court.duration <= 0) {
+      this.royalCourt = null;
+      this.player.majestyStacks = 0;
+      this.player.majestyMultiplier = 1;
+      return;
+    }
+
+    // Majesty is recomputed from the live crowd every frame, so it rises and falls with
+    // how surrounded the player actually is rather than being a one-shot stack count.
+    let crowd = 0;
+    for (const enemy of this.enemies) {
+      if (enemy.isSoul) continue;
+      if (circleDistance(this.player, enemy) <= court.radius + enemy.radius) {
+        crowd += 1;
+      }
+    }
+    const stacks = Math.min(court.majestyCap, crowd);
+    this.player.majestyStacks = stacks;
+    this.player.majestyMultiplier = 1 + stacks * court.majestyPerStack;
+    // 御苑回春: the crown also sustains you while the court is crowded.
+    if (court.graceLevel > 0 && stacks > 0) {
+      this.player.health = Math.min(
+        this.player.maxHealth,
+        this.player.health + stacks * 0.22 * court.graceLevel * delta,
+      );
+    }
+
+    court.tickClock -= delta;
+    if (court.tickClock <= 0) {
+      court.tickClock += court.tickInterval;
+      for (const enemy of this.enemies) {
+        if (enemy.isSoul) continue;
+        if (circleDistance(this.player, enemy) > court.radius + enemy.radius) continue;
+        this.damageEnemy(enemy, court.damage, { sourceSkillId: "royalBudPulse" });
+      }
+    }
+  }
+
+  // 御苑回春: killing inside the court buys more court.
+  extendRoyalCourt() {
+    const court = this.royalCourt;
+    if (!court || court.graceLevel <= 0) {
+      return;
+    }
+    court.duration = Math.min(court.duration + 0.45 * court.graceLevel, ROYAL_COURT_MAX_DURATION);
   }
 
   // ── 蓝焰燎原: light a seed patch and let the fire make its own decisions ──
@@ -5966,6 +6548,10 @@ export class GameRuntime {
           if (pulse.scorchLevel > 0) {
             enemy.burnTimer = Math.max(enemy.burnTimer, 1.8 + pulse.scorchLevel * 0.5);
             enemy.burnDamage = Math.max(enemy.burnDamage, pulse.damage * 0.18 * pulse.scorchLevel);
+          }
+          // 种脉共鸣: the body just swept becomes a relay for the next generation.
+          if (pulse.resonanceDepth > 0 && !enemy.isSoul) {
+            this.relayResonance(pulse, enemy);
           }
         }
       }
@@ -8216,6 +8802,11 @@ export class GameRuntime {
       this.refuelFlamesAround(enemy);
     }
 
+    // 御苑回春: a kill inside the court buys the court more time.
+    if (this.royalCourt && circleDistance(this.player, enemy) <= this.royalCourt.radius + enemy.radius) {
+      this.extendRoyalCourt();
+    }
+
     // 黏稠蜜沼: dying inside a mire splits off a small fresh pool, so a honey build keeps
     // its own terrain topped up as long as it keeps killing in it.
     const mire = this.fields.find(
@@ -8260,6 +8851,48 @@ export class GameRuntime {
       // Purge waves end as soon as every nest is down.
       this.session.waveNestKills = (this.session.waveNestKills || 0) + 1;
       this.awardDewCoins(3);
+    }
+
+    if (enemy.raider) {
+      // Raid waves end as soon as the pack is cleared.
+      this.session.waveRaiderKills = (this.session.waveRaiderKills || 0) + 1;
+      this.awardDewCoins(2);
+    }
+
+    // 祭坛: only kills inside the ring charge it, which is what makes this wave about
+    // holding a position in a fight rather than kiting freely. Credit is given on body
+    // *overlap*, not centre containment — testing the centre alone meant anything dying
+    // on the rim (enemy radii run 10-34px) silently failed to count, which read as the
+    // objective randomly ignoring kills.
+    if (this.session.waveAltarGoal > 0 && this.session.waveAltarCharge < this.session.waveAltarGoal) {
+      const altar = this.waveMarkers.find((marker) => marker.kind === "altar");
+      if (altar && circleDistance(altar, enemy) <= altar.radius + enemy.radius) {
+        this.session.waveAltarCharge += 1;
+        this.spawnSkillEffect({
+          kind: "altarCharge",
+          x: enemy.x,
+          y: enemy.y,
+          targetX: altar.x,
+          targetY: altar.y,
+          radius: 14,
+          duration: 0.34,
+          color: "#ffd98a",
+          accent: "#fff6dc",
+        });
+      }
+    }
+
+    // 裂群: trash splits once. Elites, bosses, nests, raiders and existing children are
+    // all exempt, so the objective enemies of other waves never multiply.
+    if (
+      this.session.waveSplitOnDeath &&
+      !enemy.splitChild &&
+      !enemy.elite &&
+      !enemy.boss &&
+      !enemy.nest &&
+      !enemy.raider
+    ) {
+      this.splitEnemyOnDeath(enemy);
     }
 
     if (enemy.boss) {
@@ -8802,7 +9435,10 @@ export class GameRuntime {
     // roll is now made per actual hit inside damageEnemy.
     const source = this.activeSkillTrigger?.snapshot || this.player;
     const frostMultiplier = source.frostBudDamageMultiplier ?? (this.isPointInsideFrostBudZone(this.player.x, this.player.y) ? 2 : 1);
-    return baseDamage * source.attackMultiplier * frostMultiplier;
+    // 皇庭威仪 is read live rather than from the snapshot: the whole point is that it
+    // tracks how surrounded you are at the moment of the cast.
+    const majestyMultiplier = this.player.majestyMultiplier || 1;
+    return baseDamage * source.attackMultiplier * frostMultiplier * majestyMultiplier;
   }
 
   findNearestEnemy(x, y) {
