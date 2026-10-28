@@ -1370,23 +1370,46 @@ export class PixiRenderer {
         });
       }
       case "auroraNeedle":
-        return this.getCachedTexture("proj-aurora", 96, 10, (g, x, y, r) => {
+        // Must be drawn along +x: drawProjectiles rotates sprites by atan2(vy, vx), so a
+        // sprite drawn along +y ends up perpendicular to its own travel direction. This
+        // one used to point down, which is why the needles flew sideways.
+        return this.getCachedTexture("proj-aurora", 128, 14, (g, x, y, r) => {
+          // Trailing streak, so a piercing needle reads as a line of light.
+          setLine(g, r * 0.26, "rgba(201, 169, 255, 0.35)");
+          g.moveTo(x - r * 2.2, y);
+          g.lineTo(x - r * 0.6, y);
+          // Needle body: long, thin, tip forward along +x.
           beginFill(g, "#c9a9ff");
-          g.moveTo(x - r * 0.3, y - r); g.lineTo(x, y + r); g.lineTo(x + r * 0.3, y - r); g.closePath();
+          g.drawPolygon([
+            x + r * 2.0, y,
+            x - r * 0.8, y - r * 0.34,
+            x - r * 1.2, y,
+            x - r * 0.8, y + r * 0.34,
+          ]);
+          g.endFill();
+          // Bright leading edge.
+          beginFill(g, "rgba(255,255,255,0.95)");
+          g.drawPolygon([
+            x + r * 2.0, y,
+            x + r * 0.5, y - r * 0.16,
+            x + r * 0.5, y + r * 0.16,
+          ]);
           g.endFill();
         });
       case "brambleBoomerang":
       case "brambleBoomerangShard":
+        // Long axis along +x so the seed leads with its point; it used to be drawn taller
+        // than wide, which made it fly broadside once rotated to the travel angle.
         return this.getCachedTexture("proj-thornseed", 96, 10, (g, x, y, r) => {
           beginFill(g, "#9bcf63");
-          g.moveTo(x, y - r * 0.9);
-          g.lineTo(x + r * 0.5, y);
-          g.lineTo(x, y + r * 0.9);
-          g.lineTo(x - r * 0.5, y);
+          g.moveTo(x + r * 0.9, y);
+          g.lineTo(x, y - r * 0.5);
+          g.lineTo(x - r * 0.9, y);
+          g.lineTo(x, y + r * 0.5);
           g.closePath();
           g.endFill();
           beginFill(g, "rgba(255,255,255,0.4)");
-          g.drawCircle(x - r * 0.1, y, r * 0.16);
+          g.drawCircle(x + r * 0.1, y, r * 0.16);
           g.endFill();
         });
       case "harvestCrescent":
