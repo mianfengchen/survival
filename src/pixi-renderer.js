@@ -3944,33 +3944,53 @@ export class PixiRenderer {
       }
 
       if (marker.kind === "altar") {
-        // 祭坛: a ring you have to kill *inside*. Drawn as an offering circle with an
-        // inward-facing rune ring so it reads differently from 坚守's sanctuary.
+        // 祭坛: charges while the player is holding the ring. The lit/idle distinction is
+        // the whole feedback for that rule, so it is deliberately loud — a dim grey ring
+        // means "you are not charging this".
         const r = marker.radius;
         const spin = marker.pulse || 0;
-        beginFill(graphics, "#ffd98a", 0.09);
+        const active = Boolean(marker.active);
+        const rim = active ? "#ffd98a" : "rgba(170, 160, 140, 0.55)";
+        const glyph = active ? "#fff6dc" : "rgba(200, 192, 172, 0.5)";
+        beginFill(graphics, active ? "#ffd98a" : "#8d8674", active ? 0.11 : 0.05);
         graphics.drawCircle(marker.x, marker.y, r);
         graphics.endFill();
-        setLine(graphics, 4, "#ffd98a");
+        setLine(graphics, active ? 5 : 3, rim);
         graphics.drawCircle(marker.x, marker.y, r);
-        setLine(graphics, 1.8, "rgba(255, 246, 220, 0.45)");
+        setLine(graphics, 1.8, active ? "rgba(255, 246, 220, 0.45)" : "rgba(200, 192, 172, 0.25)");
         graphics.drawCircle(marker.x, marker.y, r * 0.78);
-        // Runes around the rim, rotating slowly.
+        // Runes around the rim, rotating only while the altar is actually charging.
         for (let index = 0; index < 8; index += 1) {
-          const a = (Math.PI * 2 * index) / 8 + spin * 0.25;
+          const a = (Math.PI * 2 * index) / 8 + (active ? spin * 0.25 : 0);
           const px = marker.x + Math.cos(a) * r * 0.88;
           const py = marker.y + Math.sin(a) * r * 0.88;
-          beginFill(graphics, "#fff6dc", 0.7);
-          drawStar(graphics, px, py, 7, 3, 4);
+          beginFill(graphics, glyph, active ? 0.8 : 0.4);
+          drawStar(graphics, px, py, active ? 8 : 5, 3, 4);
           graphics.endFill();
         }
-        // The brazier at the centre, breathing.
+        // The brazier at the centre: breathing and bright when held, banked when not.
         const breathe = (Math.sin(spin) + 1) / 2;
-        beginFill(graphics, "#ffb866", 0.5 + breathe * 0.3);
-        graphics.drawCircle(marker.x, marker.y, 15 + breathe * 5);
+        beginFill(graphics, active ? "#ffb866" : "#6f6857", active ? 0.5 + breathe * 0.35 : 0.3);
+        graphics.drawCircle(marker.x, marker.y, active ? 15 + breathe * 6 : 11);
         graphics.endFill();
-        setLine(graphics, 2.4, "#fff6dc");
-        graphics.drawCircle(marker.x, marker.y, 20 + breathe * 4);
+        setLine(graphics, 2.4, glyph);
+        graphics.drawCircle(marker.x, marker.y, active ? 20 + breathe * 4 : 15);
+        // Inward arrows when idle, so the fix is obvious: stand in it.
+        if (!active) {
+          setLine(graphics, 3, "rgba(255, 217, 138, 0.75)");
+          for (let index = 0; index < 4; index += 1) {
+            const a = (Math.PI * 2 * index) / 4 + spin * 0.4;
+            const tip = r * 0.5;
+            const tail = r * 0.86;
+            const tx = marker.x + Math.cos(a) * tip;
+            const ty = marker.y + Math.sin(a) * tip;
+            graphics.moveTo(marker.x + Math.cos(a) * tail, marker.y + Math.sin(a) * tail);
+            graphics.lineTo(tx, ty);
+            graphics.lineTo(tx + Math.cos(a + 2.4) * 14, ty + Math.sin(a + 2.4) * 14);
+            graphics.moveTo(tx, ty);
+            graphics.lineTo(tx + Math.cos(a - 2.4) * 14, ty + Math.sin(a - 2.4) * 14);
+          }
+        }
         this.drawMarkerCompass(graphics, marker, player, "#ffd98a");
         continue;
       }

@@ -355,10 +355,16 @@ const NEST_BROOD_INTERVAL = 3.4;
 const DEW_ORB_RADIUS = 20;
 const DEW_ORB_EXP = 30;
 
-// 祭坛 tuning: the ring only counts kills made inside it, so it is "fight here" rather
-// than 坚守's "stand here".
-const ALTAR_RADIUS = 190;
+// 祭坛 tuning: charging requires the player to be holding the ring, so it is "fight from
+// here" rather than 坚守's "stand here and wait". Widened from 190 because the ring also
+// has to be big enough to fight from without constantly clipping out of it.
+const ALTAR_RADIUS = 230;
 const ALTAR_MOVE_SECONDS = 30;
+// Most skills detonate under the enemy's feet, which means the kill lands wherever the
+// pack happens to be, not where the player is. Dodging a step out of the ring would
+// otherwise silently void that whole volley, so holding the ring leaves a trailing
+// window of credit.
+const ALTAR_HOLD_GRACE = 2;
 
 // 禁域 tuning: telegraphed walls that sweep the arena. A band spans the whole arena
 // perpendicular to its travel, and it moves faster than the player's base speed, so a
@@ -493,7 +499,7 @@ const WAVE_TYPE_LIBRARY = Object.freeze({
   altar: {
     id: "altar",
     name: "祭坛",
-    objective: "在祭坛范围内击杀害虫为其充能",
+    objective: "守在祭坛圈内击杀害虫为其充能，离开则停止充能",
     durationWeight: 1,
     densityScale: 1.15,
     killGoalBase: 0,
@@ -940,6 +946,7 @@ export class GameRuntime {
       waveAltarGoal: 0,
       waveAltarCharge: 0,
       waveAltarTimer: 0,
+      waveAltarHold: 0,
       // 裂群: trash splits once on death while this is set.
       waveSplitOnDeath: false,
       intermissionTimer: 0,
@@ -1822,6 +1829,7 @@ export class GameRuntime {
     session.waveAltarGoal = type.altarGoal ? Math.ceil(type.altarGoal * (1 + (index - 1) * 0.12)) : 0;
     session.waveAltarCharge = 0;
     session.waveAltarTimer = 0;
+    session.waveAltarHold = 0;
     session.waveSplitOnDeath = Boolean(type.splitOnDeath);
     session.intermissionTimer = 0;
     session.intermissionRewardTaken = false;
@@ -2591,6 +2599,7 @@ export class GameRuntime {
       y: point.y,
       radius: ALTAR_RADIUS,
       pulse: 0,
+      active: false,
     });
   }
 
@@ -2813,6 +2822,13 @@ export class GameRuntime {
       const altar = this.waveMarkers.find((marker) => marker.kind === "altar");
       if (altar) {
         altar.pulse += delta * 2.2;
+        const holding = circleDistance(altar, this.player) <= altar.radius + this.player.radius;
+        // Drives the renderer's lit/idle state so "why isn't the bar moving" is answerable
+        // at a glance instead of being invisible.
+        altar.active = holding;
+        session.waveAltarHold = holding
+          ? ALTAR_HOLD_GRACE
+          : Math.max(0, (session.waveAltarHold || 0) - delta);
       }
     }
 
@@ -8859,26 +8875,34 @@ export class GameRuntime {
       this.awardDewCoins(2);
     }
 
-    // 祭坛: only kills inside the ring charge it, which is what makes this wave about
-    // holding a position in a fight rather than kiting freely. Credit is given on body
-    // *overlap*, not centre containment — testing the centre alone meant anything dying
-    // on the rim (enemy radii run 10-34px) silently failed to count, which read as the
-    // objective randomly ignoring kills.
+    // 祭坛: the charge condition is "are *you* holding the altar", not "did the corpse
+    // land inside it". Every ranged skill in the game out-reaches the ring (飞剑术 alone
+    // reaches 530px against a ~230px ring) and auto-targeting picks whatever is nearest,
+    // so requiring the enemy to die inside meant the player could stand dead-centre,
+    // kill constantly, and watch the bar sit still with no explanation. Kills that do
+    // land inside still count even if the player stepped out, so the rule is forgiving
+    // in both directions.
     if (this.session.waveAltarGoal > 0 && this.session.waveAltarCharge < this.session.waveAltarGoal) {
       const altar = this.waveMarkers.find((marker) => marker.kind === "altar");
-      if (altar && circleDistance(altar, enemy) <= altar.radius + enemy.radius) {
-        this.session.waveAltarCharge += 1;
-        this.spawnSkillEffect({
-          kind: "altarCharge",
-          x: enemy.x,
-          y: enemy.y,
-          targetX: altar.x,
-          targetY: altar.y,
-          radius: 14,
-          duration: 0.34,
-          color: "#ffd98a",
-          accent: "#fff6dc",
-        });
+      if (altar) {
+        const playerHolding =
+          circleDistance(altar, this.player) <= altar.radius + this.player.radius ||
+          (this.session.waveAltarHold || 0) > 0;
+        const diedInside = circleDistance(altar, enemy) <= altar.radius + enemy.radius;
+        if (playerHolding || diedInside) {
+          this.session.waveAltarCharge += 1;
+          this.spawnSkillEffect({
+            kind: "altarCharge",
+            x: enemy.x,
+            y: enemy.y,
+            targetX: altar.x,
+            targetY: altar.y,
+            radius: 14,
+            duration: 0.34,
+            color: "#ffd98a",
+            accent: "#fff6dc",
+          });
+        }
       }
     }
 
