@@ -15,7 +15,7 @@
     <script type="importmap">
       {
         "imports": {
-          "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js-legacy@7.4.3/dist/pixi-legacy.mjs"
+          "pixi.js": "./src/pixi-legacy.mjs"
         }
       }
     </script>
@@ -112,11 +112,17 @@
           </section>
           <section class="growth-section">
             <div class="section-head">
-              <h3>守园角色</h3>
-              <span class="badge" id="prepSelectedCharacter">小精灵</span>
+              <h3>技能装配</h3>
+              <span class="badge" id="prepSlotSummary">技能槽 0 / 2</span>
             </div>
             <p id="prepRuleText" class="card-note"></p>
-            <div id="warCharacterOptions" class="card-grid"></div>
+            <div id="loadoutSlots" class="loadout-slots"></div>
+            <p class="card-note loadout-subhead">已获赐福</p>
+            <div id="loadoutBlessings" class="card-grid"></div>
+            <div id="loadoutEssenceSection" class="loadout-essence-section" hidden>
+              <p class="card-note loadout-subhead">本源装配</p>
+              <div id="loadoutEssenceSlots" class="loadout-slots"></div>
+            </div>
           </section>
           <div class="hero-actions prep-actions">
             <button id="confirmWarButton" class="primary-button">进入保卫战</button>
@@ -134,7 +140,7 @@
             </div>
             <button data-close-overlay class="ghost-button">返回</button>
           </div>
-          <p class="overlay-copy">植物能量用于强化基础能力，并为已经解锁的角色技能开放专属研究项目。</p>
+          <p class="overlay-copy">植物能量用于强化基础能力、扩充技能槽，并为已获赐福的技能开放专属研究项目。</p>
           <div class="growth-sections">
             <section class="growth-section">
               <div class="section-head">
@@ -142,6 +148,14 @@
                 <span class="badge">角色</span>
               </div>
               <div id="talentList" class="card-grid"></div>
+            </section>
+
+            <section class="growth-section">
+              <div class="section-head">
+                <h3>技能槽扩充</h3>
+                <span class="badge" id="labSlotBadge">2 / 6</span>
+              </div>
+              <div id="skillSlotShop" class="card-grid"></div>
             </section>
 
             <section class="growth-section">

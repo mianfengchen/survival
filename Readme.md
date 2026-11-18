@@ -34,7 +34,8 @@
 - 已补入 `manifest.webmanifest`、`service-worker.js` 与安装图标
 - PWA 与离线缓存不支持 `file://` 直接打开；需要通过 `http://localhost` 或 HTTPS 访问
 - 本地测试可使用任意静态服务器，例如在仓库根目录执行 `python -m http.server 4173`，然后访问 `http://localhost:4173`
-- 当前 Pixi 仍来自 CDN；首次在线访问后，service worker 会把核心壳和运行期资源缓存下来，后续才能离线启动
+- Pixi 已改为本地依赖（`src/pixi-legacy.mjs`，v7.4.3 legacy ESM），由 `index.html` 的 importmap 指向本地路径
+- 项目已无任何外部 CDN 依赖；首次访问后 service worker 会缓存核心壳与运行期资源，可完全离线启动
 
 
 ## 项目结构

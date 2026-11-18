@@ -541,7 +541,7 @@ function mixHex(left, right, amount = 0.5) {
 function createRegionalSpecialMonster(regionIndex) {
   const family = BOSS_KIN_FAMILIES[(regionIndex + 1) % BOSS_KIN_FAMILIES.length];
   const theme = REGION_THEME_PALETTES[regionIndex % REGION_THEME_PALETTES.length];
-  const areaLabel = regionIndex === 0 ? "花心" : REGION_THEMES[regionIndex % REGION_THEMES.length];
+  const areaLabel = regionIndex === 0 ? "众愿" : REGION_THEMES[regionIndex % REGION_THEMES.length];
   const statScale = 1 + regionIndex * 0.038;
   const speedBonus = (regionIndex % 6) * 2;
   const damageBonus = regionIndex * 0.42;
@@ -570,21 +570,17 @@ function createRegionalSpecialMonster(regionIndex) {
 export const REGION_SPECIAL_MONSTERS = Array.from({ length: REGION_COLUMNS * REGION_ROWS }, (_, index) => createRegionalSpecialMonster(index));
 
 function createRegionReward(regionIndex) {
-  if (regionIndex === 0) {
+  // 区域 index i 的首次解放授予 CHARACTER_LIBRARY[i] 的初赐。
+  // 这是赐福的确定性获取渠道（渠道 A），与 createBlessing 的 sourceRegionId 互为镜像。
+  if (regionIndex < CHARACTER_LIBRARY.length) {
     return {
-      type: "character",
-      targetId: "spriteScout",
+      type: "blessing",
+      targetId: CHARACTER_LIBRARY[regionIndex].id,
     };
   }
 
-  const characterIndex = regionIndex - 1;
-  if (characterIndex < CHARACTER_LIBRARY.length - 1) {
-    return {
-      type: "character",
-      targetId: CHARACTER_LIBRARY[characterIndex + 1].id,
-    };
-  }
-
+  // 注：当前 36 区域 ↔ 36 提供者恰好一一对应，故景观奖励暂不可达。
+  // 景观将在第 3 阶段地图重构时改为分支终点奖励（见 docs/design-notes.md）。
   const landscapeIndex = (regionIndex - CHARACTER_LIBRARY.length) % LANDSCAPE_LIBRARY.length;
   return {
     type: "landscape",
@@ -647,11 +643,11 @@ function createRegion(regionIndex) {
   return {
     id: `region-${regionIndex + 1}`,
     index: regionIndex,
-    name: regionIndex === 0 ? "最后的花心" : `${REGION_THEMES[regionIndex % REGION_THEMES.length]} ${regionIndex + 1}`,
+    name: regionIndex === 0 ? "众愿苗圃" : `${REGION_THEMES[regionIndex % REGION_THEMES.length]} ${regionIndex + 1}`,
     description:
       regionIndex === 0
-        ? "花园最后仍未沦陷的核心区域，小精灵将在这里觉醒并发起第一场保卫战。"
-        : "被外星害虫侵蚀的花园区域，需要先击退镇守 Boss 才能恢复生机。",
+        ? "花园众人凝聚出小精灵的地方，也是防线尚未被击穿的最后一片苗圃。第一场保卫战从这里打起。"
+        : "被害虫星球的远征军侵蚀的花园区域，需要先击退被改写的镇守者才能恢复生机。",
     row,
     column,
     reward,
@@ -667,6 +663,187 @@ function createRegion(regionIndex) {
 }
 
 export const GARDEN_REGIONS = Array.from({ length: REGION_COLUMNS * REGION_ROWS }, (_, index) => createRegion(index));
+
+/* ── 赐福系统（P1：初赐 + 技能槽）──
+   见 docs/blessing-system.md。
+
+   模型：主角固定为小精灵，其余角色不再作为可选角色，而是「赐福提供者」。
+   赐福分三层：初赐（解锁技能）/ 深赐（解锁该技能专属）/ 本源（整套构筑的特性）。
+   P1 只实装初赐与技能槽；深赐沿用既有 unlocks.exclusives，本源仅预留结构。 */
+
+export const PROTAGONIST_BLESSING_ID = "spriteScout";
+
+// 技能槽：拥有很多、能带的很少，稀缺性是整套系统成立的前提。
+export const DEFAULT_SKILL_SLOTS = 2;
+export const MAX_SKILL_SLOTS = 6;
+// 本源槽：P1 恒为 0，P3 开放到 2–3，提前预留避免二次存档迁移。
+export const DEFAULT_ESSENCE_SLOTS = 0;
+export const MAX_ESSENCE_SLOTS = 3;
+
+// 技能槽扩容价格（植物能量）。递增以免后期一次性全开。
+export function getSkillSlotCost(currentSlots) {
+  if (currentSlots >= MAX_SKILL_SLOTS) {
+    return null;
+  }
+  return 240 + Math.max(0, currentSlots - DEFAULT_SKILL_SLOTS) * 220;
+}
+
+/* 本源定义（P3 内容，P1 仅作为数据存在、不会被授予）。
+   取自提供者已有的机制身份，不另起设定。
+   category: category 流派专精 | convert 转化 | status 状态联动 | contract 风险契约 | structure 结构 */
+const ESSENCE_BY_PROVIDER = {
+  spriteScout: {
+    id: "spriteScoutEssence",
+    name: "众愿共鸣",
+    category: "structure",
+    description: "升级时多出一个候选项。对应「众人凝聚而成」，不偏向任何流派。",
+    challenge: { type: "skillClear", skillId: "elfArrow" },
+  },
+  clockivy: {
+    id: "clockivyEssence",
+    name: "钟域共鸣",
+    category: "status",
+    description: "对减速与停滞状态的效果显著放大，并可作用于精英与 Boss。",
+    challenge: { type: "skillClear", skillId: "clockIvyLash" },
+  },
+  royalbud: {
+    id: "royalbudEssence",
+    name: "威仪共鸣",
+    category: "contract",
+    description: "周围敌人越密集，自身伤害越高；但脱离包围时收益归零。",
+    challenge: { type: "skillClear", skillId: "royalBudPulse" },
+  },
+  blueflame: {
+    id: "blueflameEssence",
+    name: "燎原共鸣",
+    category: "status",
+    description: "自身造成的状态会自行向邻近敌人蔓延，击杀可成为新的蔓延源。",
+    challenge: { type: "skillClear", skillId: "blueflameGarden" },
+  },
+  seedvault: {
+    id: "seedvaultEssence",
+    name: "种脉共鸣",
+    category: "structure",
+    description: "命中会形成节点并接力扩散，敌群越密集连锁规模越大。",
+    challenge: { type: "skillClear", skillId: "seedvaultPulse" },
+  },
+  glassprout: {
+    id: "glassproutEssence",
+    name: "折光共鸣",
+    category: "convert",
+    description: "每次转手（折射 / 弹跳 / 连锁）都提升伤害与体积，而不是衰减。",
+    challenge: { type: "skillClear", skillId: "glassPrismRay" },
+  },
+  aurorapetal: {
+    id: "aurorapetalEssence",
+    name: "贯羽共鸣",
+    category: "convert",
+    description: "把投射物数量换成穿透能力：数量上限降低，穿透大幅提升。",
+    exclusiveWith: ["lotuskeeperEssence", "dewcallerEssence"],
+    challenge: { type: "skillClear", skillId: "auroraNeedle" },
+  },
+  eclipsebud: {
+    id: "eclipsebudEssence",
+    name: "蚀骨共鸣",
+    category: "status",
+    description: "易伤效果大幅加重，并延长其持续时间。",
+    challenge: { type: "skillClear", skillId: "eclipsePetalRain" },
+  },
+  pearlshell: {
+    id: "pearlshellEssence",
+    name: "碾压共鸣",
+    category: "convert",
+    description: "体积越大伤害越高，并在撞击时转化出冲击波。",
+    challenge: { type: "skillClear", skillId: "pearlRoll" },
+  },
+  lotuskeeper: {
+    id: "lotuskeeperEssence",
+    name: "莲辉共鸣",
+    category: "category",
+    description: "召唤类技能全面强化，投射类技能收益降低。",
+    exclusiveWith: ["aurorapetalEssence", "dewcallerEssence"],
+    challenge: { type: "skillClear", skillId: "lotusBeacon" },
+  },
+  dewcaller: {
+    id: "dewcallerEssence",
+    name: "浸染共鸣",
+    category: "category",
+    description: "场地类技能范围与持续时间大幅提升，投射类技能收益降低。",
+    exclusiveWith: ["aurorapetalEssence", "lotuskeeperEssence"],
+    challenge: { type: "skillClear", skillId: "dewGarden" },
+  },
+  harvestdoll: {
+    id: "harvestdollEssence",
+    name: "回旋共鸣",
+    category: "convert",
+    description: "回旋与返程类效果换取攻速与暴击收益。",
+    challenge: { type: "skillClear", skillId: "harvestCrescent" },
+  },
+};
+
+// 初赐的确定性来源：CHARACTER_LIBRARY[i] 由第 i+1 个区域首次解放授予。
+// 与既有 createRegionReward 的映射保持一致（region index i ↔ CHARACTER_LIBRARY[i]）。
+function createBlessing(character, index) {
+  const innate = character.id === PROTAGONIST_BLESSING_ID;
+  return {
+    id: character.id,
+    name: character.name,
+    title: character.title,
+    kind: character.kind,
+    description: character.description,
+    color: character.color,
+    // 初赐解锁的技能
+    skillId: character.skillId,
+    // 主角自身的力量：恒定可用，不占技能槽
+    innate,
+    // flyingSword 不属于任何提供者，暂挂在主角名下以免内容废弃。
+    // 它会占用技能槽，不享受 innate 待遇。归属待定，见 docs/blessing-system.md 第八节。
+    extraSkillIds: innate ? ["flyingSword"] : [],
+    sourceRegionId: `region-${index + 1}`,
+    resonanceMax: 3,
+    essence: ESSENCE_BY_PROVIDER[character.id] || null,
+  };
+}
+
+export const BLESSING_LIBRARY = CHARACTER_LIBRARY.map(createBlessing);
+
+const BLESSING_BY_ID = new Map(BLESSING_LIBRARY.map((blessing) => [blessing.id, blessing]));
+const BLESSING_BY_REGION = new Map(BLESSING_LIBRARY.map((blessing) => [blessing.sourceRegionId, blessing]));
+const BLESSING_BY_SKILL = new Map(BLESSING_LIBRARY.map((blessing) => [blessing.skillId, blessing]));
+
+// 主角固有技能：不占槽、不可卸下。
+export const INNATE_SKILL_IDS = BLESSING_LIBRARY.filter((blessing) => blessing.innate).map((blessing) => blessing.skillId);
+
+export function getBlessingDefinition(blessingId) {
+  return BLESSING_BY_ID.get(blessingId) || null;
+}
+
+export function getBlessingForRegion(regionId) {
+  return BLESSING_BY_REGION.get(regionId) || null;
+}
+
+export function getBlessingBySkillId(skillId) {
+  return BLESSING_BY_SKILL.get(skillId) || null;
+}
+
+export function getEssenceDefinition(essenceId) {
+  for (const blessing of BLESSING_LIBRARY) {
+    if (blessing.essence?.id === essenceId) {
+      return blessing.essence;
+    }
+  }
+  return null;
+}
+
+// 某份赐福授予后可装备的技能（初赐 + 挂靠技能），不含固有技能。
+export function getBlessingEquippableSkillIds(blessingId) {
+  const blessing = getBlessingDefinition(blessingId);
+  if (!blessing) {
+    return [];
+  }
+  const skillIds = blessing.innate ? [] : [blessing.skillId];
+  return [...skillIds, ...blessing.extraSkillIds];
+}
 
 /* ── Character Archive ──
    Extended profiles for the Garden Library character browser.
@@ -802,14 +979,31 @@ export function isRegionAdjacentToLiberated(regionId, liberatedRegionIds) {
   return getAdjacentRegionIds(regionId).some((adjacentId) => liberatedSet.has(adjacentId));
 }
 
+export function createDefaultBlessingState() {
+  return {
+    [PROTAGONIST_BLESSING_ID]: { granted: true, resonance: 0, essence: false },
+  };
+}
+
+export function createDefaultLoadout() {
+  return {
+    // 主角固有技能不入列（恒定可用、不占槽）。
+    // 飞剑术默认装配：沿用旧版「初始技能为飞剑术」的手感，也避免开局只有一个技能。
+    skillIds: ["flyingSword"],
+    essenceIds: [],
+    skillSlots: DEFAULT_SKILL_SLOTS,
+    essenceSlots: DEFAULT_ESSENCE_SLOTS,
+  };
+}
+
 export function createDefaultWorldState() {
   return {
     introSeen: false,
     tutorialCompleted: false,
     liberatedRegions: [GARDEN_REGIONS[0].id],
-    unlockedCharacters: ["spriteScout"],
     unlockedLandscapes: [],
-    selectedCharacterId: "spriteScout",
+    blessings: createDefaultBlessingState(),
+    loadout: createDefaultLoadout(),
     selectedRegionId: GARDEN_REGIONS[0].id,
     selectedWarDifficultyId: "normal",
     pendingRegionId: GARDEN_REGIONS[0].id,

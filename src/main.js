@@ -12,24 +12,33 @@ import {
   getTalentCost,
 } from "./data.js";
 import {
-  CHARACTER_LIBRARY,
+  BLESSING_LIBRARY,
   GARDEN_REGIONS,
+  INNATE_SKILL_IDS,
   LANDSCAPE_LIBRARY,
+  MAX_SKILL_SLOTS,
+  PROTAGONIST_BLESSING_ID,
   WAR_DIFFICULTIES,
-  getCharacterDefinition,
+  getBlessingDefinition,
+  getBlessingEquippableSkillIds,
   getLandscapeDefinition,
   getRegionDefinition,
+  getSkillSlotCost,
   getWarDifficulty,
   isRegionAdjacentToLiberated,
 } from "./garden-data.js";
 import { GameRuntime } from "./game.js";
 import {
   applyRunResult,
+  expandSkillSlots,
+  getGrantedSkillIds,
+  isBlessingGranted,
   loadProgress,
   purchaseExclusiveUnlock,
   purchaseTalent,
   saveProgress,
   setExclusiveEnabled,
+  setLoadoutSkills,
   unlockRegionReward,
   updateSettings,
   updateWorldState,
@@ -271,10 +280,10 @@ const elements = {
   prepRegionMeta: document.querySelector("#prepRegionMeta"),
   prepRegionDescription: document.querySelector("#prepRegionDescription"),
   prepSelectedDifficulty: document.querySelector("#prepSelectedDifficulty"),
-  prepSelectedCharacter: document.querySelector("#prepSelectedCharacter"),
+
   prepRuleText: document.querySelector("#prepRuleText"),
   warDifficultyOptions: document.querySelector("#warDifficultyOptions"),
-  warCharacterOptions: document.querySelector("#warCharacterOptions"),
+
   liberationBadge: document.querySelector("#liberationBadge"),
   characterBadge: document.querySelector("#characterBadge"),
   prepDifficultyBadge: document.querySelector("#prepDifficultyBadge"),
@@ -285,6 +294,13 @@ const elements = {
   talentList: document.querySelector("#talentList"),
   skillUnlockShop: document.querySelector("#skillUnlockShop"),
   exclusiveUnlockShop: document.querySelector("#exclusiveUnlockShop"),
+  skillSlotShop: document.querySelector("#skillSlotShop"),
+  labSlotBadge: document.querySelector("#labSlotBadge"),
+  prepSlotSummary: document.querySelector("#prepSlotSummary"),
+  loadoutSlots: document.querySelector("#loadoutSlots"),
+  loadoutBlessings: document.querySelector("#loadoutBlessings"),
+  loadoutEssenceSection: document.querySelector("#loadoutEssenceSection"),
+  loadoutEssenceSlots: document.querySelector("#loadoutEssenceSlots"),
   libraryCharacters: document.querySelector("#libraryCharacters"),
   codexMonsters: document.querySelector("#codexMonsters"),
   codexSkills: document.querySelector("#codexSkills"),
@@ -332,7 +348,7 @@ const elements = {
 
 let progress = loadProgress();
 let selectedRegionId = progress.world?.selectedRegionId || progress.world?.pendingRegionId || INITIAL_REGION_ID;
-let selectedCharacterId = progress.world?.selectedCharacterId || "spriteScout";
+
 let selectedWarDifficultyId = progress.world?.selectedWarDifficultyId || "normal";
 let activeRunConfig = null;
 let storyPrimaryHandler = null;
@@ -885,20 +901,12 @@ function bindBattleTouchControls() {
 }
 
 function syncCampaignSelections() {
-  const unlockedCharacterIds = Array.isArray(progress.world?.unlockedCharacters) && progress.world.unlockedCharacters.length > 0
-    ? progress.world.unlockedCharacters
-    : ["spriteScout"];
-
-  const preferredCharacterId = unlockedCharacterIds.includes(progress.world?.selectedCharacterId)
-    ? progress.world.selectedCharacterId
-    : unlockedCharacterIds[0];
   const preferredRegionId = getRegionDefinition(progress.world?.selectedRegionId)
     ? progress.world.selectedRegionId
     : getRegionDefinition(progress.world?.pendingRegionId)
       ? progress.world.pendingRegionId
       : INITIAL_REGION_ID;
 
-  selectedCharacterId = preferredCharacterId;
   selectedRegionId = preferredRegionId;
   selectedWarDifficultyId = getWarDifficulty(progress.world?.selectedWarDifficultyId).id;
 }
@@ -910,28 +918,29 @@ function persistWorldSelection(partialWorld) {
   renderPersistentPanels();
 }
 
-function getUnlockedCharacters() {
-  const unlocked = progress.world.unlockedCharacters
-    .map((characterId) => getCharacterDefinition(characterId))
-    .filter(Boolean);
-  return unlocked.length > 0 ? unlocked : [getCharacterDefinition("spriteScout")].filter(Boolean);
+// 已获赐福的提供者（含主角自身）。
+function getGrantedBlessings() {
+  const granted = BLESSING_LIBRARY.filter((blessing) => isBlessingGranted(progress.world, blessing.id));
+  return granted.length > 0 ? granted : [getBlessingDefinition(PROTAGONIST_BLESSING_ID)].filter(Boolean);
 }
 
-function getCharacterRuleDescription(character) {
-  if (!character) {
-    return "暂无可用角色。";
-  }
-  return `${character.name} 初始携带 ${getSkillDefinition(character.skillId)?.name || "未知技能"}，战斗中可使用全部已解锁角色技能。`;
+function getLoadout() {
+  return progress.world.loadout;
 }
 
-function getCharacterAllowedSkillIds(character) {
-  if (!character) {
-    return [];
-  }
+// 本局实际可用的技能：固有技能 + 已装备技能。
+function getEquippedSkillIds() {
+  return [...INNATE_SKILL_IDS, ...getLoadout().skillIds];
+}
 
-  return getUnlockedCharacters()
-    .map((item) => item.skillId)
-    .filter((skillId, index, array) => array.indexOf(skillId) === index && getSkillDefinition(skillId));
+function getLoadoutRuleDescription() {
+  const loadout = getLoadout();
+  const innateNames = INNATE_SKILL_IDS.map((skillId) => getSkillDefinition(skillId)?.name).filter(Boolean).join("、");
+  if (loadout.skillIds.length === 0) {
+    return `小精灵固有携带 ${innateNames}。从已获赐福中装配技能，只有装配上的技能才会进入局内升级池。`;
+  }
+  const equippedNames = loadout.skillIds.map((skillId) => getSkillDefinition(skillId)?.name).filter(Boolean).join("、");
+  return `小精灵固有携带 ${innateNames}，本次出战另外装配 ${equippedNames}。局内升级池只会出现这些技能。`;
 }
 
 function getRewardMeta(region) {
@@ -939,9 +948,10 @@ function getRewardMeta(region) {
     return "无奖励";
   }
 
-  if (region.reward.type === "character") {
-    const character = getCharacterDefinition(region.reward.targetId);
-    return `解锁角色：${character?.name || region.reward.targetId}`;
+  if (region.reward.type === "blessing" || region.reward.type === "character") {
+    const blessing = getBlessingDefinition(region.reward.targetId);
+    const skillName = getSkillDefinition(blessing?.skillId)?.name;
+    return `获得赐福：${blessing?.name || region.reward.targetId}${skillName ? `（${skillName}）` : ""}`;
   }
 
   const landscape = getLandscapeDefinition(region.reward.targetId);
@@ -1195,9 +1205,8 @@ function renderPersistentPanels() {
 
   const liberatedCount = progress.world.liberatedRegions.length;
   const frontierCount = GARDEN_REGIONS.filter((region) => isFrontier(region.id)).length;
-  const unlockedCharacters = getUnlockedCharacters();
+  const grantedBlessings = getGrantedBlessings();
   const selectedRegion = getRegionDefinition(selectedRegionId) || GARDEN_REGIONS[0];
-  const selectedCharacter = getCharacterDefinition(selectedCharacterId) || unlockedCharacters[0];
   const selectedDifficulty = getWarDifficulty(selectedWarDifficultyId);
 
   for (const node of elements.globalCoins) {
@@ -1211,16 +1220,16 @@ function renderPersistentPanels() {
   }
 
   if (elements.liberationBadge) elements.liberationBadge.textContent = `${liberatedCount} / ${GARDEN_REGIONS.length}`;
-  if (elements.characterBadge) elements.characterBadge.textContent = String(unlockedCharacters.length);
+  if (elements.characterBadge) elements.characterBadge.textContent = String(grantedBlessings.length);
   if (elements.prepDifficultyBadge) elements.prepDifficultyBadge.textContent = selectedDifficulty.name;
   if (elements.mainTagline) {
     elements.mainTagline.textContent = progress.world.tutorialCompleted
       ? `花园仍有 ${GARDEN_REGIONS.length - liberatedCount} 片区域被害虫控制，你的下一次部署将从 ${getRegionTileLabel(selectedRegion)} 开始。`
-      : "小精灵刚刚苏醒，必须先守住最后的花心。";
+      : "小精灵刚刚成形，必须先守住众愿苗圃。";
   }
   if (elements.worldSummaryText) {
     elements.worldSummaryText.textContent = progress.world.tutorialCompleted
-      ? `当前前线区域 ${frontierCount} 处，已解锁角色 ${unlockedCharacters.length} 名，已恢复景观 ${progress.world.unlockedLandscapes.length} 处。`
+      ? `当前前线区域 ${frontierCount} 处，已获赐福 ${grantedBlessings.length} 份，已恢复景观 ${progress.world.unlockedLandscapes.length} 处。`
       : "先完成三分钟首战，再从主菜单自由切换战争、研究所、图书馆与害虫星球入口。";
   }
 
@@ -1243,14 +1252,14 @@ function renderPersistentPanels() {
   }
 
   if (elements.characterRosterPreview) {
-    elements.characterRosterPreview.innerHTML = unlockedCharacters
+    elements.characterRosterPreview.innerHTML = grantedBlessings
       .slice(0, 6)
       .map(
-        (character) => `
+        (blessing) => `
           <article class="roster-preview-item">
-            <strong>${character.name}</strong>
-            <span class="card-note">${character.title}</span>
-            <small>${getSkillDefinition(character.skillId)?.name || "未知技能"}</small>
+            <strong>${blessing.name}</strong>
+            <span class="card-note">${blessing.title}</span>
+            <small>${getSkillDefinition(blessing.skillId)?.name || "未知技能"}</small>
           </article>
         `,
       )
@@ -1503,8 +1512,6 @@ function renderSelectedRegionSummary(region) {
 function renderWarPrep() {
   const region = getRegionDefinition(selectedRegionId) || GARDEN_REGIONS[0];
   const selectedDifficulty = getWarDifficulty(selectedWarDifficultyId);
-  const unlockedCharacters = getUnlockedCharacters();
-  const selectedCharacter = getCharacterDefinition(selectedCharacterId) || unlockedCharacters[0];
   const boss = MONSTER_LIBRARY.find((monster) => monster.id === region.bossId);
   const specialMonster = MONSTER_LIBRARY.find((monster) => monster.id === region.specialMonsterId);
 
@@ -1512,8 +1519,7 @@ function renderWarPrep() {
   elements.prepRegionMeta.textContent = `镇守 Boss：${boss?.name || region.bossId} · 亲属部队：${specialMonster?.name || region.specialMonsterId} · 战斗时长 ${Math.round(region.durationSeconds / 60)} 分钟 · ${getRewardMeta(region)}`;
   elements.prepRegionDescription.textContent = region.description;
   elements.prepSelectedDifficulty.textContent = selectedDifficulty.name;
-  elements.prepSelectedCharacter.textContent = selectedCharacter?.name || "小精灵";
-  elements.prepRuleText.textContent = getCharacterRuleDescription(selectedCharacter);
+  elements.prepRuleText.textContent = getLoadoutRuleDescription();
   elements.confirmWarButton.disabled = !canDeployToRegion(region);
 
   elements.warDifficultyOptions.innerHTML = WAR_DIFFICULTIES.map((difficulty) => `
@@ -1531,28 +1537,189 @@ function renderWarPrep() {
     });
   }
 
-  elements.warCharacterOptions.innerHTML = unlockedCharacters.map((character) => {
-    const skill = getSkillDefinition(character.skillId);
-    return `
-      <button class="prep-option ${character.id === selectedCharacterId ? "is-selected" : ""}" data-character-id="${character.id}">
-        <strong>${character.name}</strong>
-        <span class="card-note">${character.description}</span>
-        <small>${skill?.name || "未知技能"} · 初始技能，战斗中可使用全部已解锁角色技能</small>
-      </button>
-    `;
-  }).join("");
+  renderLoadout();
+}
 
-  for (const button of elements.warCharacterOptions.querySelectorAll("[data-character-id]")) {
+function renderLoadout() {
+  const loadout = getLoadout();
+  const equipped = loadout.skillIds;
+
+  if (elements.prepSlotSummary) {
+    elements.prepSlotSummary.textContent = `技能槽 ${equipped.length} / ${loadout.skillSlots}`;
+  }
+
+  // 槽位区：固有技能 + 已装备（可点击卸下）+ 空位 + 未开放的锁定位。
+  if (elements.loadoutSlots) {
+    const innateCards = INNATE_SKILL_IDS.map((skillId) => {
+      const skill = getSkillDefinition(skillId);
+      return `
+        <div class="loadout-slot is-innate">
+          <strong>${skill?.name || skillId}</strong>
+          <small>固有 · 不占槽</small>
+        </div>
+      `;
+    });
+
+    const equippedCards = equipped.map((skillId) => {
+      const skill = getSkillDefinition(skillId);
+      return `
+        <button class="loadout-slot" data-unequip-skill="${skillId}" title="点击卸下">
+          <strong>${skill?.name || skillId}</strong>
+          <small>已装配 · 点击卸下</small>
+        </button>
+      `;
+    });
+
+    const emptyCards = Array.from({ length: Math.max(0, loadout.skillSlots - equipped.length) }, () => `
+      <div class="loadout-slot is-empty">
+        <small>空槽位 · 从下方赐福中选择</small>
+      </div>
+    `);
+
+    const lockedCards = Array.from({ length: Math.max(0, MAX_SKILL_SLOTS - loadout.skillSlots) }, () => `
+      <div class="loadout-slot is-locked">
+        <small>未开放 · 可在研究所扩充</small>
+      </div>
+    `);
+
+    elements.loadoutSlots.innerHTML = [...innateCards, ...equippedCards, ...emptyCards, ...lockedCards].join("");
+
+    for (const button of elements.loadoutSlots.querySelectorAll("[data-unequip-skill]")) {
+      button.addEventListener("click", () => {
+        const skillId = button.dataset.unequipSkill;
+        progress = setLoadoutSkills(progress, equipped.filter((item) => item !== skillId));
+        saveProgress(progress);
+        renderPersistentPanels();
+        renderWarPrep();
+        showToast(`已卸下：${getSkillDefinition(skillId)?.name || skillId}`);
+      });
+    }
+  }
+
+  // 赐福列表：已获赐福可装配，未获得的显示来源区域。
+  if (elements.loadoutBlessings) {
+    const slotsFull = equipped.length >= loadout.skillSlots;
+
+    elements.loadoutBlessings.innerHTML = BLESSING_LIBRARY.map((blessing) => {
+      const granted = isBlessingGranted(progress.world, blessing.id);
+      const equippableSkills = getBlessingEquippableSkillIds(blessing.id);
+
+      if (!granted) {
+        const region = getRegionDefinition(blessing.sourceRegionId);
+        return `
+          <div class="blessing-option is-locked">
+            <strong>${blessing.name}</strong>
+            <span class="card-note">尚未获得这份赐福。</span>
+            <small>来源：${region ? getRegionTileLabel(region) : blessing.sourceRegionId}</small>
+          </div>
+        `;
+      }
+
+      // 主角自身：固有技能不可装配，但其挂靠技能可以。
+      const selectable = equippableSkills.filter((skillId) => !equipped.includes(skillId));
+      const alreadyEquipped = equippableSkills.filter((skillId) => equipped.includes(skillId));
+
+      if (equippableSkills.length === 0) {
+        return `
+          <div class="blessing-option">
+            <strong>${blessing.name}</strong>
+            <span class="card-note">${blessing.description}</span>
+            <small>固有力量 · 无需装配</small>
+          </div>
+        `;
+      }
+
+      const skillNames = equippableSkills
+        .map((skillId) => getSkillDefinition(skillId)?.name || skillId)
+        .join("、");
+      const stateClass = alreadyEquipped.length > 0 ? "is-equipped" : slotsFull && selectable.length > 0 ? "is-full" : "";
+      const canEquip = selectable.length > 0 && !slotsFull;
+      const footnote = alreadyEquipped.length > 0
+        ? `已装配 ${alreadyEquipped.length} / ${equippableSkills.length}`
+        : slotsFull
+          ? "技能槽已满"
+          : "点击装配";
+
+      return `
+        <button class="blessing-option ${stateClass}" data-equip-blessing="${blessing.id}" ${canEquip ? "" : "disabled"}>
+          <strong>${blessing.name}</strong>
+          <span class="card-note">${blessing.description}</span>
+          <small>${skillNames} · ${footnote}</small>
+        </button>
+      `;
+    }).join("");
+
+    for (const button of elements.loadoutBlessings.querySelectorAll("[data-equip-blessing]")) {
+      button.addEventListener("click", () => {
+        const blessingId = button.dataset.equipBlessing;
+        const next = getBlessingEquippableSkillIds(blessingId).find((skillId) => !equipped.includes(skillId));
+        if (!next) {
+          return;
+        }
+        progress = setLoadoutSkills(progress, [...equipped, next]);
+        saveProgress(progress);
+        renderPersistentPanels();
+        renderWarPrep();
+        showToast(`已装配：${getSkillDefinition(next)?.name || next}`);
+      });
+    }
+  }
+
+  // 本源槽：P3 内容，槽位为 0 时整段隐藏。
+  if (elements.loadoutEssenceSection) {
+    elements.loadoutEssenceSection.hidden = loadout.essenceSlots <= 0;
+  }
+}
+
+function renderSkillSlotShop() {
+  const loadout = getLoadout();
+  const cost = getSkillSlotCost(loadout.skillSlots);
+  const affordable = cost !== null && progress.meta.totalCoins >= cost;
+
+  if (elements.labSlotBadge) {
+    elements.labSlotBadge.textContent = `${loadout.skillSlots} / ${MAX_SKILL_SLOTS}`;
+  }
+
+  if (!elements.skillSlotShop) {
+    return;
+  }
+
+  elements.skillSlotShop.innerHTML = `
+    <article class="shop-card">
+      <div>
+        <strong>技能槽扩充</strong>
+        <p class="card-note">提高出战时可装配的赐福技能数量。拥有的赐福很多，但能带上场的始终有限。</p>
+        <p class="card-note">当前上限：${loadout.skillSlots} / ${MAX_SKILL_SLOTS}</p>
+      </div>
+      <footer>
+        <span>${cost === null ? "已达上限" : `需要 ${cost} 植物能量`}</span>
+        <button class="talent-button" data-expand-slot="1" ${cost === null || !affordable ? "disabled" : ""}>
+          ${cost === null ? "已满" : `扩充 ${cost}`}
+        </button>
+      </footer>
+    </article>
+  `;
+
+  for (const button of elements.skillSlotShop.querySelectorAll("[data-expand-slot]")) {
     button.addEventListener("click", () => {
-      persistWorldSelection({ selectedCharacterId: button.dataset.characterId });
-      renderWarPrep();
+      const slotCost = getSkillSlotCost(getLoadout().skillSlots);
+      if (slotCost === null || progress.meta.totalCoins < slotCost) {
+        return;
+      }
+      progress.meta.totalCoins -= slotCost;
+      progress = expandSkillSlots(progress, 1);
+      saveProgress(progress);
+      renderPersistentPanels();
+      renderLab();
+      showToast(`技能槽扩充至 ${getLoadout().skillSlots}`);
     });
   }
 }
 
 function renderLab() {
-  const unlockedCharacters = getUnlockedCharacters();
-  const unlockedSkillIds = new Set(unlockedCharacters.map((character) => character.skillId));
+  const grantedBlessings = getGrantedBlessings();
+  // 专属研究以「已获赐福的技能」为门槛，而不是是否装配。
+  const unlockedSkillIds = new Set(getGrantedSkillIds(progress.world));
 
   elements.talentList.innerHTML = TALENT_LIBRARY.map((talent) => {
     const currentLevel = progress.talents[talent.id] || 0;
@@ -1595,9 +1762,11 @@ function renderLab() {
     });
   }
 
-  elements.skillUnlockShop.innerHTML = unlockedCharacters
-    .map((character) => {
-      const skill = getSkillDefinition(character.skillId);
+  renderSkillSlotShop();
+
+  elements.skillUnlockShop.innerHTML = grantedBlessings
+    .map((blessing) => {
+      const skill = getSkillDefinition(blessing.skillId);
       const signature = (skill?.exclusiveUpgrades || []).find((exclusive) =>
         (exclusive.description || "").includes("【专属】"),
       );
@@ -1605,16 +1774,18 @@ function renderLab() {
       const signatureLine = signature
         ? `<p class="card-note">签名专属：${signature.name}${signatureUnlocked ? "（已研究）" : "（待研究）"}</p>`
         : "";
+      const equipped = getLoadout().skillIds.includes(blessing.skillId);
+      const statusText = blessing.innate ? "固有力量" : equipped ? "已装配出战" : "已获赐福 · 未装配";
       return `
         <article class="shop-card">
           <div>
-            <strong>${character.name}</strong>
-            <p class="card-note">${character.description}</p>
-            <p class="card-note">专属技能：${skill?.name || "未知技能"}</p>
+            <strong>${blessing.name}</strong>
+            <p class="card-note">${blessing.description}</p>
+            <p class="card-note">赐福技能：${skill?.name || "未知技能"}</p>
             ${signatureLine}
           </div>
           <footer>
-            <span>共享已解锁技能池</span>
+            <span>${statusText}</span>
           </footer>
         </article>
       `;
@@ -1673,15 +1844,15 @@ function renderLab() {
 }
 
 function renderLibrary() {
-  const unlockedSkillIds = new Set(getUnlockedCharacters().map((character) => character.skillId));
+  const unlockedSkillIds = new Set(getGrantedSkillIds(progress.world));
 
-  elements.libraryCharacters.innerHTML = CHARACTER_LIBRARY.map((character) => {
-    const unlocked = progress.world.unlockedCharacters.includes(character.id);
+  elements.libraryCharacters.innerHTML = BLESSING_LIBRARY.map((blessing) => {
+    const granted = isBlessingGranted(progress.world, blessing.id);
     return createCodexCard(
-      character.name,
-      unlocked ? character.description : "尚未在战线上与这位守园者建立联络。",
-      unlocked ? getSkillDefinition(character.skillId)?.name || "已记录" : "未解锁",
-      !unlocked,
+      blessing.name,
+      granted ? blessing.description : "尚未获得这份赐福，对应的力量仍在沉眠。",
+      granted ? getSkillDefinition(blessing.skillId)?.name || "已记录" : "未获赐福",
+      !granted,
     );
   }).join("");
 
@@ -1752,9 +1923,10 @@ function openIntroStory() {
     eyebrow: "Prologue",
     title: "花园的最后一夜",
     paragraphs: [
-      "平静的夜里，来自虫星的陨群穿过云层，把 36 片花园区域逐一污染。花朵、植物与益虫守卫先后失联，只剩最中心的花心还在发光。",
-      "濒临枯竭的花心唤醒了最后一只小精灵。它在风中第一次听见花园的语言，并以风元素凝成灵箭，准备顶住首轮虫潮。",
-      "接下来是一场三分钟的新手保卫战。失败时花园会被攻陷，胜利后才会开启完整的花园战争主菜单。",
+      "害虫星球的远征军穿过云层落了下来。它们不杀守卫，而是改写守卫——藤钟、琥壳、月鳞、虚灯，花园十支血脉被逐一夺走，昨天还在守门的同伴，今天成了镇守各区的敌人。",
+      "常规的抵抗已经证明无效。于是花园里的大家做了最后一件事：把各自剩下的力量全部凝聚起来，送出一个载体——一只小精灵。",
+      "它不是花园派出的士兵，它是花园所有人剩下的部分。那些力量本来就在它身体里，只是一次用不出来，要随着战线推进一点点重新醒过来。",
+      "现在，先在众愿苗圃顶住第一波虫潮。这里是防线还没被击穿的最后一片土地。",
     ],
     primaryLabel: "保卫花园",
     presentation: "cinematic",
@@ -1766,7 +1938,6 @@ function openIntroStory() {
         introSeen: true,
         selectedRegionId: INITIAL_REGION_ID,
         pendingRegionId: INITIAL_REGION_ID,
-        selectedCharacterId: "spriteScout",
         selectedWarDifficultyId: "normal",
       });
       saveProgress(progress);
@@ -1818,26 +1989,49 @@ function openStoryScene({
   }
 }
 
-function buildRunConfig(regionId, characterId, difficultyId, tutorial = false) {
+// 教学关的专用缩放：玩家此时只有 1–2 个技能、几乎没有成长项，
+// 不能套用常规战役的敌人与 Boss 强度。
+//
+// 注意 spawnScale 是**放大**而不是缩小：难度 1 的基准刷怪率只有 0.42
+// （见 data.js 的 getDifficultyProfile），本身已经相当稀疏。再往下调会让
+// 整波只刷出十几只怪，击杀目标直接变成不可能完成。教学关需要的是
+// "大量很弱的怪"——有东西可打、目标可达，而不是"很少但很硬的怪"。
+//
+// enemySpeedScale 必须单列：enemyScale 同时作用于生命、伤害和**移速**，
+// 而难度 1 的基准移速倍率只有 0.64。若让 0.7 的削弱也压在移速上，
+// 露珠软虫的实际速度只有 38 × 0.64 × 0.7 ≈ 17 px/s，
+// 在 9 倍大的地图上要走 40 秒以上才能到玩家身边——大部分怪在本波结束前
+// 根本走不过来，于是"刷出了很多怪"却"打不到几只"。
+const TUTORIAL_PROFILE_SCALES = Object.freeze({
+  enemyScale: 0.7,
+  enemySpeedScale: 1.95,
+  spawnScale: 1.6,
+  bossScale: 0.45,
+  expScale: 1.5,
+  energyScale: 1,
+});
+
+function buildRunConfig(regionId, difficultyId, tutorial = false) {
   const region = getRegionDefinition(regionId) || GARDEN_REGIONS[0];
-  const character = getCharacterDefinition(characterId) || getCharacterDefinition("spriteScout");
   const difficulty = getWarDifficulty(difficultyId);
-  const allowedSkillIds = getCharacterAllowedSkillIds(character);
+  // 局内可用技能完全由装配决定：固有技能 + 已装配的赐福技能。
+  const allowedSkillIds = getEquippedSkillIds().filter((skillId) => getSkillDefinition(skillId));
+  // 起始技能优先用首个装配技能，未装配时回落到固有技能。
+  const initialSkillId = allowedSkillIds[0] || INNATE_SKILL_IDS[0];
 
   return {
     region,
-    character,
     difficulty,
     options: {
       difficultyLevel: region.bossTier,
       bossId: region.bossId,
       roundDurationSeconds: region.durationSeconds,
-      initialSkillId: character.skillId,
+      initialSkillId,
       allowedSkillIds,
-      profileScales: difficulty,
+      profileScales: tutorial ? TUTORIAL_PROFILE_SCALES : difficulty,
       energyRewardScale: tutorial ? 0.9 : 0.95 + region.index * 0.03,
       mode: tutorial ? "tutorial" : "regionWar",
-      characterId: character.id,
+      characterId: PROTAGONIST_BLESSING_ID,
       regionId: region.id,
     },
   };
@@ -1852,7 +2046,7 @@ function startRunConfig(runConfig) {
 }
 
 function startTutorialRun() {
-  const config = buildRunConfig(INITIAL_REGION_ID, "spriteScout", "normal", true);
+  const config = buildRunConfig(INITIAL_REGION_ID, "normal", true);
   startRunConfig(config);
 }
 
@@ -1862,13 +2056,13 @@ function startSelectedWar() {
     return;
   }
 
-  const config = buildRunConfig(selectedRegionId, selectedCharacterId, selectedWarDifficultyId, false);
+  const config = buildRunConfig(selectedRegionId, selectedWarDifficultyId, false);
   startRunConfig(config);
 }
 
 function startSelectedBossTest() {
   const region = getRegionDefinition(selectedRegionId) || GARDEN_REGIONS[0];
-  const config = buildRunConfig(region.id, selectedCharacterId, selectedWarDifficultyId, false);
+  const config = buildRunConfig(region.id, selectedWarDifficultyId, false);
   config.options = {
     ...config.options,
     mode: "bossTest",
@@ -1930,10 +2124,11 @@ function handleRunEnd(result) {
       renderPersistentPanels();
       openStoryScene({
         eyebrow: "Liberation",
-        title: "第一片花园重新恢复了呼吸",
+        title: "众愿苗圃守住了",
         paragraphs: [
-          "精英害虫被击退后，花心重新亮起。你已经守住了第一片区域，主菜单的四大入口正式开放。",
-          "从现在开始，新的区域必须从相邻区域逐步解放。你可以前往花园战争继续推进，也可以先去研究所和图书馆整理战力。",
+          "镇守者被击退的那一刻，苗圃里有一份力量醒了过来——那是曾经凝聚出你的人之一。它把自己的赐福交到你手上。",
+          "这就是接下来的规则：每解放一片区域，就有一位旧日守护者恢复神智，并把力量作为赐福交给你。出战前能带上场的赐福有限，带什么由你决定。",
+          "主菜单的四大入口已经开放。新的区域必须从相邻区域逐步推进，你也可以先去研究所扩充技能槽、整理战力。",
         ],
         presentation: "cinematic",
         sceneTheme: "liberation",
@@ -1950,10 +2145,10 @@ function handleRunEnd(result) {
 
     openStoryScene({
       eyebrow: "Overrun",
-      title: "花园被攻陷",
+      title: "众愿苗圃失守了",
       paragraphs: [
-        "首场防线已经崩溃，虫潮正在啃食最后一圈花瓣。",
-        "重新整队后再试一次。只要撑住三分钟并击败首领，你就能把主菜单从濒危状态中救回来。",
+        "最后一片苗圃被虫潮淹过去了。凝聚出你的那些力量还在，所以这件事可以重来。",
+        "再试一次：用 W A S D 移动、Space 闪现躲开冲上来的虫子，技能会自动开火。撑过三波并击退镇守者就算守住。",
       ],
       primaryLabel: "再次迎战",
       primaryAction: () => {
@@ -1969,7 +2164,6 @@ function handleRunEnd(result) {
       tutorialCompleted: true,
       selectedRegionId: region.id,
       pendingRegionId: region.id,
-      selectedCharacterId,
       selectedWarDifficultyId,
     });
     saveProgress(progress);

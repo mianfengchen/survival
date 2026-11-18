@@ -1,5 +1,5 @@
-const STATIC_CACHE = "garden-survivor-static-v3";
-const RUNTIME_CACHE = "garden-survivor-runtime-v3";
+const STATIC_CACHE = "garden-survivor-static-v4";
+const RUNTIME_CACHE = "garden-survivor-runtime-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -7,11 +7,16 @@ const APP_SHELL = [
   "./manifest.webmanifest",
   "./styles/app.css",
   "./src/main.js",
+  "./src/audio.js",
   "./src/data.js",
   "./src/game.js",
   "./src/garden-data.js",
   "./src/pixi-renderer.js",
+  "./src/skills.js",
   "./src/storage.js",
+  // Pixi 已改为本地依赖（importmap 指向 ./src/pixi-legacy.mjs），
+  // 必须进入预缓存，否则离线启动时渲染层会加载失败。
+  "./src/pixi-legacy.mjs",
   "./assets/pwa/icon-192.svg",
   "./assets/pwa/icon-512.svg",
 ];

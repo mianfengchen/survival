@@ -753,6 +753,128 @@ h3 {
   box-shadow: 0 16px 28px rgba(239, 139, 59, 0.22);
 }
 
+/* ── 技能装配（赐福系统 P1）── */
+.loadout-slots {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: 14px;
+}
+
+.loadout-subhead {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.loadout-slot {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  min-height: 62px;
+  border-radius: 18px;
+  border: 1px solid rgba(72, 104, 60, 0.16);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 24px rgba(56, 82, 47, 0.08);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.loadout-slot strong {
+  display: block;
+}
+
+.loadout-slot small {
+  color: var(--muted);
+}
+
+.loadout-slot:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(239, 139, 59, 0.6);
+}
+
+.loadout-slot.is-empty {
+  border-style: dashed;
+  border-color: rgba(72, 104, 60, 0.3);
+  background: rgba(255, 255, 255, 0.4);
+  box-shadow: none;
+  cursor: default;
+  align-content: center;
+}
+
+.loadout-slot.is-empty small {
+  color: var(--muted);
+}
+
+.loadout-slot.is-innate {
+  border-color: rgba(120, 190, 232, 0.66);
+  background: rgba(236, 249, 255, 0.86);
+  cursor: default;
+}
+
+.loadout-slot.is-locked {
+  border-style: dashed;
+  border-color: rgba(72, 104, 60, 0.18);
+  background: rgba(238, 240, 236, 0.6);
+  box-shadow: none;
+  cursor: not-allowed;
+  align-content: center;
+  opacity: 0.78;
+}
+
+.blessing-option {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(72, 104, 60, 0.12);
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 12px 28px rgba(56, 82, 47, 0.08);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.blessing-option strong {
+  display: block;
+}
+
+.blessing-option small,
+.blessing-option .card-note {
+  color: var(--muted);
+}
+
+.blessing-option:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(239, 139, 59, 0.6);
+}
+
+.blessing-option.is-equipped {
+  border-color: rgba(239, 139, 59, 0.86);
+  box-shadow: 0 16px 28px rgba(239, 139, 59, 0.22);
+}
+
+.blessing-option.is-full {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.blessing-option.is-locked {
+  cursor: not-allowed;
+  opacity: 0.6;
+  filter: saturate(0.5);
+}
+
+.loadout-essence-section {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(72, 104, 60, 0.2);
+}
+
 .region-shape.is-selected {
   stroke: rgba(239, 139, 59, 0.88);
   stroke-width: 4px;

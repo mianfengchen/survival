@@ -1,5 +1,15 @@
 import { TALENT_LIBRARY, createDefaultUnlockState, normalizeDifficultyLevel, normalizeInitialSkillId } from "./data.js";
-import { createDefaultWorldState } from "./garden-data.js";
+import {
+  INNATE_SKILL_IDS,
+  MAX_ESSENCE_SLOTS,
+  MAX_SKILL_SLOTS,
+  PROTAGONIST_BLESSING_ID,
+  createDefaultBlessingState,
+  createDefaultLoadout,
+  createDefaultWorldState,
+  getBlessingDefinition,
+  getBlessingEquippableSkillIds,
+} from "./garden-data.js";
 
 const STORAGE_KEY = "sunny-survival-progress-v1";
 
@@ -9,7 +19,7 @@ function createTalentState() {
 
 export function createDefaultProgress() {
   return {
-    version: 3,
+    version: 4,
     meta: {
       totalCoins: 0,
       runs: 0,
@@ -33,6 +43,108 @@ export function createDefaultProgress() {
     },
     world: createDefaultWorldState(),
   };
+}
+
+function clampInt(value, fallbackValue, min, max) {
+  const parsed = Number.isFinite(Number(value)) ? Math.floor(Number(value)) : fallbackValue;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function normalizeBlessings(rawWorld, legacyCharacters) {
+  const blessings = createDefaultBlessingState();
+
+  // 迁移：旧存档的 world.unlockedCharacters 直接转为「已授予初赐」。
+  for (const characterId of Array.isArray(legacyCharacters) ? legacyCharacters : []) {
+    if (!getBlessingDefinition(characterId)) {
+      continue;
+    }
+    blessings[characterId] = { granted: true, resonance: 0, essence: false };
+  }
+
+  const rawBlessings = rawWorld?.blessings && typeof rawWorld.blessings === "object" ? rawWorld.blessings : {};
+  for (const [blessingId, entry] of Object.entries(rawBlessings)) {
+    const definition = getBlessingDefinition(blessingId);
+    if (!definition || !entry || typeof entry !== "object") {
+      continue;
+    }
+    blessings[blessingId] = {
+      granted: Boolean(entry.granted),
+      resonance: clampInt(entry.resonance, 0, 0, definition.resonanceMax || 0),
+      // 本源是 P3 内容；只有当该提供者确实定义了本源时才保留标记。
+      essence: Boolean(entry.essence) && Boolean(definition.essence),
+    };
+  }
+
+  // 主角赐福恒定已授予。
+  blessings[PROTAGONIST_BLESSING_ID] = {
+    ...(blessings[PROTAGONIST_BLESSING_ID] || { resonance: 0, essence: false }),
+    granted: true,
+  };
+
+  return blessings;
+}
+
+function collectEquippableSkillIds(blessings) {
+  const skillIds = new Set();
+  for (const [blessingId, entry] of Object.entries(blessings || {})) {
+    if (!entry?.granted) {
+      continue;
+    }
+    for (const skillId of getBlessingEquippableSkillIds(blessingId)) {
+      skillIds.add(skillId);
+    }
+  }
+  return skillIds;
+}
+
+function collectGrantedEssenceIds(blessings) {
+  const essenceIds = new Set();
+  for (const [blessingId, entry] of Object.entries(blessings || {})) {
+    if (!entry?.granted || !entry.essence) {
+      continue;
+    }
+    const essenceId = getBlessingDefinition(blessingId)?.essence?.id;
+    if (essenceId) {
+      essenceIds.add(essenceId);
+    }
+  }
+  return essenceIds;
+}
+
+function normalizeLoadout(rawWorld, blessings) {
+  const fallback = createDefaultLoadout();
+  const raw = rawWorld?.loadout && typeof rawWorld.loadout === "object" ? rawWorld.loadout : {};
+
+  const skillSlots = clampInt(raw.skillSlots, fallback.skillSlots, 1, MAX_SKILL_SLOTS);
+  const essenceSlots = clampInt(raw.essenceSlots, fallback.essenceSlots, 0, MAX_ESSENCE_SLOTS);
+
+  const equippable = collectEquippableSkillIds(blessings);
+  const innate = new Set(INNATE_SKILL_IDS);
+  const skillIds = [];
+  for (const skillId of Array.isArray(raw.skillIds) ? raw.skillIds : []) {
+    if (skillIds.length >= skillSlots) {
+      break;
+    }
+    // 固有技能恒定可用，不占槽也不入列；未授予的技能一律剔除。
+    if (innate.has(skillId) || !equippable.has(skillId) || skillIds.includes(skillId)) {
+      continue;
+    }
+    skillIds.push(skillId);
+  }
+
+  const grantedEssences = collectGrantedEssenceIds(blessings);
+  const essenceIds = [];
+  for (const essenceId of Array.isArray(raw.essenceIds) ? raw.essenceIds : []) {
+    if (essenceIds.length >= essenceSlots) {
+      break;
+    }
+    if (!grantedEssences.has(essenceId) || essenceIds.includes(essenceId)) {
+      continue;
+    }
+    essenceIds.push(essenceId);
+  }
+
+  return { skillIds, essenceIds, skillSlots, essenceSlots };
 }
 
 function mergeProgress(raw) {
@@ -64,22 +176,24 @@ function mergeProgress(raw) {
     skills: Array.isArray(raw.codex?.skills) ? [...new Set(raw.codex.skills)] : [],
   };
   const fallbackWorld = createDefaultWorldState();
+  // 旧字段：角色选择模型已被赐福系统取代，解构出来避免残留在存档里。
+  const { unlockedCharacters: legacyCharacters, selectedCharacterId: _legacySelectedCharacter, ...rawWorld } = raw.world || {};
+  const blessings = normalizeBlessings(raw.world, legacyCharacters);
   const world = {
     ...fallbackWorld,
-    ...(raw.world || {}),
+    ...rawWorld,
     liberatedRegions: Array.isArray(raw.world?.liberatedRegions)
       ? [...new Set(raw.world.liberatedRegions)]
       : fallbackWorld.liberatedRegions,
-    unlockedCharacters: Array.isArray(raw.world?.unlockedCharacters)
-      ? [...new Set(raw.world.unlockedCharacters)]
-      : fallbackWorld.unlockedCharacters,
     unlockedLandscapes: Array.isArray(raw.world?.unlockedLandscapes)
       ? [...new Set(raw.world.unlockedLandscapes)]
       : fallbackWorld.unlockedLandscapes,
+    blessings,
+    loadout: normalizeLoadout(raw.world, blessings),
   };
 
   return {
-    version: 3,
+    version: 4,
     meta,
     settings,
     talents,
@@ -185,12 +299,90 @@ export function updateWorldState(progress, partialWorld) {
     liberatedRegions: Array.isArray(partialWorld?.liberatedRegions)
       ? [...new Set(partialWorld.liberatedRegions)]
       : next.world.liberatedRegions,
-    unlockedCharacters: Array.isArray(partialWorld?.unlockedCharacters)
-      ? [...new Set(partialWorld.unlockedCharacters)]
-      : next.world.unlockedCharacters,
     unlockedLandscapes: Array.isArray(partialWorld?.unlockedLandscapes)
       ? [...new Set(partialWorld.unlockedLandscapes)]
       : next.world.unlockedLandscapes,
+    blessings: partialWorld?.blessings && typeof partialWorld.blessings === "object"
+      ? normalizeBlessings({ blessings: partialWorld.blessings })
+      : next.world.blessings,
+  };
+  // 赐福或槽位可能被一并改动，统一过一遍装配校验。
+  next.world.loadout = normalizeLoadout(next.world, next.world.blessings);
+  return next;
+}
+
+// 已授予的赐福（含主角固有技能）中，当前可供装备的技能 id。
+export function getGrantedSkillIds(world) {
+  return [...new Set([...INNATE_SKILL_IDS, ...collectEquippableSkillIds(world?.blessings)])];
+}
+
+export function isBlessingGranted(world, blessingId) {
+  return Boolean(world?.blessings?.[blessingId]?.granted);
+}
+
+// 授予初赐。若技能槽尚有空位，顺手装备上去——避免玩家刚拿到赐福却带不出场。
+function grantBlessingInPlace(world, blessingId) {
+  const definition = getBlessingDefinition(blessingId);
+  if (!definition) {
+    return false;
+  }
+
+  const existing = world.blessings[blessingId];
+  if (existing?.granted) {
+    return false;
+  }
+
+  world.blessings[blessingId] = {
+    granted: true,
+    resonance: existing?.resonance || 0,
+    essence: Boolean(existing?.essence) && Boolean(definition.essence),
+  };
+
+  const innate = new Set(INNATE_SKILL_IDS);
+  for (const skillId of getBlessingEquippableSkillIds(blessingId)) {
+    if (world.loadout.skillIds.length >= world.loadout.skillSlots) {
+      break;
+    }
+    if (innate.has(skillId) || world.loadout.skillIds.includes(skillId)) {
+      continue;
+    }
+    world.loadout.skillIds.push(skillId);
+  }
+
+  return true;
+}
+
+export function grantBlessing(progress, blessingId) {
+  const next = mergeProgress(progress);
+  grantBlessingInPlace(next.world, blessingId);
+  return next;
+}
+
+export function setLoadoutSkills(progress, skillIds) {
+  const next = mergeProgress(progress);
+  const equippable = collectEquippableSkillIds(next.world.blessings);
+  const innate = new Set(INNATE_SKILL_IDS);
+  const resolved = [];
+
+  for (const skillId of Array.isArray(skillIds) ? skillIds : []) {
+    if (resolved.length >= next.world.loadout.skillSlots) {
+      break;
+    }
+    if (innate.has(skillId) || !equippable.has(skillId) || resolved.includes(skillId)) {
+      continue;
+    }
+    resolved.push(skillId);
+  }
+
+  next.world.loadout = { ...next.world.loadout, skillIds: resolved };
+  return next;
+}
+
+export function expandSkillSlots(progress, amount = 1) {
+  const next = mergeProgress(progress);
+  next.world.loadout = {
+    ...next.world.loadout,
+    skillSlots: clampInt(next.world.loadout.skillSlots + amount, next.world.loadout.skillSlots, 1, MAX_SKILL_SLOTS),
   };
   return next;
 }
@@ -201,8 +393,9 @@ export function unlockRegionReward(progress, regionId, reward) {
     next.world.liberatedRegions.push(regionId);
   }
 
-  if (reward?.type === "character" && reward.targetId && !next.world.unlockedCharacters.includes(reward.targetId)) {
-    next.world.unlockedCharacters.push(reward.targetId);
+  // "character" 为旧版奖励类型，保留以兼容途中存档。
+  if ((reward?.type === "blessing" || reward?.type === "character") && reward.targetId) {
+    grantBlessingInPlace(next.world, reward.targetId);
   }
 
   if (reward?.type === "landscape" && reward.targetId && !next.world.unlockedLandscapes.includes(reward.targetId)) {

@@ -111,7 +111,11 @@ function scaleProfile(baseProfile, scales = {}) {
     ...baseProfile,
     monsterHealthMultiplier: Number((baseProfile.monsterHealthMultiplier * (scales.enemyScale || 1)).toFixed(2)),
     monsterDamageMultiplier: Number((baseProfile.monsterDamageMultiplier * (scales.enemyScale || 1)).toFixed(2)),
-    monsterSpeedMultiplier: Number((baseProfile.monsterSpeedMultiplier * (scales.enemyScale || 1)).toFixed(2)),
+    // Speed has its own scale so "weaker" and "slower" can be separated. Tying them
+    // together means softening a region also makes enemies crawl, and on a 9x map an
+    // enemy that crawls never reaches the player at all — it just never shows up in the
+    // fight. The tutorial needs weak-but-not-slow, hence the override.
+    monsterSpeedMultiplier: Number((baseProfile.monsterSpeedMultiplier * (scales.enemySpeedScale ?? scales.enemyScale ?? 1)).toFixed(2)),
     spawnRateMultiplier: Number((baseProfile.spawnRateMultiplier * (scales.spawnScale || 1)).toFixed(2)),
     expMultiplier: Number((baseProfile.expMultiplier * (scales.expScale || 1)).toFixed(2)),
     coinMultiplier: Number((baseProfile.coinMultiplier * (scales.energyScale || 1)).toFixed(2)),
@@ -333,6 +337,27 @@ const WAVE_FINALE_POOL = Object.freeze(["surge", "split", "raid"]);
 const WAVE_BODY_POOL = Object.freeze(["cull", "purge", "gather", "hold", "altar", "sweep", "split", "raid"]);
 const WAVE_SHORT_ROUND_SECONDS = 360;
 const WAVE_SHORT_INTERMISSION_SECONDS = 8;
+
+// The tutorial does NOT share the campaign skeleton. Reusing it meant slot 2 was always
+// 猎杀 (3 elites) and slot 3 was always drawn from the high-pressure finale pool, then a
+// boss — with one or two skills and almost no upgrades. That is unplayable as a first
+// experience, so the tutorial gets an authored, deterministic plan instead:
+//   1. 歼灭 — learn moving, auto-fire, exp pickup and the level-up popup.
+//   2. 采集 — 灵露 is scattered, so this teaches traversal and the camera. Spawns stay low
+//      and the pickups hand out extra exp, so the player reaches the boss with levels.
+//   3. 歼灭 — a denser crowd to practise on, still with no elites and no objective risk.
+// A tutorial should be the same every time, otherwise it cannot teach.
+const WAVE_TUTORIAL_ORDER = Object.freeze(["cull", "gather", "cull"]);
+// Authored per-wave goals for the tutorial, indexed by wave number − 1.
+//
+// These are sized against how many enemies actually *reach the player*, not how many
+// spawn. On a 9x map those are very different numbers, and sizing against spawns is what
+// made earlier versions impossible to finish. With the tutorial's speed override and
+// near-edge spawning, roughly 36 enemies arrive on wave 1 and 44 on wave 3 while standing
+// still; goals sit near 40% of that so the wave clears without the player having to
+// actively hunt anything down.
+const TUTORIAL_WAVE_KILL_GOALS = Object.freeze([14, 0, 18]);
+const TUTORIAL_WAVE_DEW_GOAL = 5;
 
 // Note: the no-replacement draw this needs already exists as pickRandom(items, count)
 // near the top of the file, so there is no shuffle helper here on purpose.
@@ -1671,9 +1696,31 @@ export class GameRuntime {
   getSpawnPoint() {
     const camera = this.getCamera();
     const margin = 72;
-    const side = Math.floor(Math.random() * 4);
+    // The viewport is much wider than it is tall, so a left/right spawn is roughly 712px
+    // from the player while a top/bottom spawn is roughly 432px. In the tutorial we only
+    // use the near (vertical) edges and keep the spread tight, which nearly halves the
+    // walk-in time without any visible pop-in. Campaign rounds keep using all four sides.
+    const tutorial = this.session?.mode === "tutorial";
+    const side = tutorial
+      ? 2 + Math.floor(Math.random() * 2)
+      : Math.floor(Math.random() * 4);
+    // How far along the edge a spawn may stray from directly above/below the player.
+    const spread = tutorial ? camera.width * 0.3 : camera.width + margin * 2;
     let x = 0;
     let y = 0;
+
+    if (tutorial) {
+      x = clamp(
+        this.player.x + randomBetween(-spread / 2, spread / 2),
+        camera.x - margin,
+        camera.x + camera.width + margin,
+      );
+      y = side === 2 ? camera.y - margin : camera.y + camera.height + margin;
+      return {
+        x: clamp(x, -40, ARENA.width + 40),
+        y: clamp(y, -40, ARENA.height + 40),
+      };
+    }
 
     if (side === 0) {
       x = camera.x - margin;
@@ -1735,10 +1782,12 @@ export class GameRuntime {
 
   buildWavePlan() {
     const roundDuration = Math.max(60, this.session?.roundDurationSeconds || ROUND_DURATION_SECONDS);
+    const tutorial = this.session?.mode === "tutorial";
     const short = roundDuration <= WAVE_SHORT_ROUND_SECONDS;
     const slotCount = short ? WAVE_SLOT_COUNT_SHORT : WAVE_SLOT_COUNT_FULL;
     const eliteSlots = short ? WAVE_ELITE_SLOTS_SHORT : WAVE_ELITE_SLOTS_FULL;
-    const order = this.rollWaveOrder(slotCount, eliteSlots);
+    // The tutorial uses its authored order; everything else rolls.
+    const order = tutorial ? [...WAVE_TUTORIAL_ORDER] : this.rollWaveOrder(slotCount, eliteSlots);
     const intermissionSeconds = short ? WAVE_SHORT_INTERMISSION_SECONDS : WAVE_INTERMISSION_SECONDS;
     // Everything the intermissions don't eat is combat time, split by weight. The floor
     // keeps a pathologically short round from producing zero-second waves.
@@ -1754,8 +1803,9 @@ export class GameRuntime {
     let huntIndex = 0;
     return order.map((typeId, index) => {
       const type = getWaveTypeDefinition(typeId);
-      // Wave 1 is always calm so the opening can never roll unfair.
-      const modifierId = index === 0
+      // Wave 1 is always calm so the opening can never roll unfair. The tutorial keeps
+      // every wave calm: a modifier the player has no way to read yet is just noise.
+      const modifierId = index === 0 || tutorial
         ? "calm"
         : WAVE_MODIFIER_LIBRARY[Math.floor(Math.random() * WAVE_MODIFIER_LIBRARY.length)].id;
       // Hunt count ramps in slot order. Because the hunt slots are assigned before the
@@ -1806,8 +1856,16 @@ export class GameRuntime {
     session.wavePhase = "combat";
     session.waveTimer = entry.duration || 150;
     session.waveKillBaseline = session.kills;
+    const tutorial = session.mode === "tutorial";
+    // The campaign's kill goals assume campaign spawn rates. The tutorial runs at a
+    // reduced spawn rate with 1–2 skills, where the campaign numbers are not merely hard
+    // but unreachable: wave 1 would ask for 55 kills out of roughly 42 spawns. Tutorial
+    // goals are therefore authored to sit at about half of what actually spawns, so the
+    // player completes every objective and learns that objectives are completable.
     session.waveKillGoal = type.killGoalBase > 0
-      ? Math.ceil(type.killGoalBase * (1 + (index - 1) * 0.35))
+      ? tutorial
+        ? TUTORIAL_WAVE_KILL_GOALS[index - 1] ?? 20
+        : Math.ceil(type.killGoalBase * (1 + (index - 1) * 0.35))
       : 0;
     session.waveEliteKills = 0;
     // The plan's per-wave count wins over the type default so the first hunt stays light.
@@ -1815,7 +1873,13 @@ export class GameRuntime {
     session.waveNestGoal = type.nestGoal || 0;
     session.waveNestKills = 0;
     // Dew count creeps up over the run so a late 采集 wave still asks for real travel.
-    session.waveDewGoal = type.dewGoal ? type.dewGoal + Math.floor((index - 1) / 2) : 0;
+    // The tutorial keeps it short: the map is 9x, and the point here is to teach that you
+    // can and should move, not to spend the whole wave walking.
+    session.waveDewGoal = type.dewGoal
+      ? tutorial
+        ? TUTORIAL_WAVE_DEW_GOAL
+        : type.dewGoal + Math.floor((index - 1) / 2)
+      : 0;
     session.waveDewCollected = 0;
     session.waveHoldRequired = type.holdSeconds || 0;
     session.waveHoldProgress = 0;
@@ -2196,7 +2260,12 @@ export class GameRuntime {
     const waveType = this.getCurrentWaveType();
     const waveModifier = this.getCurrentWaveModifier();
     const densityScale = (waveType.densityScale || 1) * (waveModifier.densityScale || 1);
-    const rampBonus = this.session.waveIndex >= 4 ? 2 : this.session.waveIndex >= 2 ? 1 : 0;
+    // The tutorial keeps density flat: the campaign's per-wave ramp doubles the spawn
+    // batch from wave 2 on, which turns the 采集 wave into a chase the player cannot read
+    // yet. A steady, legible stream is what teaches; escalation is the boss's job here.
+    const rampBonus = this.session.mode === "tutorial"
+      ? 0
+      : this.session.waveIndex >= 4 ? 2 : this.session.waveIndex >= 2 ? 1 : 0;
     const spawnCount = Math.max(1, Math.round((1 + rampBonus) * densityScale));
     const profile = this.session.difficultyProfile;
     let aliveKinCount = this.enemies.filter((e) => e.regionExclusive).length;
